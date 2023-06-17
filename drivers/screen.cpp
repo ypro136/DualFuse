@@ -1,5 +1,6 @@
 #include "screen.hpp"
 #include "ports.hpp"
+#include "../kernel/utility.hpp"
 
 /* Declaration of private functions */
 int get_cursor_offset();
@@ -17,7 +18,7 @@ int get_offset_col(int offset);
  * Print a message on the specified location
  * If col, row, are negative, we will use the current offset
  */
-void kprint_at(char *message, int col, int row) {
+void kernel_print_at(char *message, int col, int row) {
     /* Set cursor if col/row are negative */
     int offset;
     if (col >= 0 && row >= 0)
@@ -38,8 +39,8 @@ void kprint_at(char *message, int col, int row) {
     }
 }
 
-void kprint(char *message) {
-    kprint_at(message, -1, -1);
+void kernel_print(char *message) {
+    kernel_print_at(message, -1, -1);
 }
 
 
@@ -79,6 +80,22 @@ int print_char(char c, int col, int row, char attr) {
         vidmem[offset+1] = attr;
         offset += 2;
     }
+
+    /* Check if the offset is over screen size and scroll */
+    if (offset >= MAX_ROWS * MAX_COLS * 2) {
+        int i;
+        for (i = 1; i < MAX_ROWS; i++) 
+            memory_copy(get_offset(0, i) + VIDEO_ADDRESS,
+                        get_offset(0, i-1) + VIDEO_ADDRESS,
+                        MAX_COLS * 2);
+
+        /* Blank last line */
+        char* last_line = get_offset(0, MAX_ROWS-1) + VIDEO_ADDRESS;
+        for (i = 0; i < MAX_COLS * 2; i++) last_line[i] = 0;
+
+        offset -= 2 * MAX_COLS;
+    }
+
     set_cursor_offset(offset);
     return offset;
 }

@@ -33,7 +33,7 @@ debug: os-image.bin kernel.elf
 # Generic rules for wildcards
 # To make an object, always compile from its .cpp
 %.o: %.cpp ${HEADERS}
-	${CC} ${CFLAGS} -m32 -ffreestanding -c $< -o $@
+	${CC} ${CFLAGS} -m32 -ffreestanding -fpermissive -c $< -o $@
 
 %.o: %.asm
 	nasm $< -f elf -o $@
