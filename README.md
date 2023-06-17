@@ -1,2 +1,2 @@
 # DualFuse
-DualFuse is my own
+DualFuse is my own os
