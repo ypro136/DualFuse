@@ -23,7 +23,7 @@ kernel.elf: boot/kernel_entry.o ${OBJ}
 	ld --ignore-unresolved-symbol _GLOBAL_OFFSET_TABLE_ -m elf_i386 -Ttext 0x1000 -o $@ $^ -e main
 
 run: os-image.bin
-	qemu-system-i386 -s -fda os-image.bin &
+	qemu-system-i386 -s -fda os-image.bin
 
 # Open the connection to qemu and load our kernel-object file with symbols
 debug: os-image.bin kernel.elf
