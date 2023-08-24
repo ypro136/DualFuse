@@ -36,7 +36,7 @@ debug: os-image.bin kernel.elf
 	${CC} ${CFLAGS} -m32 -ffreestanding -mgeneral-regs-only -fpermissive -c $< -o $@
 
 %.o: %.asm
-	nasm $< -f elf -o $@
+	nasm $< -felf32 -o $@
 
 %.bin: %.asm
 	nasm $< -f bin -o $@
