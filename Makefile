@@ -4,36 +4,38 @@ HEADERS = $(wildcard kernel/*.hpp drivers/*.hpp cpu/*.hpp)
 OBJ = ${C_SOURCES:.cpp=.o cpu/interrupt.o} 
 
 # Change this if your cross-compiler is somewhere else
-CC = gcc
-GDB = /usr/local/i386elfgcc/bin/i386-elf-gdb
+CC = i686-elf-g++
+GDB = i686-elf-gdb
 # -g: Use debugging symbols in gcc
-CFLAGS = -g
+CFLAGS = -m32 -ffreestanding -mgeneral-regs-only -fpermissive -O2 -Wall -Wextra -fno-exceptions -fno-rtti -lgcc
 
 # First rule is run by default
-os-image.bin: boot/os1.bin kernel.bin
-	cat $^ > os-image.bin
+DualFuse.bin: boot/boot_sector.o kernel/kernel.o
+	${CC} -m32 -T linker.ld -o DualFuse.bin -ffreestanding -O2 -nostdlib $^ -lgcc
 
 # '--oformat binary' deletes all symbols as a collateral, so we don't need
 # to 'strip' them manually on this case
-kernel.bin: kernel/kernel_entry.o ${OBJ}
-	ld --ignore-unresolved-symbol _GLOBAL_OFFSET_TABLE_ -m elf_i386 -Ttext 0x1000 -o $@ $^ --oformat binary -e main
+kernel/kernel.o: kernel/kernel.cpp
+	${CC} -c $< -o $@ -ffreestanding -O2 -Wall -Wextra -fno-exceptions -fno-rtti
 
-# Used for debugging purposes
-kernel.elf: boot/kernel_entry.o ${OBJ}
-	ld --ignore-unresolved-symbol _GLOBAL_OFFSET_TABLE_ -m elf_i386 -Ttext 0x1000 -o $@ $^ -e main
-
-run: os-image.bin
-	qemu-system-i386 -s -fda os-image.bin
+run: DualFuse.iso
+	qemu-system-i386 -cdrom $<
 
 # Open the connection to qemu and load our kernel-object file with symbols
-debug: os-image.bin kernel.elf
-	qemu-system-i386 -s -fda os-image.bin -d guest_errors,int &
+debug: DualFuse.bin kernel.elf
+	qemu-system-i386 -s -cdrom DualFuse.iso -d guest_errors,int &
 	${GDB} -ex "target remote localhost:1234" -ex "symbol-file kernel.elf"
+
+DualFuse.iso: DualFuse.bin
+	mkdir -p isodir/boot/grub
+	cp DualFuse.bin isodir/boot/DualFuse.iso
+	cp grub.cfg isodir/boot/grub/grub.cfg
+	grub-mkrescue -o DualFuse.iso isodir
 
 # Generic rules for wildcards
 # To make an object, always compile from its .c
 %.o: %.cpp ${HEADERS}
-	${CC} ${CFLAGS} -m32 -ffreestanding -mgeneral-regs-only -fpermissive -c $< -o $@
+	${CC} ${CFLAGS} -c $< -o $@ 
 
 %.o: %.asm
 	nasm $< -felf32 -o $@
@@ -42,5 +44,5 @@ debug: os-image.bin kernel.elf
 	nasm $< -f bin -o $@
 
 clean:
-	rm -rf *.bin *.dis *.o os-image.bin *.elf
+	rm -rf *.bin *.dis *.o DualFuse.bin *.elf
 	rm -rf kernel/*.o boot/*.bin drivers/*.o boot/*.o cpu/*.o
