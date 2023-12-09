@@ -1,0 +1,43 @@
+# make a working directory
+cd $HOME/src/cross
+
+# set up exports
+export PREFIX="$HOME/src/cross/CROSS_compiler"
+export TARGET=i686-elf
+export PATH="$PREFIX/bin:$PATH"
+
+################################
+echo Stage 2 - Building Compiler
+################################
+
+# install binutils
+cd binutils-build
+make distclean
+../binutils-2.38/configure --target=$TARGET --prefix="$PREFIX" --with-gxx-include-dir="/home/yasser/src/cross/build-gcc/bin/i686-elf-g++" --with-sysroot --disable-nls --disable-werror
+make -j8 -s
+make -j8 -s install
+cd ..
+
+
+cd gcc-11.3.0
+bash ./contrib/download_prerequisites
+
+cd $HOME/src
+chmod -R 777 cross
+
+cd $HOME/src/cross
+
+# install gcc cross compiler
+cd GCC_cross
+ln -s ../binutils-build/*
+ln -s ../binutils-2.38/*
+make distclean
+../gcc-11.3.0/configure --target=$TARGET --prefix="$PREFIX" --with-gxx-include-dir="/home/yasser/src/cross/build-gcc/bin/i686-elf-g++" --disable-nls --enable-languages=c,c++ --disable-bootstrap --without-headers --disable-werror
+make all-gcc -j8 -s
+make all-target-libgcc -j8 -s
+make install-gcc -j8 -s
+make install-target-libgcc -j8 -s
+
+cd $HOME/src
+chmod -R 777 cross
+

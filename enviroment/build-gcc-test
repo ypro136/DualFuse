@@ -1,0 +1,38 @@
+# make a working directory
+echo cd $1
+
+# set up exports
+echo "export PREFIX="$1/SYS_compiler""
+echo "export PATH="$1/SYS_compiler/bin:$PATH""
+echo "export TARGET=$2"
+
+################################
+echo Stage 2 - Building Compiler
+################################
+
+# install binutils
+echo cd sys-binutils-build
+echo make distclean
+echo ../binutils-2.38/configure --prefix="$PREFIX" --disable-nls --disable-werror --with-sysroot
+echo make -j8 -s
+echo make -j8 install -s
+echo cd ..
+
+echo cd gcc-11.3.0
+echo bash ./contrib/download_prerequisites
+
+echo cd $1
+echo cd ..
+echo chmod -R 777 cross
+
+
+echo cd $1
+
+# install gcc
+echo "cd build-gcc"
+echo "ln -s ../sys-binutils-build/*"
+echo "ln -s ../binutils-2.38/*"
+echo "make distclean"
+echo "../gcc-11.3.0/configure --prefix="$PREFIX" --disable-nls --enable-languages=c,c++ --disable-bootstrap"
+echo make -j8 -s
+echo make install -j8 -s

@@ -1,0 +1,39 @@
+# make a working directory
+cd $HOME/src/cross
+
+# set up exports
+export PREFIX="$HOME/src/cross/SYS_compiler"
+export PATH="$PREFIX/bin:$PATH"
+export TARGET=i686-elf
+
+################################
+echo Stage 2 - Building Compiler
+################################
+
+# install binutils
+cd sys-binutils-build
+make distclean
+../binutils-2.38/configure --prefix="$PREFIX" --disable-nls --disable-werror --with-sysroot
+make -j8 -s
+make -j8 install -s
+cd ..
+
+
+cd gcc-11.3.0
+bash ./contrib/download_prerequisites
+
+cd $HOME/src
+chmod -R 777 cross
+
+cd $HOME/src/cross
+
+# install gcc
+cd build-gcc
+ln -s ../sys-binutils-build/*
+ln -s ../binutils-2.38/*
+make distclean
+../gcc-11.3.0/configure --prefix="$PREFIX" --disable-nls --enable-languages=c,c++ --disable-bootstrap
+make -j8 -s
+make install -j8 -s
+
+
