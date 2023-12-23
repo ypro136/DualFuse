@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "utility.hpp" // not working!!!!
  
 /* Check what operating system the compiler is targeting. */
 #if defined(__linux__)
@@ -96,7 +97,7 @@ void terminal_write(const char* data, size_t size)
 		terminal_putchar(data[i]);
 }
  
-void terminal_writestring(const char* data) 
+void terminal_writestring(const char *data) 
 {
 	terminal_write(data, strlen(data));
 }
@@ -107,5 +108,5 @@ extern "C" void kernel_main(void)
 	terminal_initialize();
  
 	/* Newline support is left as an exercise. */
-	terminal_writestring("Hello, kernel World!\n");
+	terminal_writestring("Hello, kernel World!, \n this should be a second line.");
 }

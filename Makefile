@@ -33,7 +33,7 @@ DualFuse.iso: DualFuse.bin
 	grub-mkrescue -o DualFuse.iso isodir
 
 # Generic rules for wildcards
-# To make an object, always compile from its .c
+# To make an object, always compile from its .cpp
 %.o: %.cpp ${HEADERS}
 	${CC} ${CFLAGS} -c $< -o $@ 
 

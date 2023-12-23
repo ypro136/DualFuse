@@ -40,8 +40,9 @@ void reverse(char s[]) {
 }
 
 /* K&R */
-int strlen(char s[]) {
-    int i = 0;
-    while (s[i] != '\0') ++i;
-    return i;
+size_t strlen(const char* string) 
+{
+    size_t length = 0;
+    while (string[length] != '\0') { ++length };
+    return length;
 }
