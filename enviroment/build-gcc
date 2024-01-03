@@ -7,20 +7,31 @@ export PATH="$PREFIX/bin:$PATH"
 export TARGET=i686-elf
 
 ################################
-echo Stage 2 - Building Compiler
+echo "[build-gcc]>>> exported PREFIX PATH and TARGET\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
 ################################
 
 # install binutils
 cd sys-binutils-build
 make distclean
-../binutils-2.38/configure --prefix="$PREFIX" --disable-nls --disable-werror --with-sysroot
-make -j8 -s
-make -j8 install -s
+../binutils_src/configure --prefix="$PREFIX" --with-sysroot --disable-nls --disable-werror --disable-bootstrap
+################################
+echo "[build-gcc : binutils]>>> make $1\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+make $1 | tee ../logs/sys_bin_all.log
+################################
+echo "[build-gcc : binutils]>>> make check $1\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+make check $1 | tee ../logs/sys_bin_check.log
+################################
+echo "[build-gcc : binutils]>>> make install $1\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+make install $1 | tee ../logs/sys_bin_install.log
+################################
 cd ..
 
 
-cd gcc-11.3.0
+cd gcc_src
+################################
+echo "[build-gcc]>>> download_prerequisites\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
 bash ./contrib/download_prerequisites
+################################
 
 cd $HOME/src
 chmod -R 777 cross
@@ -30,10 +41,27 @@ cd $HOME/src/cross
 # install gcc
 cd build-gcc
 ln -s ../sys-binutils-build/*
-ln -s ../binutils-2.38/*
+ln -s ../SYS_compiler/*
+ln -s ../binutils_src/*
 make distclean
-../gcc-11.3.0/configure --prefix="$PREFIX" --disable-nls --enable-languages=c,c++ --disable-bootstrap
-make -j8 -s
-make install -j8 -s
+../gcc_src/configure --prefix="$PREFIX" --disable-nls --disable-werror --with-sysroot --disable-bootstrap --enable-languages=c,c++
+################################
+echo "[build-gcc : gcc]>>> make $1\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+make $1
+################################
+echo "[build-gcc : gcc]>>> make check $1\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+make check $1
+################################
+echo "[build-gcc : gcc]>>> make install $1\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+make install $1
+################################
+
+
+################################
+date +%T >> $HOME/data/progs/DualFuse/enviroment/log.txt
+echo "[build-gcc : exit]\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+################################
+
+
 
 

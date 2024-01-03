@@ -1,3 +1,7 @@
+
+# use the newly built system compiler, built by build-gcc. 
+export PATH="$HOME/src/cross/SYS_compiler/bin:$PATH"
+
 # make a working directory
 cd $HOME/src/cross
 
@@ -7,19 +11,26 @@ export TARGET=i686-elf
 export PATH="$PREFIX/bin:$PATH"
 
 ################################
-echo Stage 2 - Building Compiler
+echo "[GCC_cross_build]>>> exported PREFIX PATH and TARGET\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
 ################################
 
 # install binutils
 cd binutils-build
 make distclean
-../binutils-2.38/configure --target=$TARGET --prefix="$PREFIX" --with-gxx-include-dir="/home/yasser/src/cross/build-gcc/bin/i686-elf-g++" --with-sysroot --disable-nls --disable-werror
-make -j8 -s
-make -j8 -s install
+../binutils_src/configure --target=$TARGET --prefix="$PREFIX" CC="x86_64-pc-linux-gnu-g++" --with-sysroot --disable-nls --disable-werror
+#../binutils_src/configure --target=$TARGET --prefix="$PREFIX" --with-gxx-include-dir="$HOME/src/cross/SYS_compiler/bin/x86_64-pc-linux-gnu-g++" --with-sysroot --disable-nls --disable-werror
+
+################################
+echo "[GCC_cross_build : binutils]>>> make $1\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+make $1
+################################
+echo "[GCC_cross_build : binutils]>>> make install $1\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+make install $1
+################################
 cd ..
 
 
-cd gcc-11.3.0
+cd gcc_src
 bash ./contrib/download_prerequisites
 
 cd $HOME/src
@@ -30,14 +41,32 @@ cd $HOME/src/cross
 # install gcc cross compiler
 cd GCC_cross
 ln -s ../binutils-build/*
-ln -s ../binutils-2.38/*
+ln -s ../CROSS_compiler/*
+ln -s ../binutils_src/*
 make distclean
-../gcc-11.3.0/configure --target=$TARGET --prefix="$PREFIX" --with-gxx-include-dir="/home/yasser/src/cross/build-gcc/bin/i686-elf-g++" --disable-nls --enable-languages=c,c++ --disable-bootstrap --without-headers --disable-werror
-make all-gcc -j8 -s
-make all-target-libgcc -j8 -s
-make install-gcc -j8 -s
-make install-target-libgcc -j8 -s
+../gcc_src/configure --target=$TARGET --prefix="$PREFIX" CC="x86_64-pc-linux-gnu-g++" --disable-nls --enable-languages=c,c++ --disable-bootstrap --without-headers
+################################
+echo "[GCC_cross_build : gcc]>>> make all $1\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+make all-gcc $1
+#make all $1
+################################
+echo "[GCC_cross_build : gcc]>>> make check $1\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+make check $1
+################################
+echo "[GCC_cross_build : gcc]>>> make all-target-libgcc $1\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+make all-target-libgcc $1
+################################
+echo "[GCC_cross_build : gcc]>>> make install-gcc $1\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+make install-gcc $1
+################################
+echo "[GCC_cross_build : gcc]>>> make install-target-libgcc$1\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+make install-target-libgcc $1
+################################
 
 cd $HOME/src
 chmod -R 777 cross
 
+################################
+date +%T >> $HOME/data/progs/DualFuse/enviroment/log.txt
+echo "[GCC_cross_build : exit]\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+################################

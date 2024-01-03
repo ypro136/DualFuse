@@ -1,0 +1,42 @@
+17:08:56
+>>> init log <<<
+
+>>> binutils directores set up
+
+>>> gcc directores set up
+
+17:09:21
+>>> run setup-gcc
+
+[setup-gcc]>>> installed gcc g++ binutils-dev gcc-dev bison flex gawk libgmp3-dev 
+ libmpfr-dev libmpfr-doc libmpfr4 libmpfr4-dbg mpc texinfo libcloog-isl-dev 
+build-essential glibc-devel gcc-multilib libc6-i386
+
+17:09:40
+[setup-gcc : exit]
+
+17:09:40
+>>> run build-gcc -j6
+
+[build-gcc]>>> exported PREFIX PATH and TARGET
+
+[build-gcc : binutils]>>> make -j6
+
+[build-gcc : binutils]>>> make check -j6
+
+[build-gcc : binutils]>>> make install -j6
+
+[build-gcc]>>> download_prerequisites
+
+[build-gcc : gcc]>>> make -j6
+
+>>> src files are removed
+
+>>> GCC-sys-build is removed
+
+>>> binutils-sys-build is removed
+
+>>> binutils-build is removed
+
+>>> GCC-cross-build is removed
+

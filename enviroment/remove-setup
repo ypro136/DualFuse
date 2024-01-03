@@ -1,0 +1,28 @@
+
+# remove or update all apt-get dependencies
+sudo apt-get update
+sudo apt-get upgrade -y
+sudo apt-get remove gcc -y                 # not cross
+sudo apt-get remove g++ -y
+sudo apt-get remove binutils-dev gcc-dev -y
+sudo apt-get remove bison -y
+sudo apt-get remove flex -y
+sudo apt-get remove gawk -y
+sudo apt-get remove libgmp3-dev -y
+sudo apt-get remove libmpfr-dev libmpfr-doc libmpfr4 libmpfr4-dbg autoconf automake check dejagnu expect -y
+sudo apt-get remove mpc flex gettext libtool lsb_release patch pkgconfig -y
+sudo apt-get remove texinfo -y            # optional
+sudo apt-get remove libcloog-isl-dev -y   # optional
+sudo apt-get remove build-essential -y
+sudo apt-get remove glibc-devel -y
+sudo apt-get remove ia32-libs -y
+sudo apt-get remove guile-3.0 -y
+sudo apt-get remove gcc-multilib g++-multilib libc6-i386 -y
+
+echo "[setup-gcc]>>> removed gcc g++ binutils-dev gcc-dev bison flex gawk libgmp3-dev \n libmpfr-dev libmpfr-doc libmpfr4 libmpfr4-dbg mpc texinfo libcloog-isl-dev \nbuild-essential glibc-devel gcc-multilib libc6-i386\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+
+date +%T >> $HOME/data/progs/DualFuse/enviroment/log.txt
+echo "[setup-gcc : exit]\n" >> $HOME/data/progs/DualFuse/enviroment/log.txt
+
+
+
