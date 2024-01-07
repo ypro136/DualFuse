@@ -1,83 +1,53 @@
-DEFAULT_HOST!=../default-host.sh
-HOST?=DEFAULT_HOST
-HOSTARCH!=../target-triplet-to-arch.sh $(HOST)
- 
-CFLAGS?=-O2 -g
-CPPFLAGS?=
-LDFLAGS?=
-LIBS?=
- 
-DESTDIR?=
-PREFIX?=/usr/local
-EXEC_PREFIX?=$(PREFIX)
-BOOTDIR?=$(EXEC_PREFIX)/boot
-INCLUDEDIR?=$(PREFIX)/include
- 
-CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra
-CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -Iinclude
-LDFLAGS:=$(LDFLAGS)
-LIBS:=$(LIBS) -nostdlib -lk -lgcc
- 
-ARCHDIR=arch/$(HOSTARCH)
- 
-include $(ARCHDIR)/make.config
- 
-CFLAGS:=$(CFLAGS) $(KERNEL_ARCH_CFLAGS)
-CPPFLAGS:=$(CPPFLAGS) $(KERNEL_ARCH_CPPFLAGS)
-LDFLAGS:=$(LDFLAGS) $(KERNEL_ARCH_LDFLAGS)
-LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
- 
-KERNEL_OBJS=\
-$(KERNEL_ARCH_OBJS) \
-kernel/kernel.o \
- 
-OBJS=\
-$(ARCHDIR)/crti.o \
-$(ARCHDIR)/crtbegin.o \
-$(KERNEL_OBJS) \
-$(ARCHDIR)/crtend.o \
-$(ARCHDIR)/crtn.o \
- 
-LINK_LIST=\
-$(LDFLAGS) \
-$(ARCHDIR)/crti.o \
-$(ARCHDIR)/crtbegin.o \
-$(KERNEL_OBJS) \
-$(LIBS) \
-$(ARCHDIR)/crtend.o \
-$(ARCHDIR)/crtn.o \
- 
-.PHONY: all clean install install-headers install-kernel
-.SUFFIXES: .o .c .S
- 
-all: myos.kernel
- 
-myos.kernel: $(OBJS) $(ARCHDIR)/linker.ld
-	$(CC) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(LINK_LIST)
-	grub-file --is-x86-multiboot myos.kernel
- 
-$(ARCHDIR)/crtbegin.o $(ARCHDIR)/crtend.o:
-	OBJ=`$(CC) $(CFLAGS) $(LDFLAGS) -print-file-name=$(@F)` && cp "$$OBJ" $@
- 
-.c.o:
-	$(CC) -MD -c $< -o $@ -std=gnu11 $(CFLAGS) $(CPPFLAGS)
- 
-.S.o:
-	$(CC) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
- 
+C_SOURCES = $(wildcard kernel/*.cpp drivers/*.cpp cpu/*.cpp)
+HEADERS = $(wildcard kernel/*.hpp drivers/*.hpp cpu/*.hpp)
+
+
+# Nice syntax for file extension replacement
+OBJ = ${C_SOURCES:.cpp=.o cpu/interrupt.o} 
+
+# Change this if your cross-compiler is somewhere else
+CC = /home/yasser/src/cross/CROSS_compiler/bin/i686-elf-g++
+GDB = i686-elf-gdb
+
+# -g: Use debugging symbols in gcc
+CFLAGS = -m32 -ffreestanding -mgeneral-regs-only -fpermissive -O2 -Wall -Wextra -fno-exceptions -fno-rtti -lgcc
+
+PHONY: all
+all: clean run
+
+run: DualFuse.iso
+	qemu-system-i386 -cdrom $<
+
+# First rule is run by default
+DualFuse.bin: boot/boot_sector.o kernel/kernel.o
+	${CC} -m32 -T linker.ld -o DualFuse.bin -ffreestanding -O2 -nostdlib $^ -lgcc
+
+# to 'strip' them manually on this case
+kernel/kernel.o: kernel/kernel.cpp
+	${CC} -c $< -o $@ -m32 -ffreestanding -O2 -Wall -Wextra -fno-exceptions -fno-rtti
+
+
+# Open the connection to qemu and load our kernel-object file with symbols
+debug: DualFuse.bin kernel.elf
+	qemu-system-i386 -s -cdrom DualFuse.iso -d guest_errors,int &
+	${GDB} -ex "target remote localhost:1234" -ex "symbol-file kernel.elf"
+
+DualFuse.iso: DualFuse.bin
+	mkdir -p isodir/boot/grub
+	cp DualFuse.bin isodir/boot/DualFuse.bin
+	cp grub.cfg isodir/boot/grub/grub.cfg
+	grub-mkrescue -o DualFuse.iso isodir
+
+# Generic rules for wildcards
+# To make an object, always compile from its .cpp
+%.o: %.cpp ${HEADERS}
+	${CC} ${CFLAGS} -c $< -o $@ 
+
+%.o: %.asm
+	nasm $< -felf32 -o $@
+%.bin: %.asm
+	nasm $< -f bin -o $@
+.PHONY:
 clean:
-	rm -f myos.kernel
-	rm -f $(OBJS) *.o */*.o */*/*.o
-	rm -f $(OBJS:.o=.d) *.d */*.d */*/*.d
- 
-install: install-headers install-kernel
- 
-install-headers:
-	mkdir -p $(DESTDIR)$(INCLUDEDIR)
-	cp -R --preserve=timestamps include/. $(DESTDIR)$(INCLUDEDIR)/.
- 
-install-kernel: myos.kernel
-	mkdir -p $(DESTDIR)$(BOOTDIR)
-	cp myos.kernel $(DESTDIR)$(BOOTDIR)
- 
--include $(OBJS:.o=.d)
+	rm -rf *.bin *.dis *.o DualFuse.bin *.elf
+	rm -rf kernel/*.o boot/*.bin drivers/*.o boot/*.o cpu/*.o

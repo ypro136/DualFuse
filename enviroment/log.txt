@@ -1,34 +1,37 @@
-17:08:56
+19:21:52
 >>> init log <<<
 
 >>> binutils directores set up
 
 >>> gcc directores set up
 
-17:09:21
+19:22:22
 >>> run setup-gcc
 
-[setup-gcc]>>> installed gcc g++ binutils-dev gcc-dev bison flex gawk libgmp3-dev 
- libmpfr-dev libmpfr-doc libmpfr4 libmpfr4-dbg mpc texinfo libcloog-isl-dev 
-build-essential glibc-devel gcc-multilib libc6-i386
-
-17:09:40
+19:40:55
 [setup-gcc : exit]
 
-17:09:40
->>> run build-gcc -j6
+19:40:55
+>>> run GCC_cross_build -j1
 
-[build-gcc]>>> exported PREFIX PATH and TARGET
+[GCC_cross_build]>>> exported PREFIX PATH and TARGET
 
-[build-gcc : binutils]>>> make -j6
+[GCC_cross_build : binutils]>>> make -j1
 
-[build-gcc : binutils]>>> make check -j6
+[GCC_cross_build : binutils]>>> make install -j1
 
-[build-gcc : binutils]>>> make install -j6
+[GCC_cross_build : gcc]>>> make all -j1
 
-[build-gcc]>>> download_prerequisites
+[GCC_cross_build : gcc]>>> make check -j1
 
-[build-gcc : gcc]>>> make -j6
+[GCC_cross_build : gcc]>>> make all-target-libgcc -j1
+
+[GCC_cross_build : gcc]>>> make install-gcc -j1
+
+[GCC_cross_build : gcc]>>> make install-target-libgcc-j1
+
+20:22:44
+[GCC_cross_build : exit]
 
 >>> src files are removed
 

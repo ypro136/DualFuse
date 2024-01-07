@@ -1,0 +1,10 @@
+rm -rf *.bin *.dis *.o DualFuse.bin *.elf
+rm -rf kernel/*.o boot/*.bin drivers/*.o boot/*.o cpu/*.o
+nasm boot/boot_sector.asm -felf32 -o boot/boot_sector.o
+/home/yasser/src/cross/CROSS_compiler/bin/i686-elf-g++ -c kernel/kernel.cpp -o kernel/kernel.o -m32 -ffreestanding -O2 -Wall -Wextra -fno-exceptions -fno-rtti
+/home/yasser/src/cross/CROSS_compiler/bin/i686-elf-g++ -T linker.ld -o DualFuse.bin -ffreestanding -O2 -nostdlib boot/boot_sector.o kernel/kernel.o -lgcc
+mkdir -p isodir/boot/grub
+cp DualFuse.bin isodir/boot/DualFuse.bin
+cp grub.cfg isodir/boot/grub/grub.cfg
+grub-mkrescue -o DualFuse.iso isodir
+qemu-system-i386 -cdrom DualFuse.iso

@@ -15,11 +15,13 @@ CROSS_compiler=$(CROSS)/CROSS_compiler
 
 SYS_BINUTILS_BUILD=$(CROSS)/sys-binutils-build
 
+TIME_LOG= $(HOME)/progs/Dualfuse/enviroment/log.txt
+
 #SYS_compiler=$(GCC_BUILD)/bin/i686-elf-g++
 
 TARGET=i686-elf
 
-CORE_COUNT= 6
+CORE_COUNT= 1
 
 MAKE_ARGS= -j$(CORE_COUNT)
 
@@ -28,8 +30,8 @@ GCC_VERSION=13.2.0
 
 
 # test gcc
-test_sys_gcc: bootstrap
-	$(SYS_compiler)/bin/x86_64-pc-linux-gnu-g++ test_sys_gcc.cpp -o test_sys_gcc
+test_sys_gcc: #bootstrap
+	$(CROSS_compiler)/bin/i686-elf-g++ test_sys_gcc.cpp -o test_sys_gcc -nostdlib -nostartfiles
 	./test_sys_gcc
 	date +%T >> log.txt
 
@@ -41,15 +43,15 @@ test_echo:
 bootstrap: clean set_up_log binutils gcc
 	date +%T >> log.txt
 	@echo ">>> run setup-gcc\n" >> log.txt
-	sh setup-gcc
+	sh setup-gcc $(TIME_LOG)
 
-	date +%T >> log.txt
-	@echo ">>> run build-gcc $(MAKE_ARGS)\n" >> log.txt
-	sh build-gcc $(MAKE_ARGS)
+# date +%T >> log.txt
+# @echo ">>> run build-gcc $(MAKE_ARGS)\n" >> log.txt
+# sh build-gcc $(MAKE_ARGS) $(TIME_LOG)
 
 	date +%T >> log.txt
 	@echo ">>> run GCC_cross_build $(MAKE_ARGS)\n" >> log.txt
-	sh GCC_cross_build $(MAKE_ARGS)
+	sh GCC_cross_build $(MAKE_ARGS) $(TIME_LOG)
 
 	cd $(CROSS) && \
 	ls
@@ -67,7 +69,7 @@ bootstrap-test:
 
 
 .PHONY: binutils
-binutils: binutils_src
+binutils: #binutils_src
 	mkdir -m=rwx -p $(BINUTILS_BUILD)
 	-cp binutils_src $(CROSS) -r -n
 
@@ -78,7 +80,7 @@ binutils: binutils_src
 	@echo ">>> binutils directores set up\n" >> log.txt
 
 .PHONY: gcc
-gcc: gcc_src
+gcc: #gcc_src
 	
 	mkdir -m=rwx -p $(GCC_BUILD)
 	-cp gcc_src $(CROSS) -r -n
@@ -109,8 +111,8 @@ gcc_src: gcc-$(GCC_VERSION).tar.xz
 	@echo ">>> gcc-$(GCC_VERSION) extracted\n" >> log.txt
 
 binutils-$(BINUTILS_VERSION).tar.xz:
-	-rm -f -r *.tar.xz
-	@echo ">>> tar files are removed\n" >> log.txt
+	-rm -f -r binutils-*.tar.xz
+	@echo ">>> binutils tar files are removed\n" >> log.txt
 
 	wget http://ftpmirror.gnu.org/binutils/binutils-$(BINUTILS_VERSION).tar.xz
 	@echo ">>> binutils-$(BINUTILS_VERSION).tar.xz downloaded\n" >> log.txt
@@ -118,8 +120,8 @@ binutils-$(BINUTILS_VERSION).tar.xz:
 
 
 gcc-$(GCC_VERSION).tar.xz:
-	-rm -f -r *.tar.xz
-	@echo ">>> tar files are removed\n" >> log.txt
+	-rm -f -r gcc-*.tar.xz
+	@echo ">>> gcc tar files are removed\n" >> log.txt
 	
 	wget http://ftpmirror.gnu.org/gcc/gcc-$(GCC_VERSION)/gcc-$(GCC_VERSION).tar.xz
 	@echo ">>> gcc-$(GCC_VERSION).tar.xz downloaded\n" >> log.txt
