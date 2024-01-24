@@ -1,0 +1,35 @@
+23:23:50
+>>> init log <<<
+
+>>> binutils directores set up
+
+>>> gcc directores set up
+
+23:24:15
+>>> run setup-gcc
+
+23:42:09
+[setup-gcc : exit]
+
+23:42:09
+>>> run GCC_cross_build -j7
+
+[GCC_cross_build]>>> exported PREFIX PATH and TARGET
+
+[GCC_cross_build : binutils]>>> make -j7
+
+[GCC_cross_build : binutils]>>> make install -j7
+
+[GCC_cross_build : gcc]>>> make all -j7
+
+[GCC_cross_build : gcc]>>> make check -j7
+
+[GCC_cross_build : gcc]>>> make all-target-libgcc -j7
+
+[GCC_cross_build : gcc]>>> make install-gcc -j7
+
+[GCC_cross_build : gcc]>>> make install-target-libgcc-j7
+
+23:56:26
+[GCC_cross_build : exit]
+

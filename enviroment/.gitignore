@@ -1,0 +1,6 @@
+*.tar.xz
+gcc-*
+binutils-*
+gcc_src
+binutils_src
+*.log

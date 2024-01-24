@@ -1,0 +1,12 @@
+mkdir -p /home/yasser/progs/Dualfuse/sysroot/usr/include
+cp -R --preserve=timestamps include/. /home/yasser/progs/Dualfuse/sysroot/usr/include/.
+mkdir -p /home/yasser/progs/Dualfuse/sysroot/usr/include
+cp -R --preserve=timestamps include/. /home/yasser/progs/Dualfuse/sysroot/usr/include/.
+mkdir -p /home/yasser/progs/Dualfuse/sysroot/usr/include
+cp -R --preserve=timestamps include/. /home/yasser/progs/Dualfuse/sysroot/usr/include/.
+mkdir -p /home/yasser/progs/Dualfuse/sysroot/usr/lib
+cp libk.a /home/yasser/progs/Dualfuse/sysroot/usr/lib
+mkdir -p /home/yasser/progs/Dualfuse/sysroot/usr/include
+cp -R --preserve=timestamps include/. /home/yasser/progs/Dualfuse/sysroot/usr/include/.
+mkdir -p /home/yasser/progs/Dualfuse/sysroot/boot
+cp DualFuse.kernel /home/yasser/progs/Dualfuse/sysroot/boot

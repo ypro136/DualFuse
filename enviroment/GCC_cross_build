@@ -1,0 +1,72 @@
+
+# use the newly built system compiler, built by build-gcc. 
+export PATH="$HOME/src/cross/SYS_compiler/bin:$PATH"
+
+# make a working directory
+cd $HOME/src/cross
+
+# set up exports
+export PREFIX="$HOME/src/cross/CROSS_compiler"
+export TARGET=i686-elf
+export PATH="$PREFIX/bin:$PATH"
+
+################################
+echo "[GCC_cross_build]>>> exported PREFIX PATH and TARGET\n" >> $2
+################################
+
+# install binutils
+cd binutils-build
+make distclean
+../binutils_src/configure --target=$TARGET --prefix="$PREFIX" --with-sysroot --disable-nls --disable-werror #CC="x86_64-pc-linux-gnu-g++"
+#../binutils_src/configure --target=$TARGET --prefix="$PREFIX" --with-gxx-include-dir="$HOME/src/cross/SYS_compiler/bin/x86_64-pc-linux-gnu-g++" --with-sysroot --disable-nls --disable-werror
+
+################################
+echo "[GCC_cross_build : binutils]>>> make $1\n" >> $2
+make $1 | tee ../logs/cross_bin_all.log
+################################
+echo "[GCC_cross_build : binutils]>>> make install $1\n" >> $2
+make install $1 | tee ../logs/cross_bin_install.log
+################################
+cd ..
+
+
+cd gcc_src
+bash ./contrib/download_prerequisites
+
+cd $HOME/src
+chmod -R 777 cross
+
+cd $HOME/src/cross
+
+# install gcc cross compiler
+cd GCC_cross
+ln -s ../binutils-build/*
+ln -s ../CROSS_compiler/*
+ln -s ../binutils_src/*
+make distclean
+../gcc_src/configure --target=$TARGET --prefix="$PREFIX" --disable-nls --enable-languages=c,c++ --without-headers #--disable-bootstrap CC="x86_64-pc-linux-gnu-g++" 
+################################
+echo "[GCC_cross_build : gcc]>>> make all $1\n" >> $2
+make all-gcc $1 | tee ../logs/cross_gcc_all.log
+#make all $1
+################################
+echo "[GCC_cross_build : gcc]>>> make check $1\n" >> $2
+make check $1 | tee ../logs/cross_gcc_check.log
+################################
+echo "[GCC_cross_build : gcc]>>> make all-target-libgcc $1\n" >> $2
+make all-target-libgcc $1 | tee ../logs/cross_libgcc_all.log
+################################
+echo "[GCC_cross_build : gcc]>>> make install-gcc $1\n" >> $2
+make install-gcc $1 | tee ../logs/cross_gcc_install.log
+################################
+echo "[GCC_cross_build : gcc]>>> make install-target-libgcc$1\n" >> $2
+make install-target-libgcc $1 | tee ../logs/cross_libgcc_install.log
+################################
+
+cd $HOME/src
+chmod -R 777 cross
+
+################################
+date +%T >> $2
+echo "[GCC_cross_build : exit]\n" >> $2
+################################

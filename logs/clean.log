@@ -1,0 +1,6 @@
+rm -f libk.a *.a
+rm -f  stdio/printf.o stdio/putchar.o stdio/puts.o stdio/to_string.o stdlib/abort.o string/memcmp.o string/memcpy.o string/memmove.o string/memset.o string/strlen.o string/strcpy.o string/strcat.o  \   stdio/printf.libk.o stdio/putchar.libk.o stdio/puts.libk.o stdio/to_string.libk.o stdlib/abort.libk.o string/memcmp.libk.o string/memcpy.libk.o string/memmove.libk.o string/memset.libk.o string/strlen.libk.o string/strcpy.libk.o string/strcat.libk.o *.o */*.o */*/*.o
+rm -f stdio/printf.d stdio/putchar.d stdio/puts.d stdio/to_string.d stdlib/abort.d string/memcmp.d string/memcpy.d string/memmove.d string/memset.d string/strlen.d string/strcpy.d string/strcat.d \ stdio/printf.libk.d stdio/putchar.libk.d stdio/puts.libk.d stdio/to_string.libk.d stdlib/abort.libk.d string/memcmp.libk.d string/memcpy.libk.d string/memmove.libk.d string/memset.libk.d string/strlen.libk.d string/strcpy.libk.d string/strcat.libk.d *.d */*.d */*/*.d
+rm -f DualFuse.kernel
+rm -f arch/i386/crti.o arch/i386/crtbegin.o arch/i386/boot.o arch/i386/tty.o kernel/kernel.o  arch/i386/crtend.o arch/i386/crtn.o  *.o */*.o */*/*.o
+rm -f arch/i386/crti.d arch/i386/crtbegin.d arch/i386/boot.d arch/i386/tty.d kernel/kernel.d arch/i386/crtend.d arch/i386/crtn.d *.d */*.d */*/*.d

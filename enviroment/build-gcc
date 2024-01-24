@@ -1,0 +1,65 @@
+# make a working directory
+cd $HOME/src/cross
+
+# set up exports
+export PREFIX="$HOME/src/cross/SYS_compiler"
+
+################################
+echo "[build-gcc]>>> exported PREFIX PATH and TARGET\n" >> $2
+################################
+
+# install binutils
+cd sys-binutils-build
+make distclean
+../binutils_src/configure --prefix="$PREFIX" --with-sysroot --disable-nls # --disable-bootstrap
+################################
+echo "[build-gcc : binutils]>>> make $1\n" >> $2
+make $1 | tee ../logs/sys_bin_all.log
+################################
+echo "[build-gcc : binutils]>>> make check $1\n" >> $2
+make -k check $1 | tee ../logs/sys_bin_check.log
+################################
+echo "[build-gcc : binutils]>>> make install $1\n" >> $2
+make install $1 | tee ../logs/sys_bin_install.log
+################################
+cd ..
+
+
+cd gcc_src
+################################
+echo "[build-gcc]>>> download_prerequisites\n" >> $2
+bash ./contrib/download_prerequisites
+################################
+
+cd $HOME/src
+chmod -R 777 cross
+
+cd $HOME/src/cross
+
+# install gcc
+cd build-gcc
+ln -s ../sys-binutils-build/*
+ln -s ../SYS_compiler/*
+ln -s ../binutils_src/*
+make distclean
+../gcc_src/configure --prefix="$PREFIX" --disable-nls --disable-bootstrap --enable-languages=c,c++ # --with-sysroot 
+################################
+echo "[build-gcc : gcc]>>> make $1\n" >> $2
+make $1 | tee ../logs/sys_gcc_all.log
+################################
+echo "[build-gcc : gcc]>>> make check $1\n" >> $2
+make -k check $1 | tee ../logs/sys_gcc_check.log
+################################
+echo "[build-gcc : gcc]>>> make install $1\n" >> $2
+make install $1 | tee ../logs/sys_gcc_install.log
+################################
+
+
+################################
+date +%T >> $2
+echo "[build-gcc : exit]\n" >> $2
+################################
+
+
+
+
