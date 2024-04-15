@@ -9,6 +9,7 @@ extern "C" {
  
 __attribute__((__noreturn__))
 void abort(void);
+void __stack_chk_fail(void);
  
 #ifdef __cplusplus
 }

@@ -13,7 +13,7 @@ EXEC_PREFIX?=$(PREFIX)
 INCLUDEDIR?=$(PREFIX)/include
 LIBDIR?=$(EXEC_PREFIX)/lib
 
-CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti
+CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -fstack-protector-all
 CPPFLAGS:=$(CPPFLAGS) -D__is_libc -Iinclude
 LIBK_CFLAGS:=$(CFLAGS) -std=c++11
 LIBK_CPPFLAGS:=$(CPPFLAGS) -D__is_libk
@@ -34,6 +34,7 @@ stdio/putchar.o \
 stdio/puts.o \
 stdio/to_string.o \
 stdlib/abort.o \
+stdlib/ssp.o \
 string/memcmp.o \
 string/memcpy.o \
 string/memmove.o \

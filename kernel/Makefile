@@ -13,7 +13,7 @@ EXEC_PREFIX?=$(PREFIX)
 BOOTDIR?=$(EXEC_PREFIX)/boot
 INCLUDEDIR?=$(PREFIX)/include
 
-CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti
+CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -fstack-protector-all
 CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -Iinclude
 LIBS:=$(LIBS) -nostdlib -lk -lgcc
 

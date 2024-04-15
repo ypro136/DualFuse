@@ -2,6 +2,7 @@
  
 #if defined(__is_libk)
 #include <kernel/tty.h>
+#include <kernel/serial.h>
 #endif
  
 /**
@@ -18,6 +19,7 @@ int putchar(int character)
 {
 #if defined(__is_libk)
 	terminal_write(character);
+	write_serial(character);
 #else
 	// TODO: Implement stdio and the write system call.
 #endif
