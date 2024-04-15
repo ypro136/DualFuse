@@ -1,34 +1,34 @@
-mkdir -p /home/yasser/progs/Dualfuse/sysroot/usr/include
-cp -R --preserve=timestamps include/. /home/yasser/progs/Dualfuse/sysroot/usr/include/.
-mkdir -p /home/yasser/progs/Dualfuse/sysroot/usr/include
-cp -R --preserve=timestamps include/. /home/yasser/progs/Dualfuse/sysroot/usr/include/.
-mkdir -p /home/yasser/progs/Dualfuse/sysroot/usr/include
-cp -R --preserve=timestamps include/. /home/yasser/progs/Dualfuse/sysroot/usr/include/.
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c stdio/printf.cpp -o stdio/printf.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c stdio/putchar.cpp -o stdio/putchar.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c stdio/puts.cpp -o stdio/puts.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c stdio/to_string.cpp -o stdio/to_string.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c stdlib/abort.cpp -o stdlib/abort.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c string/memcmp.cpp -o string/memcmp.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c string/memcpy.cpp -o string/memcpy.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c string/memmove.cpp -o string/memmove.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c string/memset.cpp -o string/memset.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c string/strlen.cpp -o string/strlen.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c string/strcpy.cpp -o string/strcpy.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c string/strcat.cpp -o string/strcat.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
+mkdir -p /home/yasser/progs/DualFuse/sysroot/usr/include
+cp -R --preserve=timestamps include/. /home/yasser/progs/DualFuse/sysroot/usr/include/.
+mkdir -p /home/yasser/progs/DualFuse/sysroot/usr/include
+cp -R --preserve=timestamps include/. /home/yasser/progs/DualFuse/sysroot/usr/include/.
+mkdir -p /home/yasser/progs/DualFuse/sysroot/usr/include
+cp -R --preserve=timestamps include/. /home/yasser/progs/DualFuse/sysroot/usr/include/.
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c stdio/printf.cpp -o stdio/printf.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c stdio/putchar.cpp -o stdio/putchar.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c stdio/puts.cpp -o stdio/puts.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c stdio/to_string.cpp -o stdio/to_string.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c stdlib/abort.cpp -o stdlib/abort.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c string/memcmp.cpp -o string/memcmp.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c string/memcpy.cpp -o string/memcpy.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c string/memmove.cpp -o string/memmove.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c string/memset.cpp -o string/memset.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c string/strlen.cpp -o string/strlen.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c string/strcpy.cpp -o string/strcpy.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c string/strcat.cpp -o string/strcat.libk.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -std=c++11   -D__is_libc -Iinclude -D__is_libk 
 i686-elf-ar rcs libk.a stdio/printf.libk.o stdio/putchar.libk.o stdio/puts.libk.o stdio/to_string.libk.o stdlib/abort.libk.o string/memcmp.libk.o string/memcpy.libk.o string/memmove.libk.o string/memset.libk.o string/strlen.libk.o string/strcpy.libk.o string/strcat.libk.o
-mkdir -p /home/yasser/progs/Dualfuse/sysroot/usr/lib
-cp libk.a /home/yasser/progs/Dualfuse/sysroot/usr/lib
-mkdir -p /home/yasser/progs/Dualfuse/sysroot/usr/include
-cp -R --preserve=timestamps include/. /home/yasser/progs/Dualfuse/sysroot/usr/include/.
-i686-elf-gcc --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c arch/i386/crti.S -o arch/i386/crti.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti   -D__is_kernel -Iinclude 
-OBJ=`i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti    -print-file-name=crtbegin.o` && cp "$OBJ" arch/i386/crtbegin.o
-i686-elf-gcc --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c arch/i386/boot.S -o arch/i386/boot.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti   -D__is_kernel -Iinclude 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c  -D__is_kernel -Iinclude  -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti  arch/i386/tty.cpp -o arch/i386/tty.o 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c  -D__is_kernel -Iinclude  -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti  kernel/kernel.cpp -o kernel/kernel.o 
-OBJ=`i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti    -print-file-name=crtend.o` && cp "$OBJ" arch/i386/crtend.o
-i686-elf-gcc --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -MD -c arch/i386/crtn.S -o arch/i386/crtn.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti   -D__is_kernel -Iinclude 
-i686-elf-g++ --sysroot=/home/yasser/progs/Dualfuse/sysroot -isystem=/usr/include -T arch/i386/linker.ld -o DualFuse.kernel -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti    arch/i386/crti.o arch/i386/crtbegin.o arch/i386/boot.o arch/i386/tty.o kernel/kernel.o   -nostdlib -lk -lgcc  arch/i386/crtend.o arch/i386/crtn.o 
+mkdir -p /home/yasser/progs/DualFuse/sysroot/usr/lib
+cp libk.a /home/yasser/progs/DualFuse/sysroot/usr/lib
+mkdir -p /home/yasser/progs/DualFuse/sysroot/usr/include
+cp -R --preserve=timestamps include/. /home/yasser/progs/DualFuse/sysroot/usr/include/.
+i686-elf-gcc --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c arch/i386/crti.S -o arch/i386/crti.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti   -D__is_kernel -Iinclude 
+OBJ=`i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti    -print-file-name=crtbegin.o` && cp "$OBJ" arch/i386/crtbegin.o
+i686-elf-gcc --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c arch/i386/boot.S -o arch/i386/boot.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti   -D__is_kernel -Iinclude 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c  -D__is_kernel -Iinclude  -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti  arch/i386/tty.cpp -o arch/i386/tty.o 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c  -D__is_kernel -Iinclude  -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti  kernel/kernel.cpp -o kernel/kernel.o 
+OBJ=`i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti    -print-file-name=crtend.o` && cp "$OBJ" arch/i386/crtend.o
+i686-elf-gcc --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -MD -c arch/i386/crtn.S -o arch/i386/crtn.o -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti   -D__is_kernel -Iinclude 
+i686-elf-g++ --sysroot=/home/yasser/progs/DualFuse/sysroot -isystem=/usr/include -T arch/i386/linker.ld -o DualFuse.kernel -O2 -g -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti    arch/i386/crti.o arch/i386/crtbegin.o arch/i386/boot.o arch/i386/tty.o kernel/kernel.o   -nostdlib -lk -lgcc  arch/i386/crtend.o arch/i386/crtn.o 
 grub-file --is-x86-multiboot DualFuse.kernel
-mkdir -p /home/yasser/progs/Dualfuse/sysroot/boot
-cp DualFuse.kernel /home/yasser/progs/Dualfuse/sysroot/boot
+mkdir -p /home/yasser/progs/DualFuse/sysroot/boot
+cp DualFuse.kernel /home/yasser/progs/DualFuse/sysroot/boot

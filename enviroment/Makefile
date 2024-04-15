@@ -15,13 +15,13 @@ CROSS_compiler=$(CROSS)/CROSS_compiler
 
 SYS_BINUTILS_BUILD=$(CROSS)/sys-binutils-build
 
-TIME_LOG= $(HOME)/progs/Dualfuse/enviroment/log.txt
+TIME_LOG= $(HOME)/progs/DualFuse/enviroment/log.txt
 
 #SYS_compiler=$(GCC_BUILD)/bin/i686-elf-g++
 
 TARGET=i686-elf
 
-CORE_COUNT= 7
+CORE_COUNT= 12
 
 MAKE_ARGS= -j$(CORE_COUNT)
 

@@ -5,12 +5,14 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "PowerShell Launch Script",
-            "type": "PowerShell",
+            "type": "bashdb",
             "request": "launch",
-            "script": "${workspaceFolder}/all.sh | tee all.log",
-            "cwd": "${cwd}"
-        }
+            "name": "Bash: all",
+            "cwd": "${workspaceFolder}",
+            "program": "all.sh",
+            "terminalKind": "integrated"
+          }
+        
 
     ]
 }

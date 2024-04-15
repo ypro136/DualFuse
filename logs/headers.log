@@ -1,4 +1,4 @@
-mkdir -p /home/yasser/progs/Dualfuse/sysroot/usr/include
-cp -R --preserve=timestamps include/. /home/yasser/progs/Dualfuse/sysroot/usr/include/.
-mkdir -p /home/yasser/progs/Dualfuse/sysroot/usr/include
-cp -R --preserve=timestamps include/. /home/yasser/progs/Dualfuse/sysroot/usr/include/.
+mkdir -p /home/yasser/progs/DualFuse/sysroot/usr/include
+cp -R --preserve=timestamps include/. /home/yasser/progs/DualFuse/sysroot/usr/include/.
+mkdir -p /home/yasser/progs/DualFuse/sysroot/usr/include
+cp -R --preserve=timestamps include/. /home/yasser/progs/DualFuse/sysroot/usr/include/.

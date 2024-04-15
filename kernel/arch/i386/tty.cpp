@@ -1,7 +1,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
  
 #include <kernel/tty.h>
  
@@ -12,10 +11,10 @@ static const size_t VGA_HEIGHT = 25;
 static uint16_t* const VGA_MEMORY = (uint16_t*) 0xB8000;
 
 
-static size_t terminal_row;
-static size_t terminal_column;
+static volatile size_t terminal_row;
+static volatile size_t terminal_column;
 static uint8_t terminal_color;
-static uint16_t* terminal_buffer;
+static volatile uint16_t* terminal_buffer;
 
  
 /**
@@ -53,15 +52,15 @@ void terminal_setcolor(uint8_t color)
 /**
  * Puts a character entry at the given x,y position on the terminal.
  *
- * @param c The character to write.
+ * @param entry_character The character to write.
  * @param color The color attribute.
  * @param x The column position.
  * @param y The row position.
  */
-void terminal_putentryat(unsigned char c, uint8_t color, size_t x, size_t y)
+void terminal_putentryat(unsigned char entry_character, uint8_t color, size_t x, size_t y)
 {
 	const size_t index = y * VGA_WIDTH + x;
-	terminal_buffer[index] = vga_entry(c, color);
+	terminal_buffer[index] = vga_entry(entry_character, color);
 }
 
 /**
@@ -108,6 +107,24 @@ void terminal_delete_last_line()
 		*ptr = 0;
 	}
 }
+
+
+/**
+ * Advances the terminal to a new line.
+ * Increments the terminal row counter and resets the column counter.
+ * If the new row exceeds the height of the terminal, scrolls the entire screen up by one line.
+ */
+void new_line()
+{
+	terminal_row++;
+	terminal_column = 0;
+	if (terminal_row >= VGA_HEIGHT)
+	{
+		terminal_scroll_all();
+		terminal_row--;
+		// terminal_delete_last_line();
+	}
+}
  
 /**
  * Prints a character to the terminal at the current cursor position.
@@ -115,32 +132,17 @@ void terminal_delete_last_line()
  */
 void terminal_putchar(char character)
 {
-	int line;
 	unsigned char character_unsigned = character;
 	if (character == '\n')
 	{
-		terminal_row++;
-		terminal_column = 0;
-		if (terminal_row >= VGA_HEIGHT)
-		{
-			terminal_scroll_all();
-			terminal_row--;
-			terminal_delete_last_line();
-		}
+		new_line();
 	}
 	else
 	{
 		terminal_putentryat(character_unsigned, terminal_color, terminal_column, terminal_row);
 		if (++terminal_column == VGA_WIDTH)
 		{
-			terminal_column = 0;
-			if (++terminal_row == VGA_HEIGHT)
-			{
-				terminal_scroll_all();
-
-				terminal_delete_last_line();
-				terminal_row = VGA_HEIGHT - 1;
-			}
+			new_line();
 		}
 	}
 }
@@ -149,10 +151,9 @@ void terminal_putchar(char character)
  * Writes the given data buffer to the terminal.
  * Iterates through each character in the data and prints it using terminal_putchar().
  */
-void terminal_write(const char *data, size_t size)
+void terminal_write(char data)
 {
-	for (size_t i = 0; i < size; i++)
-		terminal_putchar(data[i]);
+	terminal_putchar(data);
 }
  
 /**
@@ -160,7 +161,10 @@ void terminal_write(const char *data, size_t size)
  *
  * @param data The string to write to the terminal.
  */
-void terminal_writestring(const char *data)
+void terminal_writestring(const char *data, size_t size)
 {
-	terminal_write(data, strlen(data));
+	for (size_t i = 0; i < size; i++)
+	{
+		terminal_write(*data);
+	}
 }

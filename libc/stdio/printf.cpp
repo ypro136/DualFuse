@@ -15,17 +15,45 @@
 
 
  
-static bool print(const char* data, size_t length) {
-	const unsigned char* bytes = (const unsigned char*) data;
+/**
+ * Prints the given data buffer to stdout.
+ *
+ * @param data Pointer to the data buffer to print.
+ * @param length Length of the data buffer in bytes.
+ * @return true on success, false on error.
+ */
+static bool print(const char *data, size_t length)
+{
+	const char *bytes = data;
 	for (size_t i = 0; i < length; i++)
+	{
 		if (putchar(bytes[i]) == EOF)
+		{
 			return false;
+		}
+	}
 	return true;
 }
 
-int sprintf(char *buffer, const char* format_string, va_list arguments)
+/**
+ * Writes formatted output to a character string buffer.
+ *
+ * This function parses the provided format string containing text and
+ * format specifiers like %d, %c, etc. It uses the additional arguments
+ * provided in va_list to replace the format specifiers with actual values.
+ *
+ * The formatted output is written to the buffer parameter.
+ *
+ * @param buffer Pointer to character buffer to write output to.
+ * @param format_string Format string containing text and format specifiers.
+ * @param arguments va_list containing additional arguments to replace format specifiers.
+ * @return Number of characters written to the buffer.
+ */
+int sprintf(char *buffer, volatile const char *format_string, va_list arguments)
 {
-    // arguments should have been initialized by va_start at some point before the call
+	// arguments should have been initialized by va_start at some point before the call
+
+	
 
 	char current = *format_string;
 
@@ -33,41 +61,58 @@ int sprintf(char *buffer, const char* format_string, va_list arguments)
 
 	char *buffer_pointer = buffer;
 
-    int written = 0;
+	int written = 0;
 
-	while (current != '\0') 
+	while (current != '\0')
 	{
 
 		current = *format_string;
 
-		switch (current) {
+		switch (current)
+		{
 		case '%':
-			if (!format_specifier) 
+			if (!format_specifier)
 			{
 				format_specifier = true;
-			} 
-			else if (format_specifier) 
+			}
+			else if (format_specifier)
 			{
 				*buffer = current;
 				format_specifier = false;
+				buffer++;
 			}
-			buffer++;
+			
 			break;
 
 		case 'd':
-			
-			// TODO:add a digit.
 
-			*buffer = current;
-			
-			buffer++;
+			if (format_specifier)
+			{
+				// add a int.
+				int temp_int = va_arg(arguments, int);
+
+				char *temp_string;
+				itoa(temp_int, temp_string, 10);
+
+				int temp_string_length = strlen(temp_string);
+				*buffer = '\0';
+				strcat(buffer_pointer, temp_string);
+				buffer += temp_string_length;
+
+				format_specifier = false;
+			}
+			else
+			{
+				*buffer = current;
+				buffer++;
+			}
 			break;
 
 		case 's':
 			if (format_specifier)
 			{
 				// add a string.
-				char *temp_string = va_arg(arguments, char*);
+				const char *temp_string = va_arg(arguments, const char *);
 				int temp_string_length = strlen(temp_string);
 				*buffer = '\0';
 				strcat(buffer_pointer, temp_string);
@@ -85,10 +130,8 @@ int sprintf(char *buffer, const char* format_string, va_list arguments)
 		case 'c':
 			if (format_specifier)
 			{
-				// add a char.
-				*buffer = va_arg(arguments, char);
-
-				*buffer = current;
+				// add a char ,keep in mind 'char' is promoted to 'int' when passed through '...' .
+				*buffer = va_arg(arguments, int);
 
 				format_specifier = false;
 			}
@@ -102,18 +145,24 @@ int sprintf(char *buffer, const char* format_string, va_list arguments)
 		case 'h':
 			if (format_specifier)
 			{
-				// TODO:add a int in hex.
+				// add a int.
+				int temp_int = va_arg(arguments, int);
 
-				*buffer = current;
+				char *temp_string;
+				itoa(temp_int, temp_string, 16);
+
+				int temp_string_length = strlen(temp_string);
+				*buffer = '\0';
+				strcat(buffer_pointer, temp_string);
+				buffer += temp_string_length;
 
 				format_specifier = false;
-				
 			}
 			else
 			{
 				*buffer = current;
+				buffer++;
 			}
-			buffer++;
 			break;
 
 		case ' ':
@@ -121,11 +170,8 @@ int sprintf(char *buffer, const char* format_string, va_list arguments)
 			{
 				// skip spaces.
 
-				*buffer = '%';
-				buffer++;
 				*buffer = current;
 
-				format_specifier = false;
 			}
 			else
 			{
@@ -139,7 +185,6 @@ int sprintf(char *buffer, const char* format_string, va_list arguments)
 			buffer++;
 			format_specifier = false;
 			break;
-
 		}
 
 		format_string++;
@@ -147,9 +192,9 @@ int sprintf(char *buffer, const char* format_string, va_list arguments)
 	*buffer = '\0';
 	written = strlen(buffer_pointer);
 
-    // arguments is expected to be released by va_end at some point after the call.
+	// arguments is expected to be released by va_end at some point after the call.
 
-    return written;
+	return written;
 }
 
 int snprintf(char* string, const char* format, va_list arguments) 
@@ -159,18 +204,35 @@ int snprintf(char* string, const char* format, va_list arguments)
     return written;
 }
  
-int printf(const char* format_string, ...)
- {
+/**
+ * Prints formatted output to the console.
+ *
+ * This acts as a wrapper around sprintf() to format a string, and print()
+ * to write the formatted string to the console.
+ *
+ * @param format_string Format string containing text and format specifiers.
+ * @param ... Variable arguments matching the format specifiers in format_string.
+ * @return Number of characters printed.
+ */
+size_t printf(const char *format_string, ...)
+{
 	va_list arguments;
 	va_start(arguments, format_string);
 
-	char *string;
+	char string[1024];
 
 	int written = 0;
- 
+
 	written = sprintf(string, format_string, arguments);
-	print(string, written);
- 
-	va_end(arguments);
-	return written;
+	if (print(string, written))
+	{
+		va_end(arguments);
+		return written;
+	}
+	else
+	{
+		va_end(arguments);
+		return -1;
+	}
+
 }

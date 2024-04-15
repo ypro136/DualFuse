@@ -3,6 +3,9 @@
  
 #include <sys/cdefs.h>
 
+#include <stddef.h>
+
+
  
 #define EOF (-1)
  
@@ -10,10 +13,11 @@
 extern "C" {
 #endif
  
-int printf(const char* format_string, ...);
-int putchar(int);
-int puts(const char*);
-const char* to_string (int number);
+size_t printf(const char* format_string, ...);
+int putchar(int string_1);
+size_t puts(const char*);
+char *to_string (int number);
+char *itoa(int value, char *result, int base);
 
 
  

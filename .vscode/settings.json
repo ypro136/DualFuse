@@ -8,7 +8,8 @@
         "ostream": "cpp",
         "array": "cpp",
         "initializer_list": "cpp",
-        "random": "cpp"
+        "random": "cpp",
+        "*.inc": "cpp"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }
