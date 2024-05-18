@@ -29,6 +29,7 @@ SECTIONS
 	.data BLOCK(4K) : ALIGN(4K)
 	{
 		*(.data)
+
 	}
 
 	/* Read-write data (uninitialized) and stack */

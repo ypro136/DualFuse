@@ -20,7 +20,7 @@ char *strcat(const char *_destination_string, const char *_source_string)
 
      while (*destination_string)
           destination_string++;
-     while (*destination_string++ = *source_string++)
-          ;
+     while (*destination_string++ = *source_string++);
+     
      return --destination_string;
 }

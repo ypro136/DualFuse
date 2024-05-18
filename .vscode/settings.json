@@ -1,5 +1,6 @@
 {
     "files.associations": {
+        ".fantomasignore": "ignore",
         "cstdio": "cpp",
         "*.tcc": "cpp",
         "string": "cpp",
@@ -9,7 +10,12 @@
         "array": "cpp",
         "initializer_list": "cpp",
         "random": "cpp",
-        "*.inc": "cpp"
+        "*.inc": "cpp",
+        "buffer": "cpp",
+        "internet": "cpp",
+        "socket": "cpp",
+        "ranges": "cpp",
+        "span": "cpp"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

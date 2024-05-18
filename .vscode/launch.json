@@ -10,7 +10,8 @@
             "name": "Bash: all",
             "cwd": "${workspaceFolder}",
             "program": "all.sh",
-            "terminalKind": "integrated"
+            "terminalKind": "integrated",
+            
           }
         
 

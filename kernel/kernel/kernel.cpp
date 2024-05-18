@@ -5,12 +5,18 @@
 
 #include <kernel/tty.h>
 #include <kernel/serial.h>
+#include <kernel/gdt.h>
 
 
 
-extern "C" void kernel_main(void) {
+
+
+extern "C" void kernel_main(void) 
+{
 	terminal_initialize();
 	serial_initialize();
+
+	gdt_initialize();
 
 	printf("Hello, I am %s %s !\n", "Dual", "Fuse");
 
@@ -20,9 +26,10 @@ extern "C" void kernel_main(void) {
 
 	char test = 'y';
 
-	printf("address of %c is : %h!\n", test, &test);
+	printf("address of %c is : %x!\n", test, &test);
 
 	printf("{}\n");
 
+	
 	
 }

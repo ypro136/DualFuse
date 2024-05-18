@@ -88,7 +88,7 @@ int sprintf(char *buffer, volatile const char *format_string, va_list arguments)
 
 			if (format_specifier)
 			{
-				// add a int.
+				// add a int in decimal.
 				int temp_int = va_arg(arguments, int);
 
 				char *temp_string;
@@ -142,10 +142,10 @@ int sprintf(char *buffer, volatile const char *format_string, va_list arguments)
 			buffer++;
 			break;
 
-		case 'h':
+		case 'x':
 			if (format_specifier)
 			{
-				// add a int.
+				// add a int in hexadecimal.
 				int temp_int = va_arg(arguments, int);
 
 				char *temp_string;
