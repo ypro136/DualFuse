@@ -8,10 +8,13 @@
  
 #include <kernel/gdt.h>
 
-static const uint16_t number_of_gdt_entries = 5;
+static const uint16_t number_of_gdt_entries = 6;
 
 static struct GDT_entry gdt_entries[number_of_gdt_entries];
 static struct GDT_Pointer gdt_Pointer;
+static struct tss_entry tss_entry;
+
+
 
 
 // 32 bit 
@@ -73,6 +76,24 @@ void encode_Gdt(uint32_t number, uint32_t base, uint32_t limit, uint8_t access_b
   gdt_entries[number].access_byte = access_byte;
 }
 
+void encode_TSS(uint32_t number, uint16_t ss0, uint32_t esp0)
+{
+  uint32_t base = (uint32_t) &tss_entry;
+  uint32_t limit = base + sizeof(tss_entry);
+
+  encode_Gdt(number, base, limit, 0xE9, 0x00);
+
+  memset(&tss_entry, 0, sizeof(tss_entry));
+
+  tss_entry.ss0 = ss0;
+  tss_entry.esp0 = esp0;
+
+  tss_entry.cs = 0x08 | 0x3;
+
+  tss_entry.ss = tss_entry.ds = tss_entry.es = tss_entry.fs = tss_entry.gs = 0x10 | 0x3;
+}
+
+
 /**
  * Initializes the global descriptor table (GDT) and updates the segment registers.
  * This function is responsible for setting up the memory management system during
@@ -87,7 +108,7 @@ void encode_Gdt(uint32_t number, uint32_t base, uint32_t limit, uint8_t access_b
 int gdt_initialize()
 {
 
-  gdt_Pointer.limit = (sizeof(struct GDT_entry) * 5) - 1;
+  gdt_Pointer.limit = (sizeof(struct GDT_entry) * number_of_gdt_entries) - 1;
 
   gdt_Pointer.base = (uint32_t)&gdt_entries;
 
@@ -97,8 +118,11 @@ int gdt_initialize()
   encode_Gdt(3, 0, 0xFFFFFFFF, 0xFA, 0xCF); // user code segment
   encode_Gdt(4, 0, 0xFFFFFFFF, 0xF2, 0xCF); // user data segment
 
-  // gdt_reload();
+  encode_TSS(5, 0x10, 0x0);
+
+
   setGdt(gdt_Pointer);
+  setTSS();
 
   return 0;
 }
@@ -129,6 +153,17 @@ void setGdt(GDT_Pointer gdt_Pointer)
       "reload_cs_%=:\n"
       : /* no outputs */
       : "m"(gdt_Pointer)
+      : "eax");
+}
+
+void setTSS(void)
+{
+  // Inline assembly
+  asm volatile(
+      "mov $0x2B, %%ax\n"
+      "ltr %%ax\n"
+      : /* no outputs */
+      : /* no inputs */
       : "eax");
 }
 

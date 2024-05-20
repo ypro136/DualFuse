@@ -6,6 +6,9 @@
 #include <kernel/tty.h>
 #include <kernel/serial.h>
 #include <kernel/gdt.h>
+#include <kernel/idt.h>
+#include <kernel/timer.h>
+#include <kernel/keyboard.h>
 
 
 
@@ -16,20 +19,22 @@ extern "C" void kernel_main(void)
 	terminal_initialize();
 	serial_initialize();
 
+	printf("terminal and serial out initialized\n");
+
 	gdt_initialize();
+	printf("gdt initialized\n");
 
-	printf("Hello, I am %s %s !\n", "Dual", "Fuse");
+	idt_initialize();
+	printf("idt initialized\n");
 
-	write_serial('h');
+	timer_initialize();
+	printf("timer initialized\n");
 
-	printf("Hello, kernel World!\n");
+	keyboard_initialize();
+	printf("keyboard initialized\n");
 
-	char test = 'y';
 
-	printf("address of %c is : %x!\n", test, &test);
-
-	printf("{}\n");
-
+	for(;;);
 	
 	
 }

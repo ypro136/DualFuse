@@ -27,7 +27,7 @@ void terminal_initialize(void)
 {
 	terminal_row = 0;
 	terminal_column = 0;
-	terminal_color = vga_entry_color(VGA_COLOR_LIGHT_CYAN, VGA_COLOR_BLACK);
+	terminal_color = vga_entry_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
 	terminal_buffer = VGA_MEMORY;
 	for (size_t y = 0; y < VGA_HEIGHT; y++)
 	{
@@ -133,18 +133,45 @@ void new_line()
 void terminal_putchar(char character)
 {
 	unsigned char character_unsigned = character;
-	if (character == '\n')
+	switch (character)
 	{
+	case '\n':
 		new_line();
-	}
-	else
+		break;
+	case '\b':
+		if (terminal_column == 0 && terminal_row != 0)
+		{
+			terminal_row--;
+			terminal_column = VGA_WIDTH;
+		}
+		terminal_putentryat(' ', terminal_color, --terminal_column, terminal_row);
+		break;
+	case '\r':
+		terminal_column = 0;
+		break;
+	case '\t':
 	{
+		if (terminal_column == VGA_WIDTH)
+		{
+			new_line();
+		}
+		uint16_t tab_length = 4;
+		while (tab_length != 0)
+		{
+			terminal_putentryat(' ', terminal_color, terminal_column++, terminal_row);
+			tab_length--;
+		}
+		break;
+	}
+	default:
 		terminal_putentryat(character_unsigned, terminal_color, terminal_column, terminal_row);
 		if (++terminal_column == VGA_WIDTH)
 		{
 			new_line();
 		}
+		break;
 	}
+	
 }
  
 /**

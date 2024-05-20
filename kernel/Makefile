@@ -13,7 +13,7 @@ EXEC_PREFIX?=$(PREFIX)
 BOOTDIR?=$(EXEC_PREFIX)/boot
 INCLUDEDIR?=$(PREFIX)/include
 
-CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -fstack-protector-all
+CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -fstack-protector-all -fpermissive
 CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -Iinclude
 LIBS:=$(LIBS) -nostdlib -lk -lgcc
 
@@ -66,7 +66,7 @@ $(ARCHDIR)/crtbegin.o $(ARCHDIR)/crtend.o:
 	$(CPP) -MD -c $(CPPFLAGS) $(CFLAGS) $< -o $@ 
 
 .S.o:
-	$(CC) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
+	nasm -f elf32 $< -o $@
 
 clean:
 	rm -f DualFuse.kernel
