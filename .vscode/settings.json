@@ -15,7 +15,8 @@
         "internet": "cpp",
         "socket": "cpp",
         "ranges": "cpp",
-        "span": "cpp"
+        "span": "cpp",
+        "cstdint": "cpp"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

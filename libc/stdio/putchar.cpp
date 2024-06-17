@@ -5,6 +5,10 @@
 #include <kernel/serial.h>
 #endif
  
+
+ extern "C" Serial serial;
+
+
 /**
  * Writes a character to stdout.
  *
@@ -19,7 +23,8 @@ int putchar(int character)
 {
 #if defined(__is_libk)
 	terminal_write(character);
-	write_serial(character);
+	Serial& serial = Serial::getInstance(0x3f8); // Get the instance of the Serial class for COM1
+    serial.write(character);
 #else
 	// TODO: Implement stdio and the write system call.
 #endif

@@ -11,4 +11,4 @@ export PATH="$HOME/src/cross/CROSS_compiler/bin/:$PATH"
 
 ./iso.sh | tee $LOG_DIR/iso.log
 
-./qemu.sh | tee $LOG_DIR/qemu.log
+./boot.sh | tee $LOG_DIR/qemu.log

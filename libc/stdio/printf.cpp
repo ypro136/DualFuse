@@ -149,7 +149,7 @@ int sprintf(char *buffer, volatile const char *format_string, va_list arguments)
 				int temp_int = va_arg(arguments, int);
 
 				char *temp_string;
-				itoa(temp_int, temp_string, 16);
+				hex_to_string(&temp_int, 4, temp_string, 16);
 
 				int temp_string_length = strlen(temp_string);
 				*buffer = '\0';

@@ -1,7 +1,11 @@
 #!/bin/sh
 set -e
 . ./iso.sh
- 
+
+# for bochs
+#bochs -f bochs
+
+# for qemu 
 qemu-system-$(./target-triplet-to-arch.sh $HOST) -cdrom DualFuse.iso -serial file:serial.log #-s -S &
 #gdb isodir/boot/DualFuse.kernel
 

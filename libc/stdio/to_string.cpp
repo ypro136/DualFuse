@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <string.h>
+#include <stddef.h>
+#include <stdint.h>
 
 
 /**
@@ -22,6 +24,44 @@ char *to_string(int number)
     return digits; // TODO: fix empty return string
     
 }
+
+
+
+const char possibleChars[] = "0123456789ABCDEF";
+
+char* hex_to_string(int* argp, int length, char* buffer, int radix)
+{
+    char* current = buffer;
+    uint32_t quotient = *(uint32_t*)argp;
+    bool negative = false;
+
+
+    do
+    {
+        *current++ = possibleChars[quotient % radix];
+        quotient /= radix;
+    } while (quotient != 0);
+
+    
+    *current++ = 'x';
+    *current++ = '0';
+    *current = '\0';
+
+    // Reverse the string
+    char* start = buffer;
+    char* end = current - 1;
+
+    while (start < end)
+    {
+        char temp = *start;
+        *start++ = *end;
+        *end-- = temp;
+    }
+
+    // buffer = toupper(buffer);
+    return buffer;
+}
+
 
         /**
  * Converts an integer value to a string in the given base.

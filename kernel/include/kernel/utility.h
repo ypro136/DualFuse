@@ -3,6 +3,9 @@
 
 #include "stdint.h"
 
+#define CEILING_DIVISION(a,b) (((a + b) - 1) / b)
+
+
 struct interrupt_registers
 {
     uint32_t cr2;
