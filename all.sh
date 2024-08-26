@@ -3,7 +3,9 @@
 
 export LOG_DIR=logs
 
-export PATH="$HOME/src/cross/CROSS_compiler/bin/:$PATH"
+. ./config.sh
+
+export PATH="$HOME/src/cross/$ARCH-elf/CROSS_compiler/bin/:$PATH"
 
 ./clean.sh | tee $LOG_DIR/clean.log
 

@@ -3,7 +3,7 @@ echo Stage 1 - Building Dependencies
 ####################################
 
 # make a working directory
-cd $HOME/src/cross
+cd $HOME/src/cross/$TARGET
 
 # install or update all apt-get dependencies
 sudo apt autoremove -y

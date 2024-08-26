@@ -3,11 +3,10 @@
 export PATH="$HOME/src/cross/SYS_compiler/bin:$PATH"
 
 # make a working directory
-cd $HOME/src/cross
+cd $HOME/src/cross/$TARGET
 
 # set up exports
-export PREFIX="$HOME/src/cross/CROSS_compiler"
-export TARGET=i686-elf
+export PREFIX="$HOME/src/cross/$TARGET/CROSS_compiler"
 export PATH="$PREFIX/bin:$PATH"
 
 ################################
@@ -36,7 +35,7 @@ bash ./contrib/download_prerequisites
 cd $HOME/src
 chmod -R 777 cross
 
-cd $HOME/src/cross
+cd $HOME/src/cross/$TARGET
 
 # install gcc cross compiler
 cd GCC_cross

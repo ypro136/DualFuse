@@ -5,8 +5,9 @@ set -e
 # for bochs
 #bochs -f bochs
 
-# for qemu 
-qemu-system-$(./target-triplet-to-arch.sh $HOST) -cdrom DualFuse.iso -serial file:serial.log #-s -S &
+# for qemu
+echo "qemu-system-$(./target-triplet-to-arch.sh $ARCH) -cdrom DualFuse.iso -serial file:serial.log" 
+qemu-system-$(./target-triplet-to-arch.sh $ARCH) -cdrom DualFuse.iso -serial file:serial.log #-s -S &
 #gdb isodir/boot/DualFuse.kernel
 
 # if debuging is needed:

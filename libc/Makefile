@@ -18,7 +18,7 @@ CPPFLAGS:=$(CPPFLAGS) -D__is_libc -Iinclude
 LIBK_CFLAGS:=$(CFLAGS) -std=c++11
 LIBK_CPPFLAGS:=$(CPPFLAGS) -D__is_libk
 
-ARCHDIR=arch/$(HOSTARCH)
+ARCHDIR=arch/$(ARCH)
  
 include $(ARCHDIR)/make.config
  

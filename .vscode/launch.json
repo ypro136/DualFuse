@@ -9,10 +9,36 @@
             "request": "launch",
             "name": "Bash: all",
             "cwd": "${workspaceFolder}",
-            "program": "all_and_log.sh",
+            "program": "./all_and_log.sh",
             "terminalKind": "integrated",
             
-          }
+          },
+          {
+            "name": "Launch with GDB",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceRoot}/isodir/boot/DualFuse.kernel",
+            "cwd": "${workspaceRoot}",
+            "args": [],
+            "targetArchitecture": "x86",
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "miDebuggerArgs": "",
+            "customLaunchSetupCommands": [
+                {
+                    "text": "target remote localhost:1234",
+                    "description": "Connect to QEMU remote debugger"
+                }
+            ],
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "Launch QEMU"
+        }
         
 
     ]

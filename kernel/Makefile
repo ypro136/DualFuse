@@ -13,11 +13,12 @@ EXEC_PREFIX?=$(PREFIX)
 BOOTDIR?=$(EXEC_PREFIX)/boot
 INCLUDEDIR?=$(PREFIX)/include
 
-CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -fstack-protector-all -fpermissive
+CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -fstack-protector-all -fpermissive -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -z max-page-size=0x1000
 CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -Iinclude
 LIBS:=$(LIBS) -nostdlib -lk -lgcc
 
-ARCHDIR=arch/$(HOSTARCH)
+ARCHDIR=arch/$(ARCH)
+ARCH_LIBS_DIR=$(ARCHDIR)/include
 
 include $(ARCHDIR)/make.config
 
@@ -65,8 +66,10 @@ $(ARCHDIR)/crtbegin.o $(ARCHDIR)/crtend.o:
 .cpp.o:
 	$(CPP) -MD -c $(CPPFLAGS) $(CFLAGS) $< -o $@ 
 
+
 .S.o:
-	nasm -f elf32 $< -o $@
+	nasm -f $(NASM_ARCH) $< -o $@
+
 
 clean:
 	rm -f DualFuse.kernel
@@ -77,7 +80,7 @@ install: install-headers install-kernel
 
 install-headers:
 	mkdir -p $(DESTDIR)$(INCLUDEDIR)
-	cp -R --preserve=timestamps include/. $(DESTDIR)$(INCLUDEDIR)/.
+	cp -R --preserve=timestamps $(ARCH_LIBS_DIR)/. $(DESTDIR)$(INCLUDEDIR)/.
 
 install-kernel: DualFuse.kernel
 	mkdir -p $(DESTDIR)$(BOOTDIR)

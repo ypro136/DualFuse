@@ -1,5 +1,7 @@
-CROSS=$(HOME)/src/cross
-#for Cross-Compiler build
+
+CROSS=$(HOME)/src/cross/$(TARGET)
+# for Cross-Compiler build
+
 
 GCC_BUILD=$(CROSS)/build-gcc
 
@@ -19,7 +21,6 @@ TIME_LOG= $(HOME)/progs/DualFuse/enviroment/log.txt
 
 #SYS_compiler=$(GCC_BUILD)/bin/i686-elf-g++
 
-TARGET=i686-elf
 
 CORE_COUNT= 12
 
@@ -31,7 +32,7 @@ GCC_VERSION=13.2.0
 
 # test gcc
 test_sys_gcc: bootstrap
-	$(CROSS_compiler)/bin/i686-elf-g++ test_sys_gcc.cpp -o test_sys_gcc -nostdlib -nostartfiles
+	$(CROSS_compiler)/bin/$(TARGET)-g++ test_sys_gcc.cpp -o test_sys_gcc -nostdlib -nostartfiles
 	./test_sys_gcc
 	date +%T >> log.txt
 
@@ -125,6 +126,7 @@ gcc-$(GCC_VERSION).tar.xz:
 	
 	wget http://ftpmirror.gnu.org/gcc/gcc-$(GCC_VERSION)/gcc-$(GCC_VERSION).tar.xz
 	@echo ">>> gcc-$(GCC_VERSION).tar.xz downloaded\n" >> log.txt
+
 
 
 .PHONY:

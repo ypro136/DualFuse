@@ -2,28 +2,12 @@
 #include <kernel/serial.h>
 #include <kernel/serialio.h>
 
-
-Serial* Serial::instance;
-bool Serial::instanceCreated = false;
+uint16_t port = 0x3f8;
 
 
-Serial::Serial(uint16_t port)
-{
-   this->port = port;
-   this->initialize();
-}
+bool serial_initialize(uint16_t _port) {
+    port = _port;
 
-Serial::~Serial() {}
-
-Serial& Serial::getInstance(uint16_t port) {
-    if (!instanceCreated) {
-        instance = &Serial(port);
-        instanceCreated = true;
-    }
-    return *instance;
-}
-
-bool Serial::initialize() {
     outb(port + 1, 0x00);    // Disable all interrupts
     outb(port + 3, 0x80);    // Enable DLAB (set baud rate divisor)
     outb(port + 0, 0x03);    // Set divisor to 3 (lo byte) 38400 baud
@@ -45,20 +29,21 @@ bool Serial::initialize() {
     return true;
 }
 
-bool Serial::received() {
+
+bool received() {
     return inb(port + 5) & 1;
 }
 
-char Serial::read() {
+char read() {
     while (!received());
     return inb(port);
 }
 
-bool Serial::transmit_empty() {
+bool transmit_empty() {
     return inb(port + 5) & 0x20;
 }
 
-void Serial::write(char a) {
+void serial_write(char a) {
     while (!transmit_empty());
     outb(port, a);
 }

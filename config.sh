@@ -3,14 +3,19 @@ PROJECTS="libc kernel"
  
 export MAKE=${MAKE:-make}
 export HOST=${HOST:-$(./default-host.sh)}
- 
-export AR=${HOST}-ar
-export AS=${HOST}-as
-export CC=${HOST}-gcc
-export CPP=${HOST}-g++ 
 
-# export CC="$C_DIR$CC"
-# export CPP="$C_DIR$CPP"
+export ARCH="x86_64"
+#export ARCH=i686
+ 
+#export AR=${HOST}-ar
+#export AS=${HOST}-as
+#export CC=${HOST}-gcc
+#export CPP=${HOST}-g++ 
+
+export AR=${ARCH}-elf-ar
+export AS=${ARCH}-elf-as
+export CC=${ARCH}-elf-gcc
+export CPP=${ARCH}-elf-g++ 
  
 export PREFIX=/usr
 export EXEC_PREFIX=$PREFIX

@@ -4,9 +4,6 @@
 #include <kernel/tty.h>
 #include <kernel/serial.h>
 #endif
- 
-
- extern "C" Serial serial;
 
 
 /**
@@ -23,8 +20,7 @@ int putchar(int character)
 {
 #if defined(__is_libk)
 	terminal_write(character);
-	Serial& serial = Serial::getInstance(0x3f8); // Get the instance of the Serial class for COM1
-    serial.write(character);
+	serial_write(character);
 #else
 	// TODO: Implement stdio and the write system call.
 #endif
