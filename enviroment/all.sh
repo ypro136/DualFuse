@@ -6,4 +6,4 @@
 # for 64 bit
 export TARGET=x86_64-elf
 
-make
+make | tee make.log

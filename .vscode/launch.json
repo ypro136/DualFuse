@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Bash: all",
             "cwd": "${workspaceFolder}",
-            "program": "./all_and_log.sh",
+            "program": "all_and_log.sh",
             "terminalKind": "integrated",
             
           },

@@ -1,14 +1,14 @@
 #!/bin/sh
 set -e
-. ./iso.sh
 
 # for bochs
 #bochs -f bochs
 
 # for qemu
-echo "qemu-system-$(./target-triplet-to-arch.sh $ARCH) -cdrom DualFuse.iso -serial file:serial.log" 
-qemu-system-$(./target-triplet-to-arch.sh $ARCH) -cdrom DualFuse.iso -serial file:serial.log #-s -S &
-#gdb isodir/boot/DualFuse.kernel
+echo "qemu-system-$(./target-triplet-to-arch.sh ${ARCH}) -cdrom DualFuse.iso -serial file:serial.log" 
+qemu-system-$(./target-triplet-to-arch.sh ${ARCH}) -cdrom DualFuse.iso -serial file:serial.log #-s -S &
+#sleep 0.5
+#gdb
 
 # if debuging is needed:
 # uncomment gdb and the -s -S &

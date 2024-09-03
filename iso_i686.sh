@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-. ./build.sh
+. ./build_${ARCH}.sh
  
 mkdir -p isodir
 mkdir -p isodir/boot

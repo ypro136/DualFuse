@@ -1,21 +1,23 @@
-00:15:52
+23:31:52
 >>> init log <<<
 
 >>> binutils directores set up
 
 >>> gcc directores set up
 
-00:16:00
+23:32:17
 >>> run setup-gcc
+
+>>> cross is /home/yasser/src/cross/x86_64-elf
 
 [setup-gcc]>>> installed gcc g++ binutils-dev gcc-dev bison flex gawk libgmp3-dev 
  libmpfr-dev libmpfr-doc libmpfr4 libmpfr4-dbg mpc texinfo libcloog-isl-dev 
 build-essential glibc-devel gcc-multilib libc6-i386
 
-00:16:24
+23:47:44
 [setup-gcc : exit]
 
-00:16:24
+23:47:44
 >>> run GCC_cross_build -j12
 
 [GCC_cross_build]>>> exported PREFIX PATH and TARGET
@@ -34,6 +36,6 @@ build-essential glibc-devel gcc-multilib libc6-i386
 
 [GCC_cross_build : gcc]>>> make install-target-libgcc-j12
 
-00:23:43
+23:55:00
 [GCC_cross_build : exit]
 

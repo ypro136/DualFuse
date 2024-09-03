@@ -1,9 +1,10 @@
 #!/bin/sh
 set -e
+
 . ./config.sh
  
 for PROJECT in $PROJECTS; do
-  (cd $PROJECT && $MAKE clean)
+  (cd $PROJECT && $MAKE -f Makefile clean && $MAKE -f GNUmakefile clean)
 done
  
 rm -rf sysroot

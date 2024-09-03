@@ -16,8 +16,7 @@ echo "[GCC_cross_build]>>> exported PREFIX PATH and TARGET\n" >> $2
 # install binutils
 cd binutils-build
 make distclean
-../binutils_src/configure --target=$TARGET --prefix="$PREFIX" --with-sysroot --disable-nls --disable-werror #CC="x86_64-pc-linux-gnu-g++"
-#../binutils_src/configure --target=$TARGET --prefix="$PREFIX" --with-gxx-include-dir="$HOME/src/cross/SYS_compiler/bin/x86_64-pc-linux-gnu-g++" --with-sysroot --disable-nls --disable-werror
+../binutils_src/configure --target=$TARGET --prefix="$PREFIX" --with-sysroot --disable-nls --disable-werror
 
 ################################
 echo "[GCC_cross_build : binutils]>>> make $1\n" >> $2
@@ -43,7 +42,7 @@ ln -s ../binutils-build/*
 ln -s ../CROSS_compiler/*
 ln -s ../binutils_src/*
 make distclean
-../gcc_src/configure --target=$TARGET --prefix="$PREFIX" --disable-nls --enable-languages=c,c++ --without-headers #--disable-bootstrap CC="x86_64-pc-linux-gnu-g++" 
+../gcc_src/configure --target=$TARGET --prefix="$PREFIX" --disable-nls --enable-languages=c,c++ --without-headers --enable-bootstrap
 ################################
 echo "[GCC_cross_build : gcc]>>> make all $1\n" >> $2
 make all-gcc $1 | tee ../logs/cross_gcc_all.log
@@ -53,7 +52,9 @@ echo "[GCC_cross_build : gcc]>>> make check $1\n" >> $2
 make check $1 | tee ../logs/cross_gcc_check.log
 ################################
 echo "[GCC_cross_build : gcc]>>> make all-target-libgcc $1\n" >> $2
-make all-target-libgcc $1 | tee ../logs/cross_libgcc_all.log
+make all-target-libgcc CFLAGS_FOR_TARGET='-mcmodel=kernel -mno-red-zone' $1  | tee ../logs/cross_libgcc_all.log || true
+sed -i 's/PICFLAG/DISABLED_PICFLAG/g' $TARGET/libgcc/Makefile
+make all-target-libgcc CFLAGS_FOR_TARGET='-mcmodel=kernel -mno-red-zone' $1  | tee ../logs/cross_libgcc_all.log # or add -g -O2 
 ################################
 echo "[GCC_cross_build : gcc]>>> make install-gcc $1\n" >> $2
 make install-gcc $1 | tee ../logs/cross_gcc_install.log

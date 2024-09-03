@@ -19,8 +19,6 @@ SYS_BINUTILS_BUILD=$(CROSS)/sys-binutils-build
 
 TIME_LOG= $(HOME)/progs/DualFuse/enviroment/log.txt
 
-#SYS_compiler=$(GCC_BUILD)/bin/i686-elf-g++
-
 
 CORE_COUNT= 12
 
@@ -44,6 +42,7 @@ test_echo:
 bootstrap: clean set_up_log binutils gcc
 	date +%T >> log.txt
 	@echo ">>> run setup-gcc\n" >> log.txt
+	@echo ">>> cross is $(CROSS)\n" >> log.txt
 	sh setup-gcc $(TIME_LOG)
 
 # date +%T >> log.txt

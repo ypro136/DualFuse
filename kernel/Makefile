@@ -13,9 +13,12 @@ EXEC_PREFIX?=$(PREFIX)
 BOOTDIR?=$(EXEC_PREFIX)/boot
 INCLUDEDIR?=$(PREFIX)/include
 
-CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -nostdlib -fno-exceptions -fno-rtti -fstack-protector-all -fpermissive -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -z max-page-size=0x1000
-CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -Iinclude
-LIBS:=$(LIBS) -nostdlib -lk -lgcc
+CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -Wno-unused-parameter -fno-exceptions 
+BOOTSTRAP_CFLAGS:=$(CFLAGS)
+CFLAGS:=$(CFLAGS) -fstack-protector-all -fpermissive -z max-page-size=0x1000 -fno-rtti -mno-red-zone -mno-mmx -mno-sse -mno-sse2
+CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -D__is_i686 -Iinclude
+LIBS:=$(LIBS) -nostdlib -lgcc
+
 
 ARCHDIR=arch/$(ARCH)
 ARCH_LIBS_DIR=$(ARCHDIR)/include
@@ -26,6 +29,8 @@ CFLAGS:=$(CFLAGS) $(KERNEL_ARCH_CFLAGS)
 CPPFLAGS:=$(CPPFLAGS) $(KERNEL_ARCH_CPPFLAGS)
 LDFLAGS:=$(LDFLAGS) $(KERNEL_ARCH_LDFLAGS)
 LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
+KERNEL_LIBS:=$(LIBS) -lk
+
 
 KERNEL_OBJS=\
 $(KERNEL_ARCH_OBJS) \
@@ -43,9 +48,15 @@ $(LDFLAGS) \
 $(ARCHDIR)/crti.o \
 $(ARCHDIR)/crtbegin.o \
 $(KERNEL_OBJS) \
-$(LIBS) \
+$(KERNEL_LIBS) \
 $(ARCHDIR)/crtend.o \
 $(ARCHDIR)/crtn.o \
+
+BOOTSTRAP_LINK_LIST=\
+$(LDFLAGS) \
+$(BOOTSTRAP_OBJS) \
+$(LIBS) \
+
 
 .PHONY: all clean install install-headers install-kernel
 .SUFFIXES: .o .c .S .cpp

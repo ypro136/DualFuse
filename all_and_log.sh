@@ -1,3 +1,4 @@
 #!/bin/sh
+set -e
 
-./all.sh | tee $LOG_DIR/all.log
+. ./all.sh | tee all.log
