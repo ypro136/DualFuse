@@ -66,6 +66,8 @@ all: DualFuse.kernel
 DualFuse.kernel: $(OBJS) $(ARCHDIR)/linker.ld
 	$(CPP) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(LINK_LIST)
 	grub-file --is-x86-multiboot DualFuse.kernel
+	mkdir -p bin
+	cp DualFuse.kernel bin/DualFuse.kernel
 
  
 $(ARCHDIR)/crtbegin.o $(ARCHDIR)/crtend.o:

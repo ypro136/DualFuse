@@ -13,7 +13,7 @@ EXEC_PREFIX?=$(PREFIX)
 INCLUDEDIR?=$(PREFIX)/include
 LIBDIR?=$(EXEC_PREFIX)/lib
 
-CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -fno-exceptions -fno-rtti -fstack-protector-all
+CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -fno-exceptions -fno-rtti -fstack-protector-all -mcmodel=large
 CPPFLAGS:=$(CPPFLAGS) -D__is_libc -Iinclude
 LIBK_CFLAGS:=$(CFLAGS) -std=c++11
 LIBK_CPPFLAGS:=$(CPPFLAGS) -D__is_libk

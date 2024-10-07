@@ -1,3 +1,4 @@
+#!/bin/sh
 
 # use the newly built system compiler, built by build-gcc. 
 export PATH="$HOME/src/cross/SYS_compiler/bin:$PATH"
@@ -12,6 +13,8 @@ export PATH="$PREFIX/bin:$PATH"
 ################################
 echo "[GCC_cross_build]>>> exported PREFIX PATH and TARGET\n" >> $2
 ################################
+
+mkdir -m=rwx -p logs
 
 # install binutils
 cd binutils-build
@@ -42,7 +45,7 @@ ln -s ../binutils-build/*
 ln -s ../CROSS_compiler/*
 ln -s ../binutils_src/*
 make distclean
-../gcc_src/configure --target=$TARGET --prefix="$PREFIX" --disable-nls --enable-languages=c,c++ --without-headers --enable-bootstrap
+../gcc_src/configure --target=$TARGET --prefix="$PREFIX" --disable-nls --enable-languages=c,c++ --without-headers --enable-bootstrap --disable-libsanitizer # --disable-libsanitizer only applies for building a hosted compiler. 
 ################################
 echo "[GCC_cross_build : gcc]>>> make all $1\n" >> $2
 make all-gcc $1 | tee ../logs/cross_gcc_all.log

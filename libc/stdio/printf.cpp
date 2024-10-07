@@ -4,15 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 
-    // sprintf(): dose the work!!!
-    // snprintf(): Wraps over sprintf()
-    // printf(): Wraps over snprintf()
-
-
-    // sprintf(): Write formatted data to buffer
-    // snprintf(): Write formatted data to buffer, limits maximum characters written
-	// printf(): Write formatted data to terminal
-
 
  
 /**
@@ -91,7 +82,7 @@ int sprintf(char *buffer, volatile const char *format_string, va_list arguments)
 				// add a int in decimal.
 				int temp_int = va_arg(arguments, int);
 
-				char *temp_string;
+				char temp_string[32];
 				itoa(temp_int, temp_string, 10);
 
 				int temp_string_length = strlen(temp_string);
@@ -148,7 +139,7 @@ int sprintf(char *buffer, volatile const char *format_string, va_list arguments)
 				// add a int in hexadecimal.
 				int temp_int = va_arg(arguments, int);
 
-				char *temp_string;
+				char temp_string[96];
 				hex_to_string(&temp_int, 4, temp_string, 16);
 
 				int temp_string_length = strlen(temp_string);

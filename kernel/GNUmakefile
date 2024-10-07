@@ -88,15 +88,17 @@ KERNEL_LIBS:=$(LIBS)
 override KERNELFILES := $(shell cd kernel && find -L * -type f -name '*.cpp' | LC_ALL=C sort)
 override CPPFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.cpp' | LC_ALL=C sort)
 override CFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.c' | LC_ALL=C sort)
-override ASFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.S' | LC_ALL=C sort)
+override ASFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.S' ! -name "crti.S" ! -name "crtn.S" | LC_ALL=C sort)
 override NASMFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.asm' | LC_ALL=C sort)
-override OBJ := $(addprefix obj/,$(KERNELFILES:.cpp=.cpp.o) $(CFILES:.c=.c.o) $(NASMFILES:.asm=.asm.o) $(CPPFILES:.cpp=.cpp.o)) # $(ASFILES:.S=.S.o) add s files manualy to put crti and crtn in ther position
+override OBJ := $(addprefix obj/,$(KERNELFILES:.cpp=.cpp.o) $(CFILES:.c=.c.o) $(NASMFILES:.asm=.asm.o) $(CPPFILES:.cpp=.cpp.o) $(ASFILES:.S=.S.o)) # add s files manualy to put crti and crtn in ther position
 override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d) $(CPPFILES:.cpp=.cpp.d) $(KERNELFILES:.cpp=.cpp.d))
 
 CRTI_OBJ=obj/crti.S.o
 CRTBEGIN_OBJ:=$(shell $(CPP) $(CFLAGS) $(LDFLAGS) -print-file-name=crtbegin.o)
 CRTEND_OBJ:=$(shell $(CPP) $(CFLAGS) $(LDFLAGS) -print-file-name=crtend.o)
 CRTN_OBJ=obj/crtn.S.o
+
+override LIBK := $(SYSROOT)/usr/lib/libk.a
 
 
 KERNEL_OBJS=\
@@ -117,6 +119,7 @@ obj/crtbegin.o \
 $(OBJ) \
 obj/crtend.o \
 $(CRTN_OBJ) \
+$(LIBK) \
 
 
 .PHONY: all clean install install-headers install-kernel

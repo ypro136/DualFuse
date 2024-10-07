@@ -29,7 +29,7 @@ GCC_VERSION=13.2.0
 
 
 # test gcc
-test_sys_gcc: bootstrap
+test_sys_gcc: bootstrap clean_src clean_GCC clean_SYS_BINUTILS clean_BINUTILS clean_tars
 	$(CROSS_compiler)/bin/$(TARGET)-g++ test_sys_gcc.cpp -o test_sys_gcc -nostdlib -nostartfiles
 	./test_sys_gcc
 	date +%T >> log.txt
@@ -73,7 +73,7 @@ binutils: #binutils_src
 	mkdir -m=rwx -p $(BINUTILS_BUILD)
 	-cp binutils_src $(CROSS) -r -n
 
-	mkdir -m=rwx -p $(SYS_BINUTILS_BUILD)
+#	mkdir -m=rwx -p $(SYS_BINUTILS_BUILD)
 
 	chmod ugo+rwx $(CROSS)/binutils_src/*
 
@@ -87,7 +87,7 @@ gcc: #gcc_src
 
 	mkdir -m=rwx -p $(GCC_CROSS)
 
-	mkdir -m=rwx -p $(CROSS)/SYS_compiler
+#	mkdir -m=rwx -p $(CROSS)/SYS_compiler
 
 	mkdir -m=rwx -p $(CROSS)/CROSS_compiler
 

@@ -67,6 +67,15 @@
                 "tee",
                 "all.log"
             ]
+        },
+        {
+            "label": "Launch QEMU",
+            "type": "shell",
+            "linux": {
+                "command": "qemu -S -gdb tcp::1234 -boot d -cdrom bin/myos.iso -m 512 -daemonize"
+            }
         }
+        
+
     ]
 }

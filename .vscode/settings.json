@@ -1,5 +1,6 @@
 {
     "files.associations": {
+        "*.embeddedhtml": "html",
         ".fantomasignore": "ignore",
         "cstdio": "cpp",
         "*.tcc": "cpp",
@@ -16,7 +17,10 @@
         "socket": "cpp",
         "ranges": "cpp",
         "span": "cpp",
-        "cstdint": "cpp"
+        "cstdint": "cpp",
+        "coroutine": "cpp",
+        "format": "cpp",
+        "compare": "cpp"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

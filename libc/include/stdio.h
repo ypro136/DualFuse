@@ -5,6 +5,10 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <stdarg.h>
+#include <string.h>
 
  
 #define EOF (-1)
@@ -25,7 +29,7 @@ extern "C" {
 #define PRINTF_LENGTH_LONG 3
 #define PRINTF_LENGTH_LONG_LONG 4
 
- 
+
 size_t printf(const char* format_string, ...);
 int putchar(int string_1);
 size_t puts(const char*);

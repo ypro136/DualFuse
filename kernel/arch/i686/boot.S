@@ -54,8 +54,9 @@ higher_half:
     cli
     mov esp, stack_top
 
-    ; Call the global constructors.
-    call _init
+
+    mov [multiboot_magic], eax
+    mov [multiboot_pointer], ebx
 
     push ebx
     push eax
@@ -74,6 +75,14 @@ halt:
 
 section .data
 align 4096
+
+global multiboot_magic
+multiboot_magic:
+    dd 0
+global multiboot_pointer
+multiboot_pointer:
+    dd 0
+
 global initial_page_directory
 initial_page_directory:
     dd 10000011b

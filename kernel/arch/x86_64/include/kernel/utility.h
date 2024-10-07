@@ -1,7 +1,11 @@
 #include <sys/cdefs.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <stdarg.h>
 #include <stddef.h>
+#include <stdint.h>
 
-#include "stdint.h"
+#include <string.h>
 
 #define CEILING_DIVISION(a,b) (((a + b) - 1) / b)
 

@@ -6,7 +6,7 @@ set -e
 
 # for qemu
 echo "qemu-system-$(./target-triplet-to-arch.sh ${ARCH}) -cdrom DualFuse.iso -serial file:serial.log" 
-qemu-system-$(./target-triplet-to-arch.sh ${ARCH}) -cdrom DualFuse.iso -serial file:serial.log #-s -S &
+qemu-system-$(./target-triplet-to-arch.sh ${ARCH}) -cdrom DualFuse.iso -serial file:serial.log -s -S &
 #sleep 0.5
 #gdb
 

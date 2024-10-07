@@ -1,1 +1,9 @@
-T
+serial initialized.
+Bootloader Parser initialized
+limine framebuffer initialized.
+memory initialized
+gdt initialized
+idt and isr initialized.
+timer initialized
+keyboard initialized
+testing framebuffer...

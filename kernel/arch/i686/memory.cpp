@@ -7,7 +7,7 @@
 #include <string.h>
 
 
-#include <kernel/multiboot.h>
+#include <kernel/bootloader.h>
 #include <kernel/utility.h>
 
 
@@ -146,8 +146,13 @@ uint32_t physical_memory_manager_alloc_page_frame()
     return 0;           
 }
 
-void memory_initialize(uint32_t memory_high, uint32_t physical_allocation_start)
+void memory_initialize()
 {
+    
+    uint32_t memory_high = bootloader.memory_high;
+    uint32_t physical_allocation_start = bootloader.physical_allocation_start;
+
+
     memory_number_of_virtual_pages = 0;
     initial_page_directory[0] = 0;
     invalidate(0);
