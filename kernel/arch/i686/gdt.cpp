@@ -6,7 +6,7 @@
 
 
  
-#include <kernel/gdt.h>
+#include <gdt.h>
 
 static const uint16_t number_of_gdt_entries = 6;
 

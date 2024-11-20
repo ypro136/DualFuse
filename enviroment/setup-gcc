@@ -26,7 +26,7 @@ sudo apt-get install ia32-libs -y
 sudo apt-get install guile-3.0 -y
 sudo apt-get install gcc-multilib g++-multilib libc6-i386 grub2-common grub-pc -y
 
-sudo apt-get install xorriso mtools grub-pc-bin qemu-system-i386 bochs bochs-x bochsbios vgabios -y            # grub and it's tools
+sudo apt-get install xorriso mtools grub-pc-bin qemu-system-i386 bochs bochs-x bochsbios vgabios nasm -y            # grub and it's tools
 
 
 echo "[setup-gcc]>>> installed gcc g++ binutils-dev gcc-dev bison flex gawk libgmp3-dev \n libmpfr-dev libmpfr-doc libmpfr4 libmpfr4-dbg mpc texinfo libcloog-isl-dev \nbuild-essential glibc-devel gcc-multilib libc6-i386\n" >> $HOME/progs/DualFuse/enviroment/log.txt

@@ -1,9 +1,9 @@
-#include <kernel/kmalloc.h>
+#include <kmalloc.h>
 
 #include <stdint.h>
 
-#include <kernel/memory.h>
-#include <kernel/utility.h>
+#include <memory.h>
+#include <utility.h>
 
 
 static uint32_t heap_start;

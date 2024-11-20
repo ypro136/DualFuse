@@ -1,10 +1,10 @@
-//#include <paging.h>
-#include <kernel/memory/pmm.h>
-#include <utility/data_structures/bitmap.h>
-//#include <system.h>
-#include <kernel/utility.h>
-#include <utility/hcf.hpp>
-#include <kernel/memory/vmm.h>
+#include <paging.h>
+#include <pmm.h>
+#include <data_structures/bitmap.h>
+#include <system.h>
+#include <utility.h>
+#include <hcf.hpp>
+#include <vmm.h>
 #include <limine.h>
 
 #include <stdio.h>
@@ -62,9 +62,7 @@ void physical_memory_manager_initialize(uint64_t memory_map_Total, uint64_t memo
 }
 
 uint64_t physical_allocate(int pages) {
-  // spinlockAcquire(&LOCK_PMM);
   uint64_t phys = (uint64_t)bitmap_allocate(&physical, pages);
-  // spinlockRelease(&LOCK_PMM);
 
   if (!phys && pages) {
     printf("[physical_memory_manager::alloc] Physical kernel memory ran out!\n");
@@ -74,10 +72,20 @@ uint64_t physical_allocate(int pages) {
   return phys;
 }
 
-void physical_free(uint64_t ptr, int pages) {
-  // maybe verify no double-frees are occuring..
+void physical_free(uint64_t ptr, int pages) 
+{
 
-  // spinlockAcquire(&LOCK_PMM);
   mark_region(&physical, (void *)ptr, pages * BLOCK_SIZE, 0);
-  // spinlockRelease(&LOCK_PMM);
+}
+
+void physical_spinlock_acquire() 
+{
+  physical.lock_id = 1;
+  lock_bitmap(&physical);
+}
+
+void physical_spinlock_release() 
+{
+  physical.lock_id = 0;
+  unlock_bitmap (&physical);
 }

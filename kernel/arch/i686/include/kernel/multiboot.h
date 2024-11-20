@@ -1,3 +1,7 @@
+ #include <types.h>
+
+#ifndef MULTIBOOT_H
+#define MULTIBOOT_H
 
 struct multiboot_aout_symbol_table
 {
@@ -66,3 +70,4 @@ struct multiboot_memory_map_entry
 
 
 
+#endif

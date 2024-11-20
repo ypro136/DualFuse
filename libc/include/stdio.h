@@ -29,7 +29,7 @@ extern "C" {
 #define PRINTF_LENGTH_LONG 3
 #define PRINTF_LENGTH_LONG_LONG 4
 
-
+int sprintf(char *buffer, volatile const char *format_string, ...);
 size_t printf(const char* format_string, ...);
 int putchar(int string_1);
 size_t puts(const char*);

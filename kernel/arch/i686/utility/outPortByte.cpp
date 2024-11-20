@@ -1,6 +1,6 @@
-#include <kernel/utility.h>
+#include <utility.h>
 
-void outPortByte(uint16_t port, uint8_t data)
+void out_port_byte(uint16_t port, uint8_t data)
 {
     asm volatile ("outb %1, %0" : : "dN" (port), "a" (data));
 }

@@ -1,4 +1,4 @@
-#include <kernel/memory.h>
+#include <memory.h>
 
 
 #include <stddef.h>
@@ -7,9 +7,10 @@
 #include <string.h>
 
 
-#include <kernel/bootloader.h>
-#include <kernel/utility.h>
+#include <bootloader.h>
+#include <utility.h>
 
+extern Bootloader bootloader;
 
 static uint32_t page_frame_min;
 static uint32_t page_frame_max;

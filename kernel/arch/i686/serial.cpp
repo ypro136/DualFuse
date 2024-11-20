@@ -1,11 +1,22 @@
 
-#include <kernel/serial.h>
-#include <kernel/serialio.h>
+#include <serial.h>
+#include <serialio.h>
+
+#if defined(__is_i686)
+// 32 bit
+#include <tty.h>
+#endif
+
 
 uint16_t port = 0x3f8;
 
 
-bool serial_initialize(uint16_t _port) {
+bool serial_initialize(uint16_t _port) 
+{
+    #if defined(__is_i686)
+    // 32 bit
+	terminal_initialize();
+    #endif
     port = _port;
 
     outb(port + 1, 0x00);    // Disable all interrupts

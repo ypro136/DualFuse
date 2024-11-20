@@ -40,7 +40,7 @@ static bool print(const char *data, size_t length)
  * @param arguments va_list containing additional arguments to replace format specifiers.
  * @return Number of characters written to the buffer.
  */
-int sprintf(char *buffer, volatile const char *format_string, va_list arguments)
+int vfprintf(char *buffer, volatile const char *format_string, va_list arguments)
 {
 	// arguments should have been initialized by va_start at some point before the call
 
@@ -188,11 +188,24 @@ int sprintf(char *buffer, volatile const char *format_string, va_list arguments)
 	return written;
 }
 
-int snprintf(char* string, const char* format, va_list arguments) 
+int sprintf(char *buffer, volatile const char *format_string, ...)
 {
-    int written = 0;
+    va_list arguments;
+	va_start(arguments, format_string);
 
-    return written;
+	int written = 0;
+
+	written = vfprintf(buffer, format_string, arguments);
+	if (print(buffer, written))
+	{
+		va_end(arguments);
+		return written;
+	}
+	else
+	{
+		va_end(arguments);
+		return -1;
+	}
 }
  
 /**
@@ -214,7 +227,7 @@ size_t printf(const char *format_string, ...)
 
 	int written = 0;
 
-	written = sprintf(string, format_string, arguments);
+	written = vfprintf(string, format_string, arguments);
 	if (print(string, written))
 	{
 		va_end(arguments);

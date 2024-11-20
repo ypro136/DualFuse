@@ -25,6 +25,6 @@ void memory_map_page(uint32_t virtual_address, uint32_t physical_address, uint32
 
 uint32_t physical_memory_manager_alloc_page_frame();
 
-void memory_initialize(uint32_t memory_high, uint32_t physical_allocation_start);
+void memory_initialize();
 
 void invalidate(uint32_t virtual_address);

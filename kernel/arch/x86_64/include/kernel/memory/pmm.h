@@ -1,7 +1,7 @@
 #ifndef PMM_H
 #define PMM_H
 
-#include <utility/data_structures/bitmap.h>
+#include <data_structures/bitmap.h>
 #include <limine.h>
 
 #include <stddef.h>
@@ -13,5 +13,8 @@ void physical_memory_manager_initialize(uint64_t memory_map_Total, uint64_t memo
 
 uint64_t physical_allocate(int pages);
 void   physical_free(uint64_t ptr, int pages);
+
+void physical_spinlock_acquire();
+void physical_spinlock_release();
 
 #endif

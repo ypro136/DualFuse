@@ -1,31 +1,36 @@
+ #include <types.h>
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
-
 #include <string.h>
 
-#include <kernel/bootloader.h>
+#include <bootloader.h>
 
-#include <kernel/serial.h>
-#include <kernel/gdt.h>
-#include <kernel/idt.h>
-#include <kernel/timer.h>
-#include <kernel/keyboard.h>
-#include <kernel/memory.h>
+#include <serial.h>
+#include <gdt.h>
+#include <isr.h>
+#include <timer.h>
+#include <keyboard.h>
+#include <memory.h>
+#include <pci.h>
 
-#if defined(__is_i686)
-// 32 bit
-#include <kernel/tty.h>
-#else
-// 64 bit
-#include <kernel/framebufferutil.h>
-#include <kernel/isr.h>
+#include <hcf.hpp>
 
-// Halt and catch fire function
-#include <utility/hcf.hpp>
+#if defined(__is_x86_64)
+#include <framebufferutil.h>
+#include <console.h>
+#include <paging.h>
+#include <task.h>
+#include <syscalls.h>
+#include <fastSyscall.h>
+#include <system.h>
+
+
+bool systemDiskInit;
+
+
 #endif
+
 
 
 
@@ -37,67 +42,66 @@ extern "C" void kernel_main(void)
 
      _init();
 
-    #if defined(__is_i686)
-    // 32 bit
-	terminal_initialize();
-	printf("terminal and serial out initialized\n");
-    #else
     serial_initialize(0x3f8);
     printf("serial initialized.\n");
-    #endif
+
+	gdt_initialize();
+	printf("gdt initialized\n");
+
+    isr_initialize();
+    printf("idt and isr initialized.\n");
+
+	timer_initialize();
+	printf("timer initialized\n");
 
     initialiseBootloaderParser();
     printf("Bootloader Parser initialized\n");
 
-    #if defined(__is_i686)
-    #else
+    #if defined(__is_x86_64)
+
+    systemDiskInit = false;
+
+    paging_initialize();
+    printf("paging initialized.\n");
+
     framebuffer_initialize();
     printf("limine framebuffer initialized.\n");
+
+    console_initialize();
+    clear_screen();
+
     #endif
 
 	memory_initialize();
 	printf("memory initialized\n");
 
-	gdt_initialize();
-	printf("gdt initialized\n");
+    #if defined(__is_x86_64)
+    
+    pci_initialize();
 
-    #if defined(__is_i686)
-	idt_initialize();
-	printf("idt initialized\n");
-    #else
-    isr_initialize(); // timer gets initialized by the first timer tick.
-    printf("idt and isr initialized.\n");
     #endif
-
-	timer_initialize();
-	printf("timer initialized\n");
 
 	keyboard_initialize();
-	printf("keyboard initialized\n");
+    printf("keyboard initialized\n");
 
-
-    #if defined(__is_i686)
-    #else
-    bool test_state = !false;
-    uint32_t test_color;
-
+    #if defined(__is_x86_64)
     
+    tasks_initialize();
 
 
-    if (test_state)
-    {
-        test_color = 0x40ff40;
-    }
-    else
-    {
-        test_color = 0xff4040;
-    }
+    syscall_inst_initialize();
 
+    syscalls_initialize();
 
-    test_framebuffer(test_color);
+    //syscall test
+    printf("task id is :%d \n",syscallGetPid());
+
     #endif
-	
-    Halt();
 
+	
+    for (;;) {
+
+        
+    }
 }
 

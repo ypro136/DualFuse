@@ -6,6 +6,9 @@ DEFAULT_HOST!=../default-host.sh
 HOST?=DEFAULT_HOST
 HOSTARCH!=../target-triplet-to-arch.sh $(HOST)
 
+ERROR_OUT_FILE?=errorout.log
+ERROR_OUT_TEXT?="comand out \\/ \\/ \\/ ============= command /\\ /\\ /\\"
+
 # This is the name that our final executable will have.
 # Change as needed.
 override OUTPUT := DualFuse
@@ -68,12 +71,20 @@ override CFLAGS:=$(CFLAGS) -Wshadow -Wpointer-arith -Wcast-align \
             -Wredundant-decls -Winline -Wno-long-long \
             -Wconversion
 
-CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -Iinclude
+CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -D__is_x86_64 -Iinclude
 LIBS:=$(LIBS) -nostdlib -lgcc \
 
 
 ARCHDIR=arch/$(ARCH)
-ARCH_LIBS_DIR=$(ARCHDIR)/include
+
+ARCH_LIBS_DIR=$(ARCHDIR)/include/*
+
+UTILITY_LIBS_DIR=$(ARCH_LIBS_DIR)/utility
+KERNEL_LIBS_DIR=$(ARCH_LIBS_DIR)/kernel
+MEMORY_LIBS_DIR=$(KERNEL_LIBS_DIR)/memory
+
+
+
 
 include $(ARCHDIR)/make.config
 
@@ -83,7 +94,7 @@ LDFLAGS:=$(LDFLAGS) $(KERNEL_ARCH_LDFLAGS)
 LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
 KERNEL_LIBS:=$(LIBS)
 
-# Use "find" to glob all *.c, *.S, and *.asm files in the tree and obtain the
+# Use "find" to glob all *.cpp *.c, *.S, and *.asm files in the tree and obtain the
 # object and header dependency file names.
 override KERNELFILES := $(shell cd kernel && find -L * -type f -name '*.cpp' | LC_ALL=C sort)
 override CPPFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.cpp' | LC_ALL=C sort)
@@ -129,8 +140,8 @@ all: bin/$(OUTPUT).kernel
 
 bin/$(OUTPUT).kernel: $(OBJS) GNUmakefile
 	mkdir -p "$$(dirname $@)"
-	cd $(SYSROOT)/usr/lib/ && ls
-	$(CPP) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(LDFLAGS) $(KERNEL_LIBS) $(LINK_LIST)
+	@echo "$(CPP) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(LDFLAGS) $(KERNEL_LIBS) $(LINK_LIST) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
+	@$(CPP) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(LDFLAGS) $(KERNEL_LIBS) $(LINK_LIST) 2>> $(ERROR_OUT_FILE)
 	@echo "\n"
 
 obj/crtbegin.o:
@@ -149,36 +160,42 @@ obj/crtend.o:
 # Compilation rules for *.c files.
 obj/%.c.o: $(ARCHDIR)/%.c GNUmakefile
 	mkdir -p "$$(dirname $@)"
+	@echo "$(CC) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
 	$(CC) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
 	@echo "\n"
 
 # Compilation rules for kernel cpp files.
 obj/%.cpp.o: kernel/%.cpp
 	mkdir -p "$$(dirname $@)"
+	@echo "$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
 	$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
 	@echo "\n"
 
 # Compilation rules for *.cpp files.
 obj/%.cpp.o: $(ARCHDIR)/%.cpp GNUmakefile
 	mkdir -p "$$(dirname $@)"
+	@echo "$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
 	$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
 	@echo "\n"
 
 # Compilation rules for *.S files.
 obj/%.S.o: $(ARCHDIR)/%.S GNUmakefile
 	mkdir -p "$$(dirname $@)"
+	@echo "$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
 	$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
 	@echo "\n"
 
 # Compilation rules for *.asm (nasm) files.
 obj/%.asm.o: $(ARCHDIR)/%.asm GNUmakefile
 	mkdir -p "$$(dirname $@)"
+	@echo "nasm -f $(NASM_ARCH) $< -o $@ \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
 	nasm -f $(NASM_ARCH) $< -o $@
 	@echo "\n"
 
 clean:
 	rm -f bin/$(OUTPUT).kernel
 	rm -rf bin obj
+	rm -f errorout.log
 
 
 install: install-headers install-kernel
@@ -186,6 +203,17 @@ install: install-headers install-kernel
 install-headers:
 	mkdir -p $(DESTDIR)$(INCLUDEDIR)
 	cp -R --preserve=timestamps $(ARCH_LIBS_DIR)/. $(DESTDIR)$(INCLUDEDIR)/.
+	cp -R --preserve=timestamps $(ARCH_LIBS_DIR) $(DESTDIR)$(INCLUDEDIR)/.
+	cp -R --preserve=timestamps $(ARCH_LIBS_DIR)/*/. $(DESTDIR)$(INCLUDEDIR)/.
+	rm -r $(DESTDIR)$(INCLUDEDIR)/kernel
+	rm -r $(DESTDIR)$(INCLUDEDIR)/utility
+	rm -r $(DESTDIR)$(INCLUDEDIR)/boot
+	rm -r $(DESTDIR)$(INCLUDEDIR)/cpu
+	rm -r $(DESTDIR)$(INCLUDEDIR)/disk
+	rm -r $(DESTDIR)$(INCLUDEDIR)/memory
+	rm -r $(DESTDIR)$(INCLUDEDIR)/multitasking
+	rm -r $(DESTDIR)$(INCLUDEDIR)/drivers
+
 
 install-kernel: all
 	mkdir -p $(DESTDIR)$(BOOTDIR)

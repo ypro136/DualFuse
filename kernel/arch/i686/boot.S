@@ -55,18 +55,15 @@ higher_half:
     mov esp, stack_top
 
 
-    mov [multiboot_magic], eax
-    mov [multiboot_pointer], ebx
-
     push ebx
     push eax
 
     xor ebp, ebp
 
-    extern kernel_main
+    extern early_kernel
     
     ; Transfer control to the main kernel.
-    call kernel_main
+    call early_kernel
 
 ; Hang if kernel_main unexpectedly returns.
 halt:
@@ -75,14 +72,6 @@ halt:
 
 section .data
 align 4096
-
-global multiboot_magic
-multiboot_magic:
-    dd 0
-global multiboot_pointer
-multiboot_pointer:
-    dd 0
-
 global initial_page_directory
 initial_page_directory:
     dd 10000011b

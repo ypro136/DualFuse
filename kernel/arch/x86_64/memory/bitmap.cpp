@@ -1,10 +1,39 @@
-#include <utility/data_structures/bitmap.h>
+#include <data_structures/bitmap.h>
 
 #include <stdio.h>
-#include <kernel/utility.h>
+#include <utility.h>
 
 // Bitmap-based memory region manager
 // 10000000 -> first block is allocated, other are free :")
+
+
+/* spinlock utilities */
+
+
+void spinlock(Bitmap *bitmap)
+{
+  bool notified_system = false;
+  while (bitmap->lock)
+  {
+    if (!notified_system)
+    {
+      printf("[bitmap] bitmap locked by %d! inter spinlock.\n", bitmap->lock_id);
+      notified_system = true;
+    }
+  }
+  // printf("[bitmap] bitmap unlocked! exit out of spinlock.\n");
+}
+
+void lock_bitmap (Bitmap *bitmap)
+{
+  spinlock(bitmap);
+  bitmap->lock = IS_LOCKED;
+}
+
+void unlock_bitmap (Bitmap *bitmap)
+{
+  bitmap->lock = IS_NOT_LOCKED;
+}
 
 /* Conversion utilities */
 
@@ -31,13 +60,19 @@ size_t bitmap_get_size(size_t totalSize) {
   return BitmapSizeInBytes;
 }
 
-int BitmapGet(Bitmap *bitmap, size_t block) {
+int bitmap_get(Bitmap *bitmap, size_t block) 
+{
+  //spinlock(bitmap);
+
   size_t addr = block / BLOCKS_PER_BYTE;
   size_t offset = block % BLOCKS_PER_BYTE;
   return (bitmap->Bitmap[addr] & (1 << offset)) != 0;
 }
 
-void BitmapSet(Bitmap *bitmap, size_t block, bool value) {
+void bitmap_set(Bitmap *bitmap, size_t block, bool value) 
+{
+  //spinlock(bitmap);
+
   size_t addr = block / BLOCKS_PER_BYTE;
   size_t offset = block % BLOCKS_PER_BYTE;
   if (value)
@@ -62,24 +97,29 @@ void bitmap_dump_blocks(Bitmap *bitmap) {
   BITMAP_DEBUG_F("=== BLOCK DUMPING %d (512-limited) ===\n",
                  bitmap->BitmapSizeInBlocks);
   for (int i = 0; i < 512; i++) {
-    BITMAP_DEBUG_F("%d ", BitmapGet(bitmap, i));
+    BITMAP_DEBUG_F("%d ", bitmap_get(bitmap, i));
   }
   BITMAP_DEBUG_F("\n");
 }
 
 /* Marking large chunks of memory */
-void mark_blocks(Bitmap *bitmap, size_t start, size_t size, bool val) {
+void mark_blocks(Bitmap *bitmap, size_t start, size_t size, bool val) 
+{
+  //spinlock(bitmap);
+
   // optimization(1): bitmap.h
   if (!val && start < bitmap->lastDeepFragmented)
     bitmap->lastDeepFragmented = start;
 
   for (size_t i = start; i < start + size; i++) {
-    BitmapSet(bitmap, i, val);
+    bitmap_set(bitmap, i, val);
   }
 }
 
 void mark_region(Bitmap *bitmap, void *basePtr, size_t sizeBytes,int isUsed) 
 {
+  //spinlock(bitmap);
+
   size_t base;
   size_t size;
 
@@ -94,12 +134,15 @@ void mark_region(Bitmap *bitmap, void *basePtr, size_t sizeBytes,int isUsed)
   mark_blocks(bitmap, base, size, isUsed);
 }
 
-size_t find_free_region(Bitmap *bitmap, size_t blocks) {
+size_t find_free_region(Bitmap *bitmap, size_t blocks) 
+{
+  //spinlock(bitmap);
+
   size_t currentRegionStart = bitmap->lastDeepFragmented;
   size_t currentRegionSize = 0;
 
   for (size_t i = currentRegionStart; i < bitmap->BitmapSizeInBlocks; i++) {
-    if (BitmapGet(bitmap, i)) {
+    if (bitmap_get(bitmap, i)) {
       currentRegionSize = 0;
       currentRegionStart = i + 1;
     } else {
@@ -117,7 +160,10 @@ size_t find_free_region(Bitmap *bitmap, size_t blocks) {
   return INVALID_BLOCK;
 }
 
-void *bitmap_allocate(Bitmap *bitmap, size_t blocks) {
+void *bitmap_allocate(Bitmap *bitmap, size_t blocks) 
+{
+  //spinlock(bitmap);
+
   if (blocks == 0)
     return 0;
 
@@ -129,23 +175,32 @@ void *bitmap_allocate(Bitmap *bitmap, size_t blocks) {
   return block_to_pointer(bitmap, pickedRegion);
 }
 
-void bitmap_free(Bitmap *bitmap, void *base, size_t blocks) {
+void bitmap_free(Bitmap *bitmap, void *base, size_t blocks) 
+{
+  //spinlock(bitmap);
+
   mark_region(bitmap, base, BLOCK_SIZE * blocks, 0);
 }
 
 /* Pageframes (1 block) */
 
-size_t bitmap_allocate_pageframe(Bitmap *bitmap) {
+size_t bitmap_allocate_pageframe(Bitmap *bitmap) 
+{
+  //spinlock(bitmap);
+
   size_t pickedRegion = find_free_region(bitmap, 1);
   // if (pickedRegion == INVALID_BLOCK) {
   //   printf("no!");
-  //   panic();
+  //   Halt();
   // }
   mark_blocks(bitmap, pickedRegion, 1, 1);
 
   return (bitmap->mem_start + (pickedRegion * BLOCK_SIZE));
 }
 
-void bitmap_free_pageframe(Bitmap *bitmap, void *addr) {
+void bitmap_free_pageframe(Bitmap *bitmap, void *addr) 
+{
+  //spinlock(bitmap);
+
   mark_region(bitmap, addr, BLOCK_SIZE * 1, 0);
 }

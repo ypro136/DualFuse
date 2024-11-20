@@ -1,9 +1,9 @@
-#include <kernel/keyboard.h>
+#include <keyboard.h>
 
-#include <kernel/utility.h>
-#include <kernel/tty.h>
+#include <utility.h>
+#include <tty.h>
 #include "vga.h"
-#include <kernel/idt.h>
+#include <isr.h>
 
 #include <stdint.h>
 #include <stdio.h>
@@ -84,8 +84,8 @@ void keyboard_initialize()
 
 void keyboard_handler(struct interrupt_registers *registers)
 {
-    char scan_code = inPortByte(0x60) & 0x7F; // key pressed
-    char press = inPortByte(0x60) & 0x80; // key down or up
+    char scan_code = in_port_byte(0x60) & 0x7F; // key pressed
+    char press = in_port_byte(0x60) & 0x80; // key down or up
 
     switch(scan_code){
         case 1:

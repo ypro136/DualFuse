@@ -5,8 +5,8 @@ set -e
 #bochs -f bochs
 
 # for qemu
-echo "qemu-system-$(./target-triplet-to-arch.sh ${ARCH}) -cdrom DualFuse.iso -serial file:serial.log" 
-qemu-system-$(./target-triplet-to-arch.sh ${ARCH}) -cdrom DualFuse.iso -serial file:serial.log -s -S &
+echo "qemu-system-$(./target-triplet-to-arch.sh ${ARCH}) -cdrom DualFuse.iso -serial file:serial.log --drive id=disk,file=disk.img,if=none -device ahci,id=ahci -device ide-hd,drive=disk,bus=ahci.0 -m 1g" 
+qemu-system-$(./target-triplet-to-arch.sh ${ARCH}) -cdrom DualFuse.iso -serial file:serial.log -drive id=disk,file=disk.img,if=none -device ahci,id=ahci -device ide-hd,drive=disk,bus=ahci.0 -m 1g -s -S &
 #sleep 0.5
 #gdb
 

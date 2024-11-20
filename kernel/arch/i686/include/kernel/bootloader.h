@@ -1,8 +1,14 @@
-#include <kernel/multiboot.h>
+#include <multiboot.h>
 
 #ifndef BOOTLOADER_H
 #define BOOTLOADER_H
 
+__attribute__((used))
+static volatile uint32_t multiboot_magic;
+__attribute__((used))
+static volatile struct multiboot_information* multiboot_pointer;
+__attribute__((used))
+static volatile struct multiboot_information multiboot_info;
 
 typedef struct Bootloader {
 uint32_t multiboot_magic;

@@ -16,6 +16,6 @@ struct interrupt_registers
 };
 
 
-void outPortByte(uint16_t port, uint8_t data);
+void out_port_byte(uint16_t port, uint8_t data);
 
-char inPortByte(uint16_t port);
+char in_port_byte(uint16_t port);

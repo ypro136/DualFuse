@@ -7,7 +7,24 @@
 
 #include <string.h>
 
+#ifndef UTILITY_H
+#define UTILITY_H
+
 #define CEILING_DIVISION(a,b) (((a + b) - 1) / b)
+
+#define COMBINE_64(higher, lower) (((uint64_t)(higher) << 32) | (uint64_t)(lower))
+#define SPLIT_64_HIGHER(value) ((value) >> 32)
+#define SPLIT_64_LOWER(value) ((value) & 0xFFFFFFFF)
+
+#define SPLIT_32_HIGHER(value) ((value) >> 16)
+#define SPLIT_32_LOWER(value) ((value) & 0xFFFF)
+
+
+extern bool tasksInitiated;
+
+extern bool systemDiskInit;
+
+
 
 
 struct interrupt_registers
@@ -20,6 +37,16 @@ struct interrupt_registers
 };
 
 
-void outPortByte(uint16_t port, uint8_t data);
 
-char inPortByte(uint16_t port);
+void out_port_byte(uint16_t port, uint8_t data);
+
+char in_port_byte(uint16_t port);
+
+uint32_t inportlong(uint16_t portid);
+void     out_port_long(uint16_t portid, uint32_t value);
+
+void hand_control();
+
+int rand(void);
+
+#endif

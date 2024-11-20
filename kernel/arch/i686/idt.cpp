@@ -1,8 +1,8 @@
 #include "stdint.h"
-#include "kernel/tty.h"
-#include "kernel/serial.h"
-#include "kernel/idt.h"
-#include "kernel/utility.h"
+#include "tty.h"
+#include "serial.h"
+#include "isr.h"
+#include "utility.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -16,27 +16,27 @@ struct idt_pointer idt_pointer;
 extern "C" void setIDT(uint32_t);
 
 
-void idt_initialize()
+void isr_initialize()
 {
     idt_pointer.limit = sizeof(struct idt_entry) * 256 - 1;
     idt_pointer.base = (uint32_t) &idt_entries;
 
     memset(&idt_entries, 0, sizeof(struct idt_entry) * 256);
 
-    outPortByte(0x20, 0x11);
-    outPortByte(0xA0, 0x11);
+    out_port_byte(0x20, 0x11);
+    out_port_byte(0xA0, 0x11);
 
-    outPortByte(0x21, 0x20);
-    outPortByte(0xA1, 0x28);
+    out_port_byte(0x21, 0x20);
+    out_port_byte(0xA1, 0x28);
 
-    outPortByte(0x21, 0x04);
-    outPortByte(0xA1, 0x02);
+    out_port_byte(0x21, 0x04);
+    out_port_byte(0xA1, 0x02);
 
-    outPortByte(0x21, 0x01);
-    outPortByte(0xA1, 0x01);
+    out_port_byte(0x21, 0x01);
+    out_port_byte(0xA1, 0x01);
 
-    outPortByte(0x21, 0x0);
-    outPortByte(0xA1, 0x0);
+    out_port_byte(0x21, 0x0);
+    out_port_byte(0xA1, 0x0);
 
     encode_idt(0, (uint32_t)isr0, 0x08, 0x8E);
     encode_idt(1, (uint32_t)isr1, 0x08, 0x8E);
@@ -184,10 +184,10 @@ extern "C" void irq_handler(struct interrupt_registers* registers)
 
     if(registers->int_number >= 40)
     {
-        outPortByte(0xA0, 0x20);
+        out_port_byte(0xA0, 0x20);
     }
 
-    outPortByte(0x20, 0x20);
+    out_port_byte(0x20, 0x20);
 }
 
 

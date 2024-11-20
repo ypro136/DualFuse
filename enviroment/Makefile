@@ -69,7 +69,7 @@ bootstrap-test:
 
 
 .PHONY: binutils
-binutils: #binutils_src
+binutils: binutils_src
 	mkdir -m=rwx -p $(BINUTILS_BUILD)
 	-cp binutils_src $(CROSS) -r -n
 
@@ -80,7 +80,7 @@ binutils: #binutils_src
 	@echo ">>> binutils directores set up\n" >> log.txt
 
 .PHONY: gcc
-gcc: #gcc_src
+gcc: gcc_src
 	
 	mkdir -m=rwx -p $(GCC_BUILD)
 	-cp gcc_src $(CROSS) -r -n

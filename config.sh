@@ -7,7 +7,7 @@ export MAKE=${MAKE:-make}
 export HOST=${HOST:-$(./default-host.sh)}
 
 export ARCH="x86_64"
-#export ARCH=i686
+#export ARCH="i686"
  
 #export AR=${HOST}-ar
 #export AS=${HOST}-as

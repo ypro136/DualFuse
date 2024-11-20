@@ -1,6 +1,6 @@
-#include <utility/hcf.hpp>
+#include <hcf.hpp>
 
-#include <kernel/bootloader.h>
+#include <bootloader.h>
 #include <limine.h>
 
 #include <stdio.h>

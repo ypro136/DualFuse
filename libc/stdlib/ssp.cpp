@@ -15,6 +15,6 @@ void __stack_chk_fail(void)
 #if __STDC_HOSTED__
 	abort();
 #elif __is_myos_kernel
-	panic("Stack smashing detected");
+	Halt("Stack smashing detected");
 #endif
 }

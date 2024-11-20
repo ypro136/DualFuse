@@ -5,5 +5,5 @@ set -e
 mkdir -p "$SYSROOT"
  
 for PROJECT in $SYSTEM_HEADER_PROJECTS; do
-  (cd $PROJECT && DESTDIR="$SYSROOT" $MAKE -f GNUmakefile install-headers)
+  (cd $PROJECT && DESTDIR="$SYSROOT" $MAKE -f GNUmakefile install-headers -j6)
 done
