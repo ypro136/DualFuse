@@ -1,0 +1,15 @@
+#!/bin/sh
+set -x # show cmds
+set -e # fail globally
+
+# make .deff files using diff -u -r -N gcc-13.2.0 gcc_src > patches/13.2.0/gcc.diff
+# and                    diff -u -r -N binutils-2.41 binutils_src > patches/2.41/binutils.diff
+
+# https://wiki.osdev.org/OS_Specific_Toolchain    <<<<<<<<<<<<<<<<<<<<<<<<<
+
+cd binutils_src
+patch -p1 <"$1/$BINUTILS_VERSION/binutils.diff"
+cd ld/
+automake -v >> $ENVIROMENT_DIR/patch_binutils.log
+cd ..
+cd ..

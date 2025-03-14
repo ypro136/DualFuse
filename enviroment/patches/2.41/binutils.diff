@@ -1,0 +1,96 @@
+diff -u -r -N binutils-2.41/bfd/config.bfd binutils_src/bfd/config.bfd
+--- binutils-2.41/bfd/config.bfd	2023-07-03 02:00:00.000000000 +0300
++++ binutils_src/bfd/config.bfd	2025-03-01 21:33:40.722179457 +0200
+@@ -620,6 +620,18 @@
+     targ_defvec=i386_coff_go32_vec
+     targ_selvecs="i386_coff_go32stubbed_vec i386_aout_vec"
+     ;;
++  i[3-7]86-*-dualfuse*)
++      targ_defvec=i386_elf32_vec
++      targ_selvecs=
++      targ64_selvecs=x86_64_elf64_vec
++      ;;
++  #ifdef BFD64
++    x86_64-*-dualfuse*)
++      targ_defvec=x86_64_elf64_vec
++      targ_selvecs=i386_elf32_vec
++      want64=true
++      ;;
++  #endif
+   i[3-7]86-*-darwin* | i[3-7]86-*-macos10* | i[3-7]86-*-rhapsody*)
+     targ_defvec=i386_mach_o_vec
+     targ_selvecs="mach_o_le_vec mach_o_be_vec mach_o_fat_vec pef_vec pef_xlib_vec sym_vec"
+diff -u -r -N binutils-2.41/config.sub binutils_src/config.sub
+--- binutils-2.41/config.sub	2023-07-03 02:00:00.000000000 +0300
++++ binutils_src/config.sub	2025-03-01 21:31:21.056652615 +0200
+@@ -1758,7 +1758,7 @@
+ 	     | onefs* | tirtos* | phoenix* | fuchsia* | redox* | bme* \
+ 	     | midnightbsd* | amdhsa* | unleashed* | emscripten* | wasi* \
+ 	     | nsk* | powerunix* | genode* | zvmoe* | qnx* | emx* | zephyr* \
+-	     | fiwix* | mlibc* )
++	     | fiwix* | mlibc* | dualfuse* )
+ 		;;
+ 	# This one is extra strict with allowed versions
+ 	sco3.2v2 | sco3.2v[4-9]* | sco5v6*)
+diff -u -r -N binutils-2.41/gas/configure.tgt binutils_src/gas/configure.tgt
+--- binutils-2.41/gas/configure.tgt	2023-07-03 02:00:00.000000000 +0300
++++ binutils_src/gas/configure.tgt	2025-03-01 21:38:43.967926254 +0200
+@@ -223,6 +223,7 @@
+   h8300-*-elf)				fmt=elf ;;
+   h8300-*-linux*)			fmt=elf em=linux ;;
+ 
++  i386-*-dualfuse*)    fmt=elf ;;
+   i386-*-beospe*)			fmt=coff em=pe ;;
+   i386-*-beos*)				fmt=elf ;;
+   i386-*-elfiamcu)			fmt=elf arch=iamcu ;;
+diff -u -r -N binutils-2.41/ld/configure.tgt binutils_src/ld/configure.tgt
+--- binutils-2.41/ld/configure.tgt	2023-07-03 02:00:00.000000000 +0300
++++ binutils_src/ld/configure.tgt	2025-03-01 21:38:43.104916958 +0200
+@@ -382,6 +382,15 @@
+ 			targ_extra_emuls="elf_i386_ldso elf_i386 elf_iamcu elf_x86_64_sol2 elf_x86_64"
+ 			targ_extra_libpath=$targ_extra_emuls
+ 			;;
++i[3-7]86-*-dualfuse*)
++			targ_emul=elf_i386_dualfuse
++			targ_extra_emuls=elf_i386
++			targ64_extra_emuls="elf_x86_64_dualfuse elf_x86_64"
++			;;
++x86_64-*-dualfuse*)
++			targ_emul=elf_x86_64_dualfuse
++			targ_extra_emuls="elf_i386_dualfuse elf_x86_64 elf_i386"
++			;;
+ i[3-7]86-*-solaris*)	targ_emul=elf_i386_ldso
+ 			targ_extra_emuls="elf_i386"
+ 			targ_extra_libpath=$targ_extra_emuls
+diff -u -r -N binutils-2.41/ld/emulparams/elf_i386_dualfuse.sh binutils_src/ld/emulparams/elf_i386_dualfuse.sh
+--- binutils-2.41/ld/emulparams/elf_i386_dualfuse.sh	1970-01-01 02:00:00.000000000 +0200
++++ binutils_src/ld/emulparams/elf_i386_dualfuse.sh	2025-03-01 21:38:41.193896308 +0200
+@@ -0,0 +1,2 @@
++source_sh ${srcdir}/emulparams/elf_i386.sh
++TEXT_START_ADDR=0x08000000
+\ No newline at end of file
+diff -u -r -N binutils-2.41/ld/emulparams/elf_x86_64_dualfuse.sh binutils_src/ld/emulparams/elf_x86_64_dualfuse.sh
+--- binutils-2.41/ld/emulparams/elf_x86_64_dualfuse.sh	1970-01-01 02:00:00.000000000 +0200
++++ binutils_src/ld/emulparams/elf_x86_64_dualfuse.sh	2025-03-01 21:38:42.064905733 +0200
+@@ -0,0 +1 @@
++source_sh ${srcdir}/emulparams/elf_x86_64.sh
+\ No newline at end of file
+diff -u -r -N binutils-2.41/ld/Makefile.am binutils_src/ld/Makefile.am
+--- binutils-2.41/ld/Makefile.am	2023-07-03 02:00:00.000000000 +0300
++++ binutils_src/ld/Makefile.am	2025-03-01 21:38:39.414876996 +0200
+@@ -275,6 +275,7 @@
+ 	eelf32xtensa.c \
+ 	eelf32z80.c \
+ 	eelf_i386.c \
++	eelf_i386_dualfuse.c \
+ 	eelf_i386_be.c \
+ 	eelf_i386_fbsd.c \
+ 	eelf_i386_haiku.c \
+@@ -456,6 +457,7 @@
+ 	eelf64tilegx_be.c \
+ 	eelf_mipsel_haiku.c \
+ 	eelf_x86_64.c \
++	eelf_x86_64_dualfuse.c \
+ 	eelf_x86_64_cloudabi.c \
+ 	eelf_x86_64_fbsd.c \
+ 	eelf_x86_64_haiku.c \

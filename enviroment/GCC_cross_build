@@ -1,75 +1,164 @@
-#!/bin/sh
+#!/usr/bin/env bash
+set -x # show cmds
+set -e # fail globally
 
-# use the newly built system compiler, built by build-gcc. 
-export PATH="$HOME/src/cross/SYS_compiler/bin:$PATH"
+SCRIPT=$(realpath "$0")
+SCRIPTPATH=$(dirname "$SCRIPT")
 
 # make a working directory
-cd $HOME/src/cross/$TARGET
+cd $CROSS
+mkdir -p $LOG_DIR/binutils
 
-# set up exports
-export PREFIX="$HOME/src/cross/$TARGET/CROSS_compiler"
-export PATH="$PREFIX/bin:$PATH"
-
-################################
-echo "[GCC_cross_build]>>> exported PREFIX PATH and TARGET\n" >> $2
-################################
-
-mkdir -m=rwx -p logs
+"$MUSL_DIR/build_musl.sh" --noreplace
 
 # install binutils
-cd binutils-build
-make distclean
-../binutils_src/configure --target=$TARGET --prefix="$PREFIX" --with-sysroot --disable-nls --disable-werror
+cd binutils_src
+mkdir -p build
+cd build
+date +%T >> $2
+echo "[GCC_cross_build : binutils]\n" >> $2
+../configure --target="$TARGET" --prefix="$PREFIX" --with-sysroot="$SYSROOT" -with-gnu-as --with-gnu-ld --with-gnu-ar --disable-nls --disable-werror -v | tee $LOG_DIR/binutils/configure.log
+make $1 | tee $LOG_DIR/binutils/make.log
+echo "find me: binutils make Exit code: $?"
 
-################################
-echo "[GCC_cross_build : binutils]>>> make $1\n" >> $2
-make $1 | tee ../logs/cross_bin_all.log
-################################
-echo "[GCC_cross_build : binutils]>>> make install $1\n" >> $2
-make install $1 | tee ../logs/cross_bin_install.log
-################################
-cd ..
+make all-ld $1 | tee $LOG_DIR/binutils/make_all-ld.log
+echo "find me: binutils make all-ld Exit code: $?"
 
+make install | tee $LOG_DIR/binutils/make-install.log
+echo "find me: binutils make install Exit code: $?"
 
+make install-ld | tee $LOG_DIR/binutils/make-install-ld.log
+echo "find me: binutils make install-ld Exit code: $?"
+
+make check | tee $LOG_DIR/binutils/make-check.log
+echo "find me: binutils make check Exit code: $?"
+
+cd ../../
+# also read the documentation for thes options and make targets.
+# https://sourceware.org/binutils/binutils-porting-guide.txt   <<<<<<<<<<<<<<<<<<<<<<<<<
+# https://sourceware.org/binutils/wiki/HomePage
+# https://sourceware.org/binutils/docs/
+
+# --with-sysroot="$SYSROOT" 
+# --enable-version-specific-runtime-libs 
+# --with-gnu-as --with-gnu-ld --with-gnu-ar 
+# --disable-nls 
+# --disable-werror 
+# --enable-shared
+# --disable-shared
+# --with-build-sysroot=$SYSROOT --with-sysroot=/
+# --disable-lto
+# --disable-multilib
+# --with-pic
+# --with-mmap
+
+# make 
+# make all-binutils 
+# make all-gas 
+# make all-ld 
+# make install-strip-binutils 
+# make install-strip-gas 
+# make install-strip-ld 
+# make install 
+
+cd $HOME/src
+chmod -R 777 cross
+cd $CROSS
+mkdir -p $LOG_DIR/gcc
 cd gcc_src
-bash ./contrib/download_prerequisites
+
+# patch scripts do this step
+# date +%T >> $2
+# echo "[GCC_cross_build : download_prerequisites]\n" >> $2
+# ./contrib/download_prerequisites
+
+# if linking binutils src in gcc dir in required.
+# for file in ../binutils_src/build/* ; do ln -s "$file" || true ; done
+# for file in ../binutils_src/* ; do ln -s "$file" || true ; done
+
+if ! test -f "$PREFIX/bin/${TARGET}-ar"; then
+    echo "mising binutils binaries!!!"
+    exit 1
+fi
+
+if ! test -f "$PREFIX/bin/${TARGET}-ld"; then
+    echo "mising binutils binaries!!!"
+    exit 1
+fi
+
+
+# install gcc
+mkdir -p build
+cd build
+date +%T >> $2
+echo "[GCC_cross_build : gcc]\n" >> $2
+make distclean 2> /dev/null || true
+../configure --target="$TARGET" --prefix="$PREFIX" --enable-languages=c,c++ --with-sysroot="$SYSROOT" --disable-bootstrap --disable-nls --disable-shared --without-headers | tee $LOG_DIR/gcc/configure.log
+make all-gcc $1 VERBOSE=1 | tee $LOG_DIR/gcc/all-gcc.log
+echo "find me: gcc make all-gcc Exit code: $?"
+
+make all-target-libgcc $1 CFLAGS_FOR_TARGET='-g -O2 -mcmodel=large' | tee $LOG_DIR/gcc/all-libgcc.log
+echo "find me: gcc make all-target-libgcc Exit code: $?"
+
+make install-gcc VERBOSE=1 | tee $LOG_DIR/gcc/install-gcc.log
+echo "find me: gcc make install-gcc Exit code: $?"
+
+make install-target-libgcc | tee $LOG_DIR/gcc/install-libgcc.log
+echo "find me: gcc make install-target-libgcc Exit code: $?"
+#make install-all | tee $LOG_DIR/install-all.log
+
+# also read the documentation for thes options and make targets.
+# generic installation procedure for GCC as well as detailing some target specific installation instructions.     <<<<<<<<<<<<<<<<<<<<<<<<<
+# https://gcc.gnu.org/install/
+# https://wiki.osdev.org/Libgcc
+# https://wiki.osdev.org/Building_libgcc_for_mcmodel%3Dkernel
+# https://wiki.osdev.org/Libgcc_without_red_zone
+
+# --with-sysroot="$SYSROOT" 
+# --enable-version-specific-runtime-libs 
+# --with-build-time-tools="$PREFIX/bin" 
+# --disable-nls 
+# --enable-bootstrap 
+# --disable-bootstrap
+# --disable-shared 
+# --enable-shared
+# --enable-host-pie --enable-default-pie --with-pic
+# --disable-multilib 
+# --with-build-sysroot="$SYSROOT"  --with-sysroot=/
+# --disable-libsanitizer (only applies for building a hosted compiler)
+
+# make all-gcc -j
+# make all-target-libgcc -j
+# make install-gcc -j
+# make install-target-libgcc -j # also (sed -i 's/PICFLAG/DISABLED_PICFLAG/g' $TARGET/libgcc/Makefile)
+# make check-gcc -j (takes time. use time log $2 to log the time)
+# make check -j (takes time. use time log $2 to log the time)
+# make all -j
+
+cd $HOME/src
+chmod -R 777 cross
+cd $CROSS/gcc_src
+
+
+cd build
+# Building musl alone is essential before libstdc++ is built & installed
+date +%T >> $2
+echo "[GCC_cross_build : build_musl] --noreplace\n" >> $2
+"$MUSL_DIR/build_musl.sh" --noreplace
+
+cd $CROSS/gcc_src
+cd build
+# The GNU C++ Library Manual (libstdc++-v3).    <<<<<<<<<<<<<<<<<<<<<<<<<
+# https://gcc.gnu.org/onlinedocs/libstdc++/manual/
+make all-target-libstdc++-v3 $1 | tee $LOG_DIR/all-target-libstdc++.log
+echo "find me: gcc make all-target-libstdc++-v3 Exit code: $?"
+
+make install-target-libstdc++-v3 | tee $LOG_DIR/install-target-libstdc++-v3.log
+echo "find me: gcc make install-target-libstdc++-v3 Exit code: $?"
+
 
 cd $HOME/src
 chmod -R 777 cross
 
-cd $HOME/src/cross/$TARGET
-
-# install gcc cross compiler
-cd GCC_cross
-ln -s ../binutils-build/*
-ln -s ../CROSS_compiler/*
-ln -s ../binutils_src/*
-make distclean
-../gcc_src/configure --target=$TARGET --prefix="$PREFIX" --disable-nls --enable-languages=c,c++ --without-headers --enable-bootstrap --disable-libsanitizer # --disable-libsanitizer only applies for building a hosted compiler. 
-################################
-echo "[GCC_cross_build : gcc]>>> make all $1\n" >> $2
-make all-gcc $1 | tee ../logs/cross_gcc_all.log
-#make all $1
-################################
-echo "[GCC_cross_build : gcc]>>> make check $1\n" >> $2
-make check $1 | tee ../logs/cross_gcc_check.log
-################################
-echo "[GCC_cross_build : gcc]>>> make all-target-libgcc $1\n" >> $2
-make all-target-libgcc CFLAGS_FOR_TARGET='-mcmodel=kernel -mno-red-zone' $1  | tee ../logs/cross_libgcc_all.log || true
-sed -i 's/PICFLAG/DISABLED_PICFLAG/g' $TARGET/libgcc/Makefile
-make all-target-libgcc CFLAGS_FOR_TARGET='-mcmodel=kernel -mno-red-zone' $1  | tee ../logs/cross_libgcc_all.log # or add -g -O2 
-################################
-echo "[GCC_cross_build : gcc]>>> make install-gcc $1\n" >> $2
-make install-gcc $1 | tee ../logs/cross_gcc_install.log
-################################
-echo "[GCC_cross_build : gcc]>>> make install-target-libgcc$1\n" >> $2
-make install-target-libgcc $1 | tee ../logs/cross_libgcc_install.log
-################################
-
-cd $HOME/src
-chmod -R 777 cross
-
-################################
 date +%T >> $2
 echo "[GCC_cross_build : exit]\n" >> $2
-################################

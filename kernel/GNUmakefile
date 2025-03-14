@@ -39,41 +39,43 @@ INCLUDEDIR?=$(PREFIX)/include
 override CFLAGS:=$(CFLAGS) \
     -Wall \
     -Wextra \
+	-mno-red-zone \
     -ffreestanding \
+	-fcommon \
+	-nostartfiles \
+	-nostdlib \
     -mno-mmx \
     -mno-sse \
     -mno-sse2 \
-    -mno-red-zone \
-    -mcmodel=kernel \
+	-fno-lto \
 	-Wno-unused-parameter \
 	-fpermissive \
 	-z max-page-size=0x1000 \
 	-fno-exceptions \
 	-fno-rtti \
     -fno-lto \
-    -std=c++11 \
-    -fno-PIC \
+	-std=gnu11 \
     -march=x86-64 \
     -mno-80387 \
     -m64 \
 	-fno-stack-protector \
     -fno-stack-check \
-	-lk \
-	#-fstack-protector-all 
+    -mcmodel=kernel \
+	-fno-pic
+# -fPIE 
+# -fpie 
+#	-fstack-protector-all 
+	
 
-override LDFLAGS := \
-    -static \
-    -pie \
-    -z text \
+override LDFLAGS := -static -nostdlib -z text -Wl,--no-relax,-Y,$(SYSROOT)/usr/lib
 
 override CFLAGS:=$(CFLAGS) -Wshadow -Wpointer-arith -Wcast-align \
             -Wwrite-strings -Wmissing-declarations \
             -Wredundant-decls -Winline -Wno-long-long \
             -Wconversion
 
-CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -D__is_x86_64 -Iinclude
-LIBS:=$(LIBS) -nostdlib -lgcc \
-
+CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -D__is_x86_64 -Iinclude	-Iinclude/ -I./include/
+LIBS:=$(LIBS) -lc
 
 ARCHDIR=arch/$(ARCH)
 
@@ -82,9 +84,6 @@ ARCH_LIBS_DIR=$(ARCHDIR)/include/*
 UTILITY_LIBS_DIR=$(ARCH_LIBS_DIR)/utility
 KERNEL_LIBS_DIR=$(ARCH_LIBS_DIR)/kernel
 MEMORY_LIBS_DIR=$(KERNEL_LIBS_DIR)/memory
-
-
-
 
 include $(ARCHDIR)/make.config
 
@@ -97,40 +96,46 @@ KERNEL_LIBS:=$(LIBS)
 # Use "find" to glob all *.cpp *.c, *.S, and *.asm files in the tree and obtain the
 # object and header dependency file names.
 override KERNELFILES := $(shell cd kernel && find -L * -type f -name '*.cpp' | LC_ALL=C sort)
-override CPPFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.cpp' | LC_ALL=C sort)
+override CPPFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.cpp' ! -name "malloc.cpp" ! -name "printf.cpp" | LC_ALL=C sort)
 override CFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.c' | LC_ALL=C sort)
 override ASFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.S' ! -name "crti.S" ! -name "crtn.S" | LC_ALL=C sort)
 override NASMFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.asm' | LC_ALL=C sort)
-override OBJ := $(addprefix obj/,$(KERNELFILES:.cpp=.cpp.o) $(CFILES:.c=.c.o) $(NASMFILES:.asm=.asm.o) $(CPPFILES:.cpp=.cpp.o) $(ASFILES:.S=.S.o)) # add s files manualy to put crti and crtn in ther position
+override OBJ := $(addprefix obj/,$(KERNELFILES:.cpp=.cpp.o) $(CFILES:.c=.c.o) $(NASMFILES:.asm=.asm.o) $(CPPFILES:.cpp=.cpp.o) $(ASFILES:.S=.S.o))
 override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d) $(CPPFILES:.cpp=.cpp.d) $(KERNELFILES:.cpp=.cpp.d))
 
 CRTI_OBJ=obj/crti.S.o
-CRTBEGIN_OBJ:=$(shell $(CPP) $(CFLAGS) $(LDFLAGS) -print-file-name=crtbegin.o)
-CRTEND_OBJ:=$(shell $(CPP) $(CFLAGS) $(LDFLAGS) -print-file-name=crtend.o)
+CRTBEGIN_OBJ:=$(shell $(CPP) $(CFLAGS) -print-file-name=crtbegin.o)
+CRTEND_OBJ:=$(shell $(CPP) $(CFLAGS) -print-file-name=crtend.o)
 CRTN_OBJ=obj/crtn.S.o
 
-override LIBK := $(SYSROOT)/usr/lib/libk.a
+override LIBC := -lc
+
 
 
 KERNEL_OBJS=\
 $(KERNEL_ARCH_OBJS) \
 obj/kernel.cpp.o \
 
+C_EXTRA_OBJS = obj/printf.cpp.o
+
 OBJS=\
 $(CRTI_OBJ) \
 obj/crtbegin.o \
 $(OBJ) \
 $(KERNEL_OBJS) \
+$(C_EXTRA_OBJS) \
 obj/crtend.o \
 $(CRTN_OBJ) \
 
 LINK_LIST=\
-$(CRTI_OBJ) \
-obj/crtbegin.o \
 $(OBJ) \
-obj/crtend.o \
-$(CRTN_OBJ) \
-$(LIBK) \
+$(LIBS) 
+
+# LINK_LIST=\
+# $(CRTI_OBJ) \
+# $(OBJ) \
+# $(CRTN_OBJ) \
+# $(LIBC) 
 
 
 .PHONY: all clean install install-headers install-kernel
@@ -138,44 +143,59 @@ $(LIBK) \
 
 all: bin/$(OUTPUT).kernel
 
-bin/$(OUTPUT).kernel: $(OBJS) GNUmakefile
+bin/$(OUTPUT).kernel: clean install-headers $(OBJ) GNUmakefile
 	mkdir -p "$$(dirname $@)"
-	@echo "$(CPP) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(LDFLAGS) $(KERNEL_LIBS) $(LINK_LIST) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
-	@$(CPP) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(LDFLAGS) $(KERNEL_LIBS) $(LINK_LIST) 2>> $(ERROR_OUT_FILE)
+	@echo "$(CPP) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $(LINK_LIST) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
+	@$(CPP) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $(LINK_LIST) 2>> $(ERROR_OUT_FILE)
 	@echo "\n"
 
 obj/crtbegin.o:
-	$(CPP) $(CFLAGS) $(LDFLAGS) -print-file-name=$(@F) && cp $(CRTBEGIN_OBJ) $@
+	@echo "$(CPP) $(CFLAGS) $(CPPFLAGS) -print-file-name=$(@F) && cp $(CRTBEGIN_OBJ) $@ \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
+	$(CPP) $(CFLAGS) -print-file-name=$(@F) && cp $(CRTBEGIN_OBJ) $@
 	@echo "\n"
 
 
 obj/crtend.o:
-	$(CPP) $(CFLAGS) $(LDFLAGS) -print-file-name=$(@F) && cp $(CRTEND_OBJ) $@
+	@echo "$(CPP) $(CFLAGS) $(CPPFLAGS) -print-file-name=$(@F) && cp $(CRTEND_OBJ) $@ \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
+	$(CPP) $(CFLAGS) -print-file-name=$(@F) && cp $(CRTEND_OBJ) $@
 	@echo "\n"
 
 
 # Include header dependencies.
 -include $(HEADER_DEPS)
 
-# Compilation rules for *.c files.
-obj/%.c.o: $(ARCHDIR)/%.c GNUmakefile
+obj/printf.cpp.o:arch/x86_64/drivers/printf.cpp
 	mkdir -p "$$(dirname $@)"
-	@echo "$(CC) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
-	$(CC) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
+	@echo "$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) -DPRINTF_INCLUDE_CONFIG_H=1 \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
+	$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) -DPRINTF_INCLUDE_CONFIG_H=1 
+	@echo "\n"
+
+obj/malloc.cpp.o:memory/malloc.cpp
+	mkdir -p "$$(dirname $@)"
+	@echo "$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) $(KERNEL_LIBS) -DHAVE_MMAP=0 -DLACKS_TIME_H=1 -DLACKS_SYS_PARAM_H=1 -LACKS_STRING_H=0 -Dmalloc_getpagesize=4096 -DNO_MALLOC_STATS=1 -DMORECORE_CONTIGUOUS=0 -DUSE_LOCKS=2 \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
+	$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) $(KERNEL_LIBS) -DHAVE_MMAP=0 -DLACKS_TIME_H=1 -DLACKS_SYS_PARAM_H=1 -LACKS_STRING_H=0 -Dmalloc_getpagesize=4096 -DNO_MALLOC_STATS=1 -DMORECORE_CONTIGUOUS=0 -DUSE_LOCKS=2
+	@echo "\n"
+
+
+# Compilation rules for *.c files.
+obj/%.c.o: $(ARCHDIR)/%.c GNUmakefile install-headers
+	mkdir -p "$$(dirname $@)"
+	@echo "$(CPP) -MMD -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
+	$(CPP) -MMD -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
 	@echo "\n"
 
 # Compilation rules for kernel cpp files.
-obj/%.cpp.o: kernel/%.cpp
+obj/%.cpp.o: kernel/%.cpp 
 	mkdir -p "$$(dirname $@)"
-	@echo "$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
-	$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
+	@echo "$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) $(KERNEL_LIBS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
+	$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) $(KERNEL_LIBS)
 	@echo "\n"
 
 # Compilation rules for *.cpp files.
-obj/%.cpp.o: $(ARCHDIR)/%.cpp GNUmakefile
+obj/%.cpp.o: $(ARCHDIR)/%.cpp GNUmakefile install-headers
 	mkdir -p "$$(dirname $@)"
-	@echo "$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
-	$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
+	@echo "$(CPP) -MMD -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
+	$(CPP) -MMD -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
 	@echo "\n"
 
 # Compilation rules for *.S files.

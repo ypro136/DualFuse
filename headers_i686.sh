@@ -1,5 +1,7 @@
 #!/bin/sh
-set -e
+set -x # show cmds
+set -e # fail globally
+
 . ./config.sh
  
 mkdir -p "$SYSROOT"

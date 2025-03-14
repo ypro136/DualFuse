@@ -576,7 +576,7 @@ struct old_utsname {
 
 // /usr/include/x86_64-linux-gnu/bits/struct_stat.h
 typedef struct stat {
-#ifdef __USE_TIME_BITS64
+#if 0
 #include <bits/struct_stat_time64_helper.h>
 #else
   __dev_t st_dev; /* Device.  */

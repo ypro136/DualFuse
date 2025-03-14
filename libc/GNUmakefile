@@ -60,7 +60,12 @@ BINARIES=libk.a
 .PHONY: all clean install install-headers install-libs
 .SUFFIXES: .o .libk.o .c .S
  
-all: $(BINARIES)
+all: musl #$(BINARIES)
+#	-cp -r
+
+.PHONY:
+musl:
+#	sh build_musl.sh --noreplace
  
 libc.a: $(OBJS)
 	$(AR) rcs $@ $(OBJS)
@@ -94,13 +99,13 @@ clean:
 
 install: install-headers install-libs
  
-install-headers:
+install-headers: musl
 	mkdir -p $(DESTDIR)$(INCLUDEDIR)
-	cp -R --preserve=timestamps include/. $(DESTDIR)$(INCLUDEDIR)/.
+#	cp -R --preserve=timestamps include/. $(DESTDIR)$(INCLUDEDIR)/.
 
-install-libs: $(BINARIES)
+install-libs: musl
 	mkdir -p $(DESTDIR)$(LIBDIR)
-	cp $(BINARIES) $(DESTDIR)$(LIBDIR)
+#	cp $(BINARIES) $(DESTDIR)$(LIBDIR)
  
 -include $(OBJS:.o=.d)
 -include $(LIBK_OBJS:.o=.d)

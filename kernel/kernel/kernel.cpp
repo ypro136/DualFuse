@@ -25,10 +25,7 @@
 #include <fastSyscall.h>
 #include <system.h>
 
-
 bool systemDiskInit;
-
-
 #endif
 
 
@@ -88,7 +85,6 @@ extern "C" void kernel_main(void)
     
     tasks_initialize();
 
-
     syscall_inst_initialize();
 
     syscalls_initialize();
@@ -99,9 +95,5 @@ extern "C" void kernel_main(void)
     #endif
 
 	
-    for (;;) {
-
-        
-    }
+    for (;;) {}
 }
-

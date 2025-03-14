@@ -4,3 +4,15 @@
 logs/*.log
 isodir
 sysroot
+limine
+serial.log
+.gitignore
+enviroment/log.txt
+enviroment/make.log
+enviroment/automake-1.15.1
+enviroment/autotools
+enviroment/binutils_src
+enviroment/binutils-2.41
+enviroment/gcc_src
+enviroment/gcc-13.2.0
+enviroment/tars

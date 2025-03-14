@@ -1,4 +1,4 @@
-#include <sys/cdefs.h>
+//#include <sys/cdefs.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdarg.h>
@@ -46,7 +46,5 @@ uint32_t inportlong(uint16_t portid);
 void     out_port_long(uint16_t portid, uint32_t value);
 
 void hand_control();
-
-int rand(void);
 
 #endif

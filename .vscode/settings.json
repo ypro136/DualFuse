@@ -20,7 +20,8 @@
         "cstdint": "cpp",
         "coroutine": "cpp",
         "format": "cpp",
-        "compare": "cpp"
+        "compare": "cpp",
+        "climits": "cpp"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

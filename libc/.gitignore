@@ -1,4 +1,7 @@
 *.a
 *.d
 *.o
+musl
+musl-1.2.5
+*.tar.gz
 

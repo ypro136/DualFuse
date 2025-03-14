@@ -1,6 +1,0 @@
-'limine.conf' -> 'isodir/boot/limine/limine.conf'
-'limine/limine-bios.sys' -> 'isodir/boot/limine/limine-bios.sys'
-'limine/limine-bios-cd.bin' -> 'isodir/boot/limine/limine-bios-cd.bin'
-'limine/limine-uefi-cd.bin' -> 'isodir/boot/limine/limine-uefi-cd.bin'
-'limine/BOOTX64.EFI' -> 'isodir/EFI/BOOT/BOOTX64.EFI'
-'limine/BOOTIA32.EFI' -> 'isodir/EFI/BOOT/BOOTIA32.EFI'
