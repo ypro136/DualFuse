@@ -4,7 +4,8 @@ memory: guest=2048m, host=2048m
 ata0-slave: type=cdrom, path=DualFuse.iso, status=inserted
 boot:cdrom
 display_library: x, options = "gui_debug"
-log: bochs.log
+cpu: reset_on_triple_fault=0
+log: logs/bochs.log
 logprefix: %t %e %d
 panic: action=ask
 error: action=report

@@ -17,12 +17,15 @@ uint16_t mbr_partition_indexes[] = {MBR_PARTITION_1, MBR_PARTITION_2,
 
 bool open_disk(uint32_t disk, uint8_t partition, mbr_partition *out) 
 {
+  if (partition >= 4) return false; // Prevent out-of-bounds
   uint8_t *rawArr = (uint8_t *)malloc(SECTOR_SIZE);
+  if (!rawArr) return false;
   get_disk_bytes(rawArr, 0x0, 1);
-  // *out = *(mbr_partition *)(&rawArr[mbr_partition_indexes[partition]]);
   bool ret = validate_mbr(rawArr);
-  if (!ret)
+  if (!ret) {
+    free(rawArr);
     return false;
+  }
   memcpy(out, (void *)((size_t)rawArr + mbr_partition_indexes[partition]),
          sizeof(mbr_partition));
   free(rawArr);
@@ -35,22 +38,23 @@ bool validate_mbr(uint8_t *mbrSector) {
 
 void disk_bytes(uint8_t *target_address, uint32_t LBA, uint32_t sector_count,
                bool write) {
-  // todo: yeah, this STILL is NOT ideal
-
   PCI *browse = firstPCI;
   while (browse) {
-    if (browse->driver == PCI_DRIVER_AHCI && ((ahci *)browse->extra)->sata)
+    if (browse->driver == PCI_DRIVER_AHCI && browse->extra && ((ahci *)browse->extra)->sata)
       break;
-
     browse = browse->next;
   }
 
-  if (!browse) {
+  if (!browse || !browse->extra) {
     memset(target_address, 0, sector_count * SECTOR_SIZE);
     return;
   }
 
   ahci *target = (ahci *)browse->extra;
+  if (!target->mem) {
+    memset(target_address, 0, sector_count * SECTOR_SIZE);
+    return;
+  }
   int   pos = 0;
   while (!(target->sata & (1 << pos)))
     pos++;
@@ -69,13 +73,15 @@ force_inline void disk_bytes_max(uint8_t *target_address, uint32_t LBA,
   // calculated by: (bytesPerPRDT * PRDTamnt) / SECTOR_SIZE
   //                (    4MiB     *     8   ) /     512
   int max = 65536;
+  size_t total_bytes = sector_count * SECTOR_SIZE;
+  // Add a debug print here to check the buffer
+  // printf("disk_bytes_max: target_address=%p, total_bytes=%zu\n", target_address, total_bytes);
 
   size_t chunks = sector_count / max;
   size_t remainder = sector_count % max;
   if (chunks)
     for (size_t i = 0; i < chunks; i++)
-      disk_bytes(target_address + i * max * SECTOR_SIZE, LBA + i * max, max,
-                write);
+      disk_bytes(target_address + i * max * SECTOR_SIZE, LBA + i * max, max, write);
 
   if (remainder)
     disk_bytes(target_address + chunks * max * SECTOR_SIZE, LBA + chunks * max,
@@ -87,7 +93,8 @@ force_inline void disk_bytes_max(uint8_t *target_address, uint32_t LBA,
   // disk_bytes(target_address, LBA, sector_count, false);
 }
 
-void get_disk_bytes(uint8_t *target_address, uint32_t LBA, size_t sector_count) {
+void get_disk_bytes(uint8_t *target_address, uint32_t LBA, size_t sector_count) 
+{
   return disk_bytes_max(target_address, LBA, sector_count, false);
 }
 

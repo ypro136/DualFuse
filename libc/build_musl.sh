@@ -24,10 +24,13 @@ fi
 if ! test -f "$MUSL_DIR/$MUSL_RELEASE/README"; then
 	wget -nc "https://musl.libc.org/releases/$MUSL_RELEASE.tar.gz"
 	tar -xpf "$MUSL_RELEASE.tar.gz"
-	rm -f -r $MUSL_RELEASE/src/complex # remove complex operations support assumed to be a bug in gcc 11.3.0
-	mkdir -p $MUSL
+	#rm -f -r $MUSL_RELEASE/src/complex # remove complex operations support assumed to be a bug in gcc 11.3.0
 
 fi
+
+rm -r $MUSL
+
+mkdir -p $MUSL
 
 # Ensure the toolchain is in PATH
 if [[ ":$PATH:" != *":$HOME/src/cross/$TARGET/CROSS_compiler/bin:"* ]]; then
@@ -44,10 +47,8 @@ fi
 # build musl
 if test -f "$PREFIX/bin/${TARGET}-gcc"; then
 	cd $MUSL
-	if ! test -f "$MUSL/Makefile"; then
-		rm -f -r obj/src/complex # remove complex operations support assumed to be a bug in gcc 11.3.0
-		CC=$TARGET-gcc ARCH=x86_64 CROSS_COMPILE=$TARGET- CFLAGS="-O2 -g -mcmodel=large" LDFLAGS="-static-pie" "../$MUSL_RELEASE/configure" --target=$TARGET --prefix="$SYSROOT/usr" --syslibdir="/lib" --disable-shared --enable-static --enable-debug
-	fi
+	#rm -f -r obj/src/complex # remove complex operations support assumed to be a bug in gcc 11.3.0
+	CC=$TARGET-gcc ARCH=x86_64 CROSS_COMPILE=$TARGET- CFLAGS="-O2 -g -mcmodel=large" LDFLAGS="-static-pie" "../$MUSL_RELEASE/configure" --target=$TARGET --prefix="$SYSROOT/usr" --syslibdir="/lib" --disable-shared --enable-static --enable-debug
 	make clean 
 	make install-headers $MAKE_ARGS
 	make all $MAKE_ARGS

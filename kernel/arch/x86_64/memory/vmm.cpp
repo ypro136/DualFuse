@@ -16,7 +16,7 @@ uint64_t hhdmOffset;
 void virtual_memory_manager_initialize(uint64_t memory_map_Total, uint64_t memory_map_entry_count, struct limine_memmap_entry** memory_map_entries, uint64_t _hhdmOffset)
 {
   hhdmOffset = _hhdmOffset;
-  size_t targetPosition = (hhdmOffset - memory_map_Total - VMM_POS_ENSURE, PAGE_SIZE) * PAGE_SIZE;
+  size_t targetPosition = CEILING_DIVISION(hhdmOffset - memory_map_Total - VMM_POS_ENSURE, PAGE_SIZE) * PAGE_SIZE;
 
 
   _virtual.ready = false;

@@ -114,63 +114,63 @@ void clear()
 }
 
 
-// void test_framebuffer(uint32_t test_color)
-// {
+void test_framebuffer(uint32_t test_color)
+{
 
-//     printf("testing framebuffer...\n");
+    printf("testing framebuffer...\n");
 
-//     color = test_color;
+    color = test_color;
 
-//      // framebuffer model is assumed to be RGB with 32-bit pixels
-//     for (size_t j = 0; j < 10; j++) {
-//         for (size_t i = 0; i < 100; i++) {
-//             volatile uint32_t *fb_ptr = tempframebuffer->address;
-//             fb_ptr[i * (tempframebuffer->pitch / 4) + i] = color;
-//         }
-//     }
+     // framebuffer model is assumed to be RGB with 32-bit pixels
+    for (size_t j = 0; j < 10; j++) {
+        for (size_t i = 0; i < 100; i++) {
+            volatile uint32_t *fb_ptr = tempframebuffer->address;
+            fb_ptr[i * (tempframebuffer->pitch / 4) + i] = color;
+        }
+    }
 
-//     struct vector2 line_start = {0,0};
-//     struct vector2 line_end = {0,0};
+    struct vector2 line_start = {0,0};
+    struct vector2 line_end = {0,0};
 
-//     int x_step = 7;
-//     int y_step = 7;
-//     uint32_t x = 100;
-//     uint32_t y = 100;
-//     uint32_t cube_size = 73;
-//     line_start = {x_step,y_step};
+    int x_step = 7;
+    int y_step = 7;
+    uint32_t x = 100;
+    uint32_t y = 100;
+    uint32_t cube_size = 73;
+    line_start = {x_step,y_step};
 
-//     while(true)
-//     {
-//         if ((line_start.y + cube_size + y_step) > screen_height)
-//         {
-//             y_step = y_step * (-1);
-//         }
+    while(true)
+    {
+        if ((line_start.y + cube_size + y_step) > screen_height)
+        {
+            y_step = y_step * (-1);
+        }
 
-//         if ((line_start.x + cube_size + x_step) > (screen_width - 1))
-//         {
-//             x_step = x_step * (-1);
-//         }
+        if ((line_start.x + cube_size + x_step) > (screen_width - 1))
+        {
+            x_step = x_step * (-1);
+        }
 
-//         if ((line_start.y + y_step) <= 0)
-//         {
-//             y_step = y_step * (-1);
-//         }
+        if ((line_start.y + y_step) <= 0)
+        {
+            y_step = y_step * (-1);
+        }
 
-//         if ((line_start.x + x_step) <= 0)
-//         {
-//             x_step = x_step * (-1);
-//         }
+        if ((line_start.x + x_step) <= 0)
+        {
+            x_step = x_step * (-1);
+        }
 
-//         line_start.x = line_start.x + x_step;
-//         line_start.y = line_start.y + y_step;
-//         line_end = {line_start.x + cube_size,line_start.y + cube_size};
-//         draw_rectangle(line_start, line_end);
+        line_start.x = line_start.x + x_step;
+        line_start.y = line_start.y + y_step;
+        line_end = {line_start.x + cube_size,line_start.y + cube_size};
+        draw_rectangle(line_start, line_end);
 
-//         copy_buffer_to_screan();
+        copy_buffer_to_screan();
 
-//         clear();
-//     }
-// }
+        clear();
+    }
+}
 
 void copy_buffer_to_screan()
 {

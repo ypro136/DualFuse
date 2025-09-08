@@ -44,17 +44,16 @@
 #endif
 
 #include <printf.h>
+#include <console.h>
 
 #ifdef __cplusplus
-// #include <cstdint>
-// #include <climits>
-#include <stdint.h>
-#include <limits.h>
+#include <cstdint>
+#include <climits>
 #else
 #include <stdint.h>
 #include <limits.h>
 #include <stdbool.h>
-#endif __cplusplus
+#endif //__cplusplus
 
 #if PRINTF_ALIAS_STANDARD_FUNCTION_NAMES
 # define printf_    printf
@@ -81,12 +80,12 @@
 
 // Support for the decimal notation floating point conversion specifiers (%f, %F)
 #ifndef PRINTF_SUPPORT_DECIMAL_SPECIFIERS
-#define PRINTF_SUPPORT_DECIMAL_SPECIFIERS 1
+#define PRINTF_SUPPORT_DECIMAL_SPECIFIERS 0
 #endif
 
 // Support for the exponential notation floating point conversion specifiers (%e, %g, %E, %G)
 #ifndef PRINTF_SUPPORT_EXPONENTIAL_SPECIFIERS
-#define PRINTF_SUPPORT_EXPONENTIAL_SPECIFIERS 1
+#define PRINTF_SUPPORT_EXPONENTIAL_SPECIFIERS 0
 #endif
 
 // Support for the length write-back specifier (%n)
@@ -110,7 +109,7 @@
 // Support for the long long integral types (with the ll, z and t length modifiers for specifiers
 // %d,%i,%o,%x,%X,%u, and with the %p specifier). Note: 'L' (long double) is not supported.
 #ifndef PRINTF_SUPPORT_LONG_LONG
-#define PRINTF_SUPPORT_LONG_LONG 1
+#define PRINTF_SUPPORT_LONG_LONG 0
 #endif
 
 // The number of terms in a Taylor series expansion of log_10(x) to

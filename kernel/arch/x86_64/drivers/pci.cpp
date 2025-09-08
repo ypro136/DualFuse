@@ -147,8 +147,18 @@ void get_general_device(pci_device *device, pci_general_device *out) {
 
 void pci_initialize() 
 {
+  #if defined(DEBUG_PCI)
+  printf("[PCI] Starting PCI initialization...\n");
+  #endif
 
   pci_device *device = (pci_device *)malloc(sizeof(pci_device));
+  #if defined(DEBUG_PCI)
+  if (!device) {
+    printf("[PCI] Failed to allocate PCI device structure. device is NULL\n");
+    return;
+  }
+  #endif
+
 
   for (uint16_t bus = 0; bus < PCI_MAX_BUSES; bus++) {
     for (uint8_t slot = 0; slot < PCI_MAX_DEVICES; slot++) {
@@ -156,11 +166,24 @@ void pci_initialize()
         if (!Filter_device(bus, slot, function))
           continue;
 
+         #if defined(DEBUG_PCI)
+        printf("[PCI] Found PCI device at bus:%d slot:%d function:%d\n", bus, slot, function);
+        #endif
+
         get_device(device, bus, slot, function);
         if ((device->headerType & ~(1 << 7)) != PCI_DEVICE_GENERAL)
           continue;
+        #if defined(DEBUG_PCI)
+        printf("[PCI] Device class: %02x, subclass: %02x\n", device->class_id, device->subclass_id);
+        #endif
 
         PCI *target = linked_list_allocate((void **)(&firstPCI), sizeof(PCI));
+        #if defined(DEBUG_PCI)
+        if (!target) {
+          printf("[PCI] Failed to allocate PCI list entry. target is NULL\n");
+          continue;
+        }
+        #endif
         target->bus = bus;
         target->slot = slot;
         target->function = function;
@@ -173,11 +196,19 @@ void pci_initialize()
         case PCI_CLASS_CODE_MASS_STORAGE_CONTROLLER:
           if (device->subclass_id == 0x6)
           {
-            
+            #if defined(DEBUG_PCI)
+            printf("[PCI] Found AHCI controller, initializing...\n");
+            #endif
             AHCI_initialize(device);
+            #if defined(DEBUG_PCI)
+            printf("[PCI] AHCI initialization complete\n");
+            #endif
           }
           break;
         default:
+          #if defined(DEBUG_PCI)
+            printf("[PCI] no driver for this device. continuing\n");
+            #endif
           break;
         }
       }

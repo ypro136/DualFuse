@@ -120,6 +120,10 @@ void mark_region(Bitmap *bitmap, void *basePtr, size_t sizeBytes,int isUsed)
 {
   //spinlock(bitmap);
 
+  #if defined(DEBUG_MEMORY)
+  printf("mark_region sizeBytes,isUsed :%u, %d\n", sizeBytes, isUsed);
+  #endif
+
   size_t base;
   size_t size;
 

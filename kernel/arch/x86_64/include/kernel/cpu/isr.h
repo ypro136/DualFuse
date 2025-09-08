@@ -65,5 +65,8 @@ void irq_uninstall_handler(int irq);
 extern "C" void  asm_isr_exit();
 extern "C" void *asm_isr_redirect_table[];
 extern "C" void  isr128();
+extern "C" uint64_t handle_tssrsp(uint64_t rsp);
+extern "C" uint64_t handle_syscall_tssrsp(uint64_t rsp);
+extern "C" void syscall_handler(AsmPassedInterrupt *regs);
 
 #endif

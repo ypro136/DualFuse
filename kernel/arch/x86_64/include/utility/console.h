@@ -34,6 +34,6 @@ void updateBull();
 void clear_screen();
 
 void printfch(char character);
-void putchar_(char c);
+extern "C" void putchar_(char c);
 
 #endif

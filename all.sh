@@ -26,14 +26,12 @@ export CPP=${TARGET}-g++
 export CC="$CC --sysroot=$SYSROOT"
 export CPP="$CPP --sysroot=$SYSROOT"
 
-# Work around that the -elf gcc targets doesn't have a system include directory
-# because it was configured with --without-headers rather than --with-sysroot.
-if echo "$HOST" | grep -Eq -- '-elf($|-)'; then
-  export CC="$CC -isystem=$INCLUDEDIR"
-  export CPP="$CPP -isystem=$INCLUDEDIR"
-fi
 
+cd $PROJECT_ROOT
 . ./headers_${ARCH}.sh | tee $LOG_DIR/headers.log
+cd $PROJECT_ROOT
 . ./build_${ARCH}.sh | tee $LOG_DIR/build.log
+cd $PROJECT_ROOT
 . ./iso_${ARCH}.sh | tee $LOG_DIR/iso.log
+cd $PROJECT_ROOT
 . ./boot.sh | tee $LOG_DIR/boot.log

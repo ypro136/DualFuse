@@ -5,6 +5,9 @@
 #ifndef SPINLOCK_H
 #define SPINLOCK_H
 
+#define IS_LOCKED true 
+#define IS_NOT_LOCKED false
+
 typedef struct Spinlock {
   bool locked;
 } Spinlock;

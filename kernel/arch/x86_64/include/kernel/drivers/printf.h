@@ -193,7 +193,7 @@ PRINTF_VISIBILITY
 int vfctprintf(void (*out)(char c, void* extra_arg), void* extra_arg, const char* format, va_list arg) ATTR_VPRINTF(3);
 
 #ifdef __cplusplus
-} // extern "C"
+} extern "C"
 #endif
 
 #if PRINTF_ALIAS_STANDARD_FUNCTION_NAMES_HARD

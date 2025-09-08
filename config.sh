@@ -30,7 +30,7 @@ export CORE_COUNT=$(nproc)
 
 # for 64 bit target. modifying this is not tested
 export ARCH="x86_64"
-export TARGET_OS=elf # or dualfuse. test on elf then try dualfuse
+export TARGET_OS=dualfuse #elf or dualfuse. test on elf then try dualfuse
 export TARGET=${ARCH}-${TARGET_OS}
 
 # set up toolchain location.

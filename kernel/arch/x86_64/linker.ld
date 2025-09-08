@@ -13,8 +13,8 @@ PHDRS
     text            PT_LOAD       FLAGS((1 << 0) | (1 << 2)) ;            /* Execute + Read */
     rodata          PT_LOAD       FLAGS((1 << 2)) ;                       /* Read only */
     data            PT_LOAD       FLAGS((1 << 1) | (1 << 2)) ;            /* Write + Read */
+    dynamic         PT_DYNAMIC    FLAGS((1 << 0) | (1 << 1) | (1 << 2));  /* Execute + Write + Read */
 }
-
 
 SECTIONS
 {
@@ -24,13 +24,15 @@ SECTIONS
     /* that is the beginning of the region. */
     . = 0xffffffff80000000;
 
-    /* Define a section to contain the Limine requests and assign it to its own PHDR */
     .limine_requests : {
         KEEP(*(.limine_requests_start))
         KEEP(*(.limine_requests))
         KEEP(*(.limine_requests_end))
     } :limine_requests
 
+    /* Move to the next memory page for .kernel_start */
+    . += CONSTANT(MAXPAGESIZE);
+    . = ALIGN(4K);
     kernel_start = .;
     kernel_text_start = .;
     .text : {
@@ -39,8 +41,8 @@ SECTIONS
     kernel_text_end = .;
 
     /* Move to the next memory page for .rodata */
-    . += 0x1000; /* 4 KiB alignment */
-
+    . += CONSTANT(MAXPAGESIZE);
+    . = ALIGN(4K);
     kernel_rodata_start = .;
     .rodata : {
         *(.rodata .rodata.*)
@@ -48,29 +50,34 @@ SECTIONS
     kernel_rodata_end = .;
 
     /* Move to the next memory page for .data */
-    . += 0x1000; /* 4 KiB alignment */
+    . += CONSTANT(MAXPAGESIZE);
 
+    . = ALIGN(4K);
     kernel_data_start = .;
     .data : {
         *(.data .data.*)
     } :data
 
-
+    . += CONSTANT(MAXPAGESIZE);
+    . = ALIGN(4K);
     /* NOTE: .bss needs to be the last thing mapped to :data, otherwise lots of */
     /* unnecessary zeros will be written to the binary. */
     /* If you need, for example, .init_array and .fini_array, those should be placed */
     /* above this. */
     .bss : {
-        *(.bss .bss.*)
+        . = ALIGN(4K);
         *(COMMON)
+        *(.bss .bss.*)
     } :data
-    kernel_data_end = .;
 
+    . = ALIGN(4K);
+    kernel_data_end = .;
+    kernel_end = .;
+    
     /* Discard .note.* and .eh_frame since they may cause issues on some hosts. */
     /DISCARD/ : {
         *(.eh_frame)
         *(.note .note.*)
+        *(.comment)
     }
-
-    kernel_end = .;
 }

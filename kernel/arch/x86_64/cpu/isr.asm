@@ -1,4 +1,4 @@
-
+bits    64
 global asm_finalize_sched
 asm_finalize_sched:
   ; rdi = switch stack pointer
@@ -38,7 +38,13 @@ asm_finalize_sched:
 
 global syscall_entry
 syscall_entry:
-  push rsp
+  swapgs
+  mov cr2, rax ; use cr2 as an extra register
+  mov rax, qword [gs:0] ; thread pointer
+  xchg rsp, rax ; switch stack ptrs
+
+  push rax
+  mov rax, cr2
 
   ; mimic: interrupt stuff
   push qword 0
@@ -69,14 +75,10 @@ syscall_entry:
   mov rbp, ds
   push rbp
 
-;   mov rdi, rsp
-;   extern handle_syscall_tssrsp
-;   call handle_syscall_tssrsp
-;   mov rsp, rax
-
-;   mov rdi, rsp
-;   extern syscallHandler
-;   call syscallHandler
+  mov rdi, rsp
+  extern syscall_handler
+  call syscall_handler
+  cli
   
   pop rbp
   mov ds, ebp

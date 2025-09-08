@@ -7,6 +7,14 @@ mkdir -p isodir/boot
 mkdir -p isodir/boot/limine
  
 cp sysroot/boot/DualFuse.kernel isodir/boot/DualFuse.kernel
+
+if ! test -f "limine/limine-bios.sys"; then
+      rm -rf limine
+      git clone https://github.com/limine-bootloader/limine.git --branch=v9.x-binary --depth=1
+      make -C limine
+      echo "instaled limine"
+fi
+
 cp -v limine.conf limine/limine-bios.sys limine/limine-bios-cd.bin \
       limine/limine-uefi-cd.bin isodir/boot/limine/
 
@@ -22,6 +30,8 @@ xorriso -as mkisofs -R -r -J -b boot/limine/limine-bios-cd.bin \
         -apm-block-size 2048 --efi-boot boot/limine/limine-uefi-cd.bin \
         -efi-boot-part --efi-boot-image --protective-msdos-label \
         isodir -o DualFuse.iso
+
+
 
 # Install Limine stage 1 and 2 for legacy BIOS boot.
 ./limine/limine bios-install DualFuse.iso

@@ -19,6 +19,11 @@ void physical_memory_manager_initialize(uint64_t memory_map_Total, uint64_t memo
   physical.BitmapSizeInBlocks = CEILING_DIVISION(memory_map_Total, BLOCK_SIZE);
   physical.BitmapSizeInBytes = CEILING_DIVISION(physical.BitmapSizeInBlocks, 8);
 
+  #if defined(DEBUG_MEMORY)
+  printf("[pmm] physical.BitmapSizeInBlocks is %d\n", physical.BitmapSizeInBlocks);
+  printf("[pmm] physical.BitmapSizeInBytes is %d\n", physical.BitmapSizeInBytes);
+  #endif
+  
   struct limine_memmap_entry *memory_map = 0;
 
 
@@ -30,6 +35,9 @@ void physical_memory_manager_initialize(uint64_t memory_map_Total, uint64_t memo
     memory_map = entry;
     break;
   }
+  #if defined(DEBUG_MEMORY)
+  printf("[pmm] first loop ran\n");
+  #endif
 
   if (!memory_map) {
     printf("[physical_memory_manager] Not enough memory: required{%x}!\n",
@@ -42,11 +50,28 @@ void physical_memory_manager_initialize(uint64_t memory_map_Total, uint64_t memo
   physical.Bitmap = (uint8_t *)(bitmapStartPhys + hhdmOffset);
 
   memset(physical.Bitmap, 0xff, physical.BitmapSizeInBytes);
-  for (int i = 0; i < memory_map_entry_count; i++) {
+  for (int i = 0; i < memory_map_entry_count; i++) 
+  {
     struct limine_memmap_entry *entry = memory_map_entries[i];
     if (entry->type == LIMINE_MEMMAP_USABLE)
+    {
+      #if defined(DEBUG_MEMORY)
+      printf("memory_map_entry %d is valid\n", i);
+      #endif
       mark_region(bitmap, (void *)entry->base, entry->length, 0);
+      #if defined(DEBUG_MEMORY)
+      printf("memory_map_entry %d got marked\n", i);
+      #endif
+    }
+    else
+    {
+      #if defined(DEBUG_MEMORY)
+      printf("memory_map_entry %d is not valid\n", i);
+      #endif
+    }
   }
+
+
   for (int i = 0; i < memory_map_entry_count; i++) {
     struct limine_memmap_entry *entry = memory_map_entries[i];
     if (entry->type != LIMINE_MEMMAP_USABLE)
@@ -55,7 +80,9 @@ void physical_memory_manager_initialize(uint64_t memory_map_Total, uint64_t memo
 
   mark_region(bitmap, (void *)bitmapStartPhys, physical.BitmapSizeInBytes, 1);
 
-  // printf("[physical_memory_manager] Bitmap initiated: bitmapStartPhys{%x} size{%x}\n", bitmapStartPhys, physical.BitmapSizeInBytes);
+  #if defined(DEBUG_MEMORY)
+  printf("[physical_memory_manager] Bitmap initiated: bitmapStartPhys{%x} size{%x}\n", bitmapStartPhys, physical.BitmapSizeInBytes);
+  #endif
 
   // bitmap_dump_blocks(bitmap);
   bitmap->ready = true;

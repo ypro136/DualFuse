@@ -1,9 +1,9 @@
 #!/bin/sh
 set -x # show cmds
-#set -e # fail globally
+set -e # fail globally
 
 for PROJECT in $PROJECTS; do
-  (cd $PROJECT && $MAKE -f Makefile clean && $MAKE -f GNUmakefile clean)
+  (cd $PROJECT && $MAKE -f GNUmakefile clean)
 done
 
 cd $ENVIROMENT_DIR

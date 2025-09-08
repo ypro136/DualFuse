@@ -9,6 +9,8 @@
 #include <rtc.h>
 
 #include <framebufferutil.h>
+#include <console.h>
+
 
 
 __attribute__((used))
@@ -21,7 +23,10 @@ const uint32_t frequency = 60;
 void timer_irq_0(struct interrupt_registers *registers)
 {
     timerTicks += 1;
-    copy_buffer_to_screan();
+    if (console_initialized)
+    {
+        copy_buffer_to_screan();
+    }
 }
 
 void timer_initialize()
@@ -44,7 +49,9 @@ void timer_initialize()
 
     timerBootUnix = rtc_to_unix(&rtc);
 
+    #if defined(DEBUG_TIMER)
     printf("[timer] Ready to fire: frequency{%dMHz}\n", divisor);
+    #endif
 
     
 }

@@ -1,4 +1,3 @@
-//#include <sys/cdefs.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdarg.h>
@@ -45,6 +44,16 @@ char in_port_byte(uint16_t port);
 uint32_t inportlong(uint16_t portid);
 void     out_port_long(uint16_t portid, uint32_t value);
 
+void initiateSSE();
+
 void hand_control();
+
+// simple rand implimintation
+static inline int rand() 
+{
+  static int seed = 123456789;
+  seed = (seed * 1103515245 + 12345) & INT_MAX;
+  return seed % INT_MAX;
+}
 
 #endif

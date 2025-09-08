@@ -11,8 +11,6 @@
 
 
 
-
-
 void spinlock_acquire(Spinlock *lock) 
 {
   while (lock->locked)
@@ -23,7 +21,7 @@ void spinlock_acquire(Spinlock *lock)
 
 void spinlock_release(Spinlock *lock) 
 {
-  lock->locked = false;
+  lock->locked = IS_NOT_LOCKED;
 }
 
 // Cnt spinlock is basically just a counter that increases for every read

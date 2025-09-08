@@ -3,6 +3,7 @@
 #include <timer.h>
 
 #include <syscalls.h>
+#include <console.h>
 //#include <schedule.h>
 #include <task.h>
 
@@ -90,19 +91,23 @@ void handle_task_fault(AsmPassedInterrupt *regs) {
   if (regs->interrupt == 14) {
     uint64_t err_pos;
     asm volatile("movq %%cr2, %0" : "=r"(err_pos));
+    console_initialized = false; // disable console
     printf("[isr] Page fault occured at cr2{%lx} rip{%lx}\n", err_pos,
            regs->rip);
   }
+  bool last_console_state = console_initialized;
+  console_initialized = false; // disable console
   printf("[isr::task] [%c] Killing task{%d} because of %s!\n",
          currentTask->kernel_task ? '-' : 'u', currentTask->id,
          exceptions[regs->interrupt]);
+  console_initialized = last_console_state; // restore console state
   // printf("at %lx\n", regs->rip);
   // Halt();
   task_kill(currentTask->id, 139);
   //schedule((uint64_t)regs);
 }
 
-uint64_t handle_syscall_tssrsp(uint64_t rsp) {
+extern "C" uint64_t handle_syscall_tssrsp(uint64_t rsp) {
   if (!tasksInitiated)
     return rsp;
 
@@ -115,7 +120,7 @@ uint64_t handle_syscall_tssrsp(uint64_t rsp) {
   return (size_t)iretqRsp;
 }
 
-uint64_t handle_tssrsp(uint64_t rsp) {
+extern "C" uint64_t handle_tssrsp(uint64_t rsp) {
   if (!tasksInitiated)
     return rsp;
 
@@ -153,7 +158,10 @@ void irq_handler(int irq, AsmPassedInterrupt *cpu)
         handler((uint64_t)cpu);
         return;
       }
+      bool last_console_state = console_initialized;
+      console_initialized = false; // disable console
       printf("irq %d was called befor it was initalized\n", irq);
+      console_initialized = last_console_state; // restore console state
 }
 
 // pass stack ptr
@@ -192,7 +200,12 @@ extern "C" void handle_interrupt(uint64_t rsp)
     }
   } else if (cpu->interrupt >= 0 && cpu->interrupt <= 31) { // ISR
     if (currentTask->systemCallInProgress)
+    {
+      bool last_console_state = console_initialized;
+      console_initialized = false; // disable console
       printf("[isr] Happened from system call!\n");
+      console_initialized = last_console_state; // restore console state
+    }
 
     if (!currentTask->systemCallInProgress && tasksInitiated &&
         currentTask->id != KERNEL_TASK_ID) { // && !currentTask->kernel_task
@@ -204,8 +217,11 @@ extern "C" void handle_interrupt(uint64_t rsp)
     if (cpu->interrupt == 14) {
       uint64_t err_pos;
       asm volatile("movq %%cr2, %0" : "=r"(err_pos));
+      bool last_console_state = console_initialized;
+      console_initialized = false; // disable console
       printf("[isr] Page fault occured at cr2{%lx} rip{%lx}\n", err_pos,
              cpu->rip);
+      console_initialized = last_console_state; // restore console state
     }
     printf(format, exceptions[cpu->interrupt]);
     // if (framebuffer == KERNEL_GFX)

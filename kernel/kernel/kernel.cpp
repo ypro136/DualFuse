@@ -13,10 +13,9 @@
 #include <keyboard.h>
 #include <memory.h>
 #include <pci.h>
+#include <fakefs.h>
 
-#include <hcf.hpp>
 
-#if defined(__is_x86_64)
 #include <framebufferutil.h>
 #include <console.h>
 #include <paging.h>
@@ -26,74 +25,71 @@
 #include <system.h>
 
 bool systemDiskInit;
-#endif
-
 
 
 
 extern "C" void _init(void);
 
+extern "C" void kernel_main(void);
 
 extern "C" void kernel_main(void) 
 {
 
-     _init();
+    _init();
+
+    systemDiskInit = false;
 
     serial_initialize(0x3f8);
     printf("serial initialized.\n");
 
-	gdt_initialize();
-	printf("gdt initialized\n");
-
-    isr_initialize();
-    printf("idt and isr initialized.\n");
-
-	timer_initialize();
-	printf("timer initialized\n");
-
     initialiseBootloaderParser();
-    printf("Bootloader Parser initialized\n");
+    printf("Bootloader Parser initialized.\n");
 
-    #if defined(__is_x86_64)
-
-    systemDiskInit = false;
+	gdt_initialize();
+	printf("gdt initialized.\n");
 
     paging_initialize();
     printf("paging initialized.\n");
 
+    isr_initialize();
+    printf("idt and isr initialized.\n");
+    
     framebuffer_initialize();
     printf("limine framebuffer initialized.\n");
-
-    console_initialize();
-    clear_screen();
-
-    #endif
+    
+	timer_initialize();
+	printf("timer initialized.\n");
 
 	memory_initialize();
-	printf("memory initialized\n");
+	printf("memory initialized.\n");
 
-    #if defined(__is_x86_64)
-    
+    console_initialize();
+    printf("console initialized.\n");
+    clear_screen();
+    printf("Welcome to DualFuse kernel!\n");
+
     pci_initialize();
 
-    #endif
-
 	keyboard_initialize();
-    printf("keyboard initialized\n");
+    printf("keyboard initialized.\n");
 
-    #if defined(__is_x86_64)
-    
     tasks_initialize();
-
+    
     syscall_inst_initialize();
-
+    
     syscalls_initialize();
+    
+    initiateSSE();
+
+    // fsMount("/", CONNECTOR_AHCI, 0, 1);
+    // fsMount("/boot/", CONNECTOR_AHCI, 0, 0);
+    // fsMount("/sys/", CONNECTOR_SYS, 0, 0);
+    // fsMount("/proc/", CONNECTOR_PROC, 0, 0);
 
     //syscall test
     printf("task id is :%d \n",syscallGetPid());
-
-    #endif
-
+    
+    // test_framebuffer(0xffffff);
 	
     for (;;) {}
 }

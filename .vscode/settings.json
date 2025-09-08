@@ -21,7 +21,16 @@
         "coroutine": "cpp",
         "format": "cpp",
         "compare": "cpp",
-        "climits": "cpp"
+        "climits": "cpp",
+        "*.x": "cpp",
+        "pr52048.C": "cpp",
+        "atomic": "cpp",
+        "*.def": "cpp",
+        "iomanip": "cpp",
+        "istream": "cpp",
+        "stacktrace": "cpp"
     },
-    "C_Cpp.errorSquiggles": "disabled"
+    "C_Cpp.errorSquiggles": "disabled",
+    "search.useIgnoreFiles": true,
+    "search.useGlobalIgnoreFiles": false
 }

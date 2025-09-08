@@ -18,30 +18,31 @@ bool psfLoad(void *buffer) {
   PSF1Header *header = (PSF1Header *)buffer;
 
   if (header->magic != PSF1_MAGIC) {
-    printf("[console] Invalid PSF magic! Only PSF1 is supported{0x0436} "
+    printf("[console:error] Invalid PSF magic! Only PSF1 is supported{0x0436} "
            "supplied{%04X}\n",
            header->magic);
     return false;
   }
 
   if (!(header->mode & PSF1_MODE512) && !(header->mode & PSF1_MODEHASTAB)) {
-    printf("[console] Invalid PSF mode! No unicode table found... mode{%02X}\n",
+    printf("[console:error] Invalid PSF mode! No unicode table found... mode{%02X}\n",
            header->mode);
     return false;
   }
 
   psf = buffer;
 
+  #if defined(DEBUG_CONSOLE)
   printf("[console] Initiated with font: dim(xy){%dx%d}\n", 8, psf->height);
+  #endif
 
   return true;
 }
 
 bool psfLoadDefaults() 
-    { 
-
-        return psfLoad(&u_vga16_psf[0]); 
-    }
+{ 
+    return psfLoad(&u_vga16_psf[0]); 
+}
 
 // bool psfLoadFromFile(char *path) {
 //   OpenFile *dir = file_system_kernel_open(path, O_RDONLY, 0);
@@ -62,6 +63,9 @@ bool psfLoadDefaults()
 // }
 
 void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb) {
+  #if defined(DEBUG_CONSOLE)
+  if (!psf) return;
+  #endif
   uint8_t *targ = (uint8_t *)((size_t)psf + sizeof(PSF1Header) + c * psf->height);
   for (int i = 0; i < psf->height; i++) {
     for (int j = 0; j < 8; j++) {

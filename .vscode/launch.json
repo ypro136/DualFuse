@@ -5,30 +5,44 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "bashdb",
+            "type": "cppdbg",
             "request": "launch",
-            "name": "Bash: all",
+            "stopAtEntry": false,
+            "name": "Launch with bochs",
             "cwd": "${workspaceFolder}",
-            "program": "all_and_log.sh",
+            "program": "bochs.sh",
             "terminalKind": "integrated",
             
           },
           {
-            "name": "Launch with GDB",
+            "name": "Launch qemu with GDB",
             "type": "cppdbg",
             "request": "launch",
-            "program": "progs/DualFuse/sysroot/boot/DualFuse.kernel",
+            "program": "/home/ypro136/progs/DualFuse/kernel/bin/DualFuse.kernel",
             "cwd": "${workspaceFolder}",
-            "args": [],
+            "logging": {
+                "engineLogging": true,
+                "traceResponse": false
+            },
             "targetArchitecture": "x86_64",
             "MIMode": "gdb",
             "miDebuggerPath": "/usr/bin/gdb",
-            "miDebuggerArgs": "",
+            "miDebuggerArgs": "-x ${workspaceFolder}/.gdbinit",
+            "stopAtConnect": false,
             "customLaunchSetupCommands": [
                 {
                     "text": "target remote localhost:1234",
                     "description": "Connect to QEMU remote debugger"
+                },
+                {
+                    "text": "add-symbol-file /home/ypro136/progs/DualFuse/kernel/bin/DualFuse.kernel 0xffffffff80000000",
+                    "description": "Load kernel symbols at correct address"
+                },
+                {
+                    "text": "info files",
+                    "description": "Show loaded files"
                 }
+
             ],
             "setupCommands": [
                 {
@@ -37,12 +51,13 @@
                     "ignoreFailures": true
                 },
                 {
-                    "text": "file progs/DualFuse/sysroot/boot/DualFuse.kernel",
-                    "description": "Load binary."
+                    "description": "Source .gdbinit",
+                    "text": "source ${workspaceFolder}/.gdbinit",
+                    "ignoreFailures": true
                 }
-                
+
             ],
-            "preLaunchTask": "default all script"
+            "preLaunchTask": "qemu script"
         }
         
 

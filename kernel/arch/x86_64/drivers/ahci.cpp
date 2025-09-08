@@ -17,7 +17,7 @@
 #include <pci.h>
 
 
-#include <data_structures/linked_list.h>
+#include <linked_list.h>
 #include <hcf.hpp>
 
 
@@ -199,8 +199,17 @@ void ahci_port_rebase(ahci *ahciPtr, HBA_PORT *port, int portno)
   // Command list entry maxim count = 32
   // Command list maxim size = 32*32 = 1K per port
   uint32_t clbPages = CEILING_DIVISION(sizeof(HBA_CMD_HEADER) * 32, BLOCK_SIZE);
-  void    *clbVirt = virtual_allocate(clbPages); //!
-  ahciPtr->clbVirt[portno] = clbVirt;
+  void *clbVirt = virtual_allocate(clbPages);
+  if (!clbVirt) {
+      printf("AHCI: Failed to allocate command list buffer!\n");
+      Halt();
+  }
+  #if defined(DEBUG_PCI)
+    printf("clbVirt=%p clbPages=%u sizeof(HBA_CMD_HEADER)=%zu total=%zu\n",
+          clbVirt, clbPages, sizeof(HBA_CMD_HEADER), clbPages * BLOCK_SIZE);
+  #endif
+  
+  HBA_CMD_HEADER *cmdheader = (HBA_CMD_HEADER *)clbVirt;
   size_t clbPhys = virtual_to_physical((size_t)clbVirt);
   port->clb = SPLIT_64_LOWER(clbPhys);
   port->clbu = SPLIT_64_HIGHER(clbPhys);
@@ -216,17 +225,18 @@ void ahci_port_rebase(ahci *ahciPtr, HBA_PORT *port, int portno)
 
   // Command table offset: 40K + 8K*portno
   // Command table size = 256*32 = 8K per port
-  HBA_CMD_HEADER *cmdheader = (HBA_CMD_HEADER *)clbVirt;
   void           *ctbaVirt = virtual_allocate(2); // 2 pages = 8192 bytes //!
   ahciPtr->ctbaVirt[portno] = ctbaVirt;
   size_t ctbaPhys = (size_t)virtual_to_physical((size_t)ctbaVirt);
   memset(ctbaVirt, 0, 8192);
+
+  
   for (int i = 0; i < 32; i++) {
     cmdheader[i].prdtl = 8; // 8 prdt entries per command table
                             // 256 bytes per command table, 64+16+48+16*8
     // Command table offset: 40K + 8K*portno + cmdheader_index*256
-    size_t ctbaPhysCurr = ctbaPhys + i * 256;
-    cmdheader[i].ctba = SPLIT_64_LOWER(ctbaPhysCurr);
+    size_t ctbaPhysCurr = ctbaPhys + i * 256; 
+       cmdheader[i].ctba = SPLIT_64_LOWER(ctbaPhysCurr);
     cmdheader[i].ctbau = SPLIT_64_HIGHER(ctbaPhysCurr);
     // memset((void *)cmdheader[i].ctba, 0, 256); already 0'd
   }
@@ -256,7 +266,10 @@ void ahci_port_probe(ahci *ahciPtr, HBA_MEM *abar) {
     if (pi & 1) {
       int dt = ahci_port_type(&abar->ports[i]);
       if (dt == AHCI_DEV_SATA) {
-        printf("[pci::ahci] SATA drive found at port %d\n", i);
+        #if defined(DEBUG_PCI)
+          printf("[pci::ahci] SATA drive found at port %d\n", i);
+        #endif
+        
         ahci_port_rebase(ahciPtr, &abar->ports[i], i);
       } else if (dt == AHCI_DEV_SATAPI) {
         printf("[pci::ahci] (unsupported) SATAPI drive found at port %d\n", i);
@@ -395,8 +408,11 @@ bool AHCI_initialize(pci_device *device)
   if (!ahciDevice)
     return false;
 
-  printf("[pci::ahci] Detected controller! name{%s} quirks{%x}\n",
-         ahciDevice->name, ahciDevice->quirks);
+    #if defined(DEBUG_PCI)
+      printf("[pci::ahci] Detected controller! name{%s} quirks{%x}\n",
+              ahciDevice->name, ahciDevice->quirks);
+    #endif
+  
 
   pci_general_device *details =
       (pci_general_device *)malloc(sizeof(pci_general_device));
