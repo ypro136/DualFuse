@@ -1,10 +1,11 @@
 *.tar.xz
+*.tar.gz
 gcc-*
 binutils-*
 gcc_src
 binutils_src
 *.log
-log.txt
+*.txt
 make.log
 automake-1.15.1
 autotools

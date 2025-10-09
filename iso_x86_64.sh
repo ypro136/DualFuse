@@ -15,6 +15,11 @@ if ! test -f "limine/limine-bios.sys"; then
       echo "instaled limine"
 fi
 
+if ! test -f "disk.img"; then
+      dd if=/dev/zero of=disk.img bs=1M count=1024
+fi
+
+
 cp -v limine.conf limine/limine-bios.sys limine/limine-bios-cd.bin \
       limine/limine-uefi-cd.bin isodir/boot/limine/
 

@@ -132,6 +132,8 @@ $(LIBS)
 all: bin/$(OUTPUT).kernel
 
 bin/$(OUTPUT).kernel: install-headers $(OBJS) GNUmakefile
+	echo "LINK_LIST $(LINK_LIST) \n"
+	echo "linking $@"
 	mkdir -p "$$(dirname $@)"
 	@echo "$(CPP) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $(LINK_LIST) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
 	@$(CPP) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $(LINK_LIST) 2>> $(ERROR_OUT_FILE)
@@ -142,12 +144,14 @@ bin/$(OUTPUT).kernel: install-headers $(OBJS) GNUmakefile
 	objdump -D bin/DualFuse.kernel --start-address=0xffffffff80000000 -M intel | head -n 200 >> bin/kernel_main_dump.txt
 
 obj/crtbegin.o:
+	echo "building crtbegin.o file $<"
 	@echo "$(CPP) $(CFLAGS) $(CPPFLAGS) -print-file-name=$(@F) && cp $(CRTBEGIN_OBJ) $@ \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
 	$(CPP) $(CFLAGS) -print-file-name=$(@F) && cp $(CRTBEGIN_OBJ) $@ 2>> $(ERROR_OUT_FILE)
 	@echo "\n"
 
 
 obj/crtend.o:
+	echo "building crtend.o file $<"
 	@echo "$(CPP) $(CFLAGS) $(CPPFLAGS) -print-file-name=$(@F) && cp $(CRTEND_OBJ) $@ \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
 	$(CPP) $(CFLAGS) -print-file-name=$(@F) && cp $(CRTEND_OBJ) $@ 2>> $(ERROR_OUT_FILE)
 	@echo "\n"
@@ -157,6 +161,7 @@ obj/crtend.o:
 -include $(HEADER_DEPS)
 
 obj/printf.cpp.o:arch/x86_64/drivers/printf.cpp
+	echo "building printf cpp file $<"
 	mkdir -p "$$(dirname $@)"
 	@echo "$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) $(KERNEL_LIBS) -DPRINTF_INCLUDE_CONFIG_H=1 \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
 	$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) $(KERNEL_LIBS) -DPRINTF_INCLUDE_CONFIG_H=1 2>> $(ERROR_OUT_FILE)
@@ -171,6 +176,7 @@ obj/printf.cpp.o:arch/x86_64/drivers/printf.cpp
 
 # Compilation rules for *.c files.
 obj/%.c.o: $(ARCHDIR)/%.c GNUmakefile install-headers
+	echo "building c file $<"
 	mkdir -p "$$(dirname $@)"
 	@echo "$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
 	$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) 2>> $(ERROR_OUT_FILE)
@@ -178,6 +184,7 @@ obj/%.c.o: $(ARCHDIR)/%.c GNUmakefile install-headers
 
 # Compilation rules for kernel cpp files.
 obj/%.cpp.o: kernel/%.cpp 
+	echo "building kernel cpp file $<"
 	mkdir -p "$$(dirname $@)"
 	@echo "$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) $(KERNEL_LIBS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
 	$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) $(KERNEL_LIBS) 2>> $(ERROR_OUT_FILE)
@@ -185,6 +192,7 @@ obj/%.cpp.o: kernel/%.cpp
 
 # Compilation rules for *.cpp files.
 obj/%.cpp.o: $(ARCHDIR)/%.cpp GNUmakefile install-headers
+	echo "building cpp file $<"
 	mkdir -p "$$(dirname $@)"
 	@echo "$(CPP) -MMD -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
 	$(CPP) -MMD -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) 2>> $(ERROR_OUT_FILE)
@@ -199,12 +207,14 @@ obj/%.S.o: $(ARCHDIR)/%.S GNUmakefile
 
 # Compilation rules for *.asm (nasm) files.
 obj/%.asm.o: $(ARCHDIR)/%.asm GNUmakefile
+	echo "building nasm file $<"
 	mkdir -p "$$(dirname $@)"
 	@echo "nasm -g -f $(NASM_ARCH) $< -o $@ \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
 	nasm -g -f $(NASM_ARCH) $< -o $@ 2>> $(ERROR_OUT_FILE)
 	@echo "\n"
 
 clean:
+	echo "Clean"
 	-rm -f bin/$(OUTPUT).kernel
 	-rm -f $(DESTDIR)$(BOOTDIR)$(OUTPUT).kernel
 #	-rm -rf bin obj
@@ -214,6 +224,7 @@ clean:
 install: clean install-headers install-kernel
 
 install-headers:
+	echo "objs $(OBJS) \n"
 	mkdir -p $(DESTDIR)$(INCLUDEDIR)
 	cp -R --preserve=timestamps $(ARCH_LIBS_DIR)/. $(DESTDIR)$(INCLUDEDIR)/.
 	cp -R --preserve=timestamps $(ARCH_LIBS_DIR) $(DESTDIR)$(INCLUDEDIR)/.

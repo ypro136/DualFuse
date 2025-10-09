@@ -10,8 +10,9 @@
             "stopAtEntry": false,
             "name": "Launch with bochs",
             "cwd": "${workspaceFolder}",
-            "program": "bochs.sh",
+            "program": "/home/ypro136/progs/DualFuse/kernel/bin/DualFuse.kernel",
             "terminalKind": "integrated",
+            "preLaunchTask": "bochs script"
             
           },
           {

@@ -28,9 +28,9 @@ export AUTOCONF_VERTION=2.69
 # set up core count for make multithreading.
 export CORE_COUNT=$(nproc)
 
-# for 64 bit target. modifying this is not tested
+# for 64 bit target. 32 bit is deprecated.
 export ARCH="x86_64"
-export TARGET_OS=dualfuse #elf or dualfuse. test on elf then try dualfuse
+export TARGET_OS=dualfuse #elf or dualfuse. elf is not tested.
 export TARGET=${ARCH}-${TARGET_OS}
 
 # set up toolchain location.

@@ -22,6 +22,28 @@
                 "close": true
             },
             "problemMatcher": []
+        },
+        {
+            "label": "bochs script",
+            "type": "shell",
+            "command": "./bochs.sh",
+            "args": [
+                "|",
+                "tee",
+                "logs/all.log"
+            ],
+            "group": "build",
+            "isBackground": true,
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true,
+                "showReuseMessage": false,
+                "panel": "new",
+                "clear": true,
+                "close": true
+            },
+            "problemMatcher": []
         }
 
     ]

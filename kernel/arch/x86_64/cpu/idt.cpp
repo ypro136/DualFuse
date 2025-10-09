@@ -11,6 +11,7 @@ static idt_entry idt[IDT_ENTRIES] = {0}; // Create an array of IDT entries; alig
 static _idt_pointer idt_pointer;
 
 
+
 void set_idt_gate(uint32_t index, uint64_t handler, uint8_t flags) {
   idt[index].isr_low = (uint16_t)handler;
   idt[index].kernel_cs = GDT_KERNEL_CODE;
@@ -21,7 +22,8 @@ void set_idt_gate(uint32_t index, uint64_t handler, uint8_t flags) {
   idt[index].isr_high = (uint32_t)(handler >> 32);
 }
 
-void set_idt() {
+void set_idt() 
+{
   idt_pointer.base = (size_t)&idt;
   idt_pointer.limit = IDT_ENTRIES * sizeof(idt_entry) - 1;
   asm volatile("lidt %0" ::"m"(idt_pointer) : "memory");

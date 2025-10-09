@@ -2,10 +2,12 @@
 *.log
 *.txt
 logs/*.log
+logs
 isodir
 sysroot
 limine
 serial.log
+disk.img
 .gitignore
 enviroment/log.txt
 enviroment/make.log
