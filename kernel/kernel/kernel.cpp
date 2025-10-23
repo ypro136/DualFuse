@@ -14,6 +14,7 @@
 #include <memory.h>
 #include <pci.h>
 #include <fakefs.h>
+#include <dbg.h>
 
 
 #include <framebufferutil.h>
@@ -66,7 +67,7 @@ extern "C" void kernel_main(void)
     console_initialize();
     printf("console initialized.\n");
     clear_screen();
-    printf("Welcome to DualFuse kernel!\n");
+    printf("Welcome to Nachtlauf kernel!\n");
 
     pci_initialize();
 
@@ -90,6 +91,8 @@ extern "C" void kernel_main(void)
     printf("task id is :%d \n",syscallGetPid());
     
     // test_framebuffer(0xffffff);
+
+    // breakpoint; tested and works
 	
     for (;;) {}
 }

@@ -6,6 +6,7 @@
 #include <console.h>
 //#include <schedule.h>
 #include <task.h>
+#include <dbg.h>
 
 #include <utility.h>
 #include <hcf.hpp>
@@ -224,9 +225,19 @@ extern "C" void handle_interrupt(uint64_t rsp)
       console_initialized = last_console_state; // restore console state
     }
     printf(format, exceptions[cpu->interrupt]);
+
+    if (cpu->interrupt == 3) {
+      uint64_t err_pos;
+      printf("[isr] dbg : %d\n",cpu->interrupt);
+      dbg_saveregs();
+      dbg_main(cpu->interrupt);
+      dbg_loadregs();
+    }
+
+
     // if (framebuffer == KERNEL_GFX)
     //   printf(format, exceptions[cpu->interrupt]);
-    Halt();
+    //Halt();
   } else if (cpu->interrupt == 0x80) {
     syscall_handler(cpu);
   }
