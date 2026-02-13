@@ -16,6 +16,10 @@ fi
 
 "$MUSL_DIR/build_musl.sh" --noreplace
 
+# cd $PROJECT_ROOT
+
+# "$PROJECT_ROOT/uacpi.sh"
+
 # exporting the new toolchain
 export LINKER=${TARGET}-ld
 export AR=${TARGET}-ar

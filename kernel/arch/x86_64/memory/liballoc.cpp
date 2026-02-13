@@ -540,5 +540,26 @@ void*   realloc(void *p, size_t size)
 	return ptr;
 }
 
+// C++ operator new and delete implementations
+void* operator new(size_t size)
+{
+	return malloc(size);
+}
+
+void* operator new[](size_t size)
+{
+	return malloc(size);
+}
+
+void operator delete(void* ptr) noexcept
+{
+	if (ptr) free(ptr);
+}
+
+void operator delete[](void* ptr) noexcept
+{
+	if (ptr) free(ptr);
+}
+
 
 

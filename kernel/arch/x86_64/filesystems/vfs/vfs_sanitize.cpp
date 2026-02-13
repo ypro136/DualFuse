@@ -8,7 +8,7 @@
 // Copyright (C) 2024 Panagiotis
 
 char  root[] = "/";
-char *file_system_strip_mount_point(const char *filename, MountPoint *mnt) {
+char *fsStripMountpoint(const char *filename, MountPoint *mnt) {
   char *out = (char *)((size_t)filename + strlen(mnt->prefix) -
                        1); // -1 for putting start slash;
 
@@ -18,7 +18,7 @@ char *file_system_strip_mount_point(const char *filename, MountPoint *mnt) {
     return root;
 }
 
-void file_system_sanitize_copy_safe(char *filename, char *safeFilename) {
+void fsSanitizeCopySafe(char *filename, char *safeFilename) {
   int i, j;
   for (i = 0, j = 0; filename[i] != '\0'; i++) {
     // double slashes
@@ -44,7 +44,7 @@ void file_system_sanitize_copy_safe(char *filename, char *safeFilename) {
 }
 
 // prefix can be the current working directory yk
-char *file_system_sanitize(char *prefix, char *filename) {
+char *fsSanitize(char *prefix, char *filename) {
   char  *safeFilename = 0;
   size_t filenameSize = strlen(filename);
   if (filename[0] != '/') {
@@ -61,13 +61,13 @@ char *file_system_sanitize(char *prefix, char *filename) {
       offset++;
     }
     // below: memcpy(safeFilename + cwdLen, filename, filenameSize);
-    file_system_sanitize_copy_safe(filename, safeFilename + offset + cwdLen);
-    file_system_sanitize_copy_safe(safeFilename, safeFilename); // sanitize total
+    fsSanitizeCopySafe(filename, safeFilename + offset + cwdLen);
+    fsSanitizeCopySafe(safeFilename, safeFilename); // sanitize total
     safeFilename[cwdLen + offset + filenameSize] = '\0';
   } else {
     // /smth/[...]
     safeFilename = (char *)malloc(filenameSize + 1);
-    file_system_sanitize_copy_safe(filename, safeFilename);
+    fsSanitizeCopySafe(filename, safeFilename);
   }
 
   // will be re-used throughout :")

@@ -10,7 +10,9 @@
 
 #include <framebufferutil.h>
 #include <console.h>
-
+#include <state_monitor.h>
+#include <graphic_composer.h>
+#include <graphic_composer_examples.h>
 
 
 __attribute__((used))
@@ -23,10 +25,42 @@ const uint32_t frequency = 60;
 void timer_irq_0(struct interrupt_registers *registers)
 {
     timerTicks += 1;
+
+    if (console_initialized)
+    {
+        // update the StateMonitor bars based on timerTicks
+        uint8_t a = (uint8_t)(timerTicks % 101);
+        uint8_t b = (uint8_t)((timerTicks * 2) % 101);
+        uint8_t c = (uint8_t)(100 - a);
+        stateMonitor.set_progress(0, a);
+        stateMonitor.set_progress(1, b);
+        stateMonitor.set_progress(2, c);
+        stateMonitor.render();
+    }
+
+    // TODO: Uncomment when graphic_composer_initialized is properly defined
+    // if (graphic_composer_initialized)
+    // {
+    //     example_simple_window();
+    // }
+
     if (console_initialized)
     {
         copy_buffer_to_screan();
     }
+
+    
+
+}
+
+uint32_t sleep(uint32_t time) 
+{
+  // Simple sleep without printf to avoid stack corruption
+  uint64_t target = timerTicks + (time);
+  while (target > timerTicks) {
+    hand_control();
+  }
+  return 0;
 }
 
 void timer_initialize()
@@ -48,6 +82,7 @@ void timer_initialize()
     irq_install_handler(0, &timer_irq_0);
 
     timerBootUnix = rtc_to_unix(&rtc);
+
 
     #if defined(DEBUG_TIMER)
     printf("[timer] Ready to fire: frequency{%dMHz}\n", divisor);

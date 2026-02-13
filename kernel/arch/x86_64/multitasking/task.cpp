@@ -25,6 +25,14 @@ Task *currentTask;
 
 Task *dummyTask;
 
+Task *netHelperTask;
+void  kernelHelpEntry();
+
+Spinlock LOCK_REAPER;
+Task    *reaperTask;
+
+// Task manager allowing for task management
+
 SpinlockCnt TASK_LL_MODIFY = {0};
 
 void task_attach_def_termios(Task *task) {
@@ -32,7 +40,7 @@ void task_attach_def_termios(Task *task) {
   task->term.c_iflag = BRKINT | ICRNL | INPCK | ISTRIP | IXON;
   task->term.c_oflag = OPOST;
   task->term.c_cflag = CS8 | CREAD | CLOCAL;
-  task->term.c_lflag = ECHO | ICANON | IEXTEN | ISIG;
+  task->term.c_lflag = ECHO | ICANON | IEXTEN | ISIG | ECHOCTL;
   task->term.c_line = 0;
   task->term.c_cc[VINTR] = 3;     // Ctrl-C
   task->term.c_cc[VQUIT] = 28;    // Ctrl-task->term.c_cc[VERASE] = 127; // DEL
@@ -53,23 +61,47 @@ void task_attach_def_termios(Task *task) {
   }
 }
 
-Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir,
-                 uint32_t argc, char **argv) {
+// although there are locks on these two functions, they are EXTREMELY unsafe!
+Task *task_list_allocate() {
   spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
+  Task *target = (Task *)malloc(sizeof(Task));
+  memset(target, 0, sizeof(Task)); // TASK_STATE_DEAD is 0 too
+  asm volatile("cli");
   Task *browse = firstTask;
   while (browse) {
     if (!browse->next)
       break; // found final
     browse = browse->next;
   }
-  if (!browse) {
-    printf("[scheduler] Something went wrong with init!\n");
-    Halt();
-  }
-  Task *target = (Task *)malloc(sizeof(Task));
-  memset(target, 0, sizeof(Task));
+
+  assert(browse);
   browse->next = target;
+  asm volatile("sti");
   spinlock_cnt_write_release(&TASK_LL_MODIFY);
+  return target;
+}
+
+// will NEVER be the first one
+void task_list_destroy(Task *target) {
+  spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
+  asm volatile("cli");
+  Task *prev = firstTask;
+  while (prev) {
+    if (prev->next == target)
+      break;
+    prev = prev->next;
+  }
+  assert(prev);
+
+  prev->next = target->next;
+  asm volatile("sti");
+  spinlock_cnt_write_release(&TASK_LL_MODIFY);
+  free(target); // finally, destroy it
+}
+
+Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir,
+                  uint32_t argc, char **argv) {
+  Task *target = task_list_allocate();
 
   uint64_t code_selector =
       kernel_task ? GDT_KERNEL_CODE : (GDT_USER_CODE | DPL_USER);
@@ -85,9 +117,14 @@ Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir
   target->registers.rip = rip;
 
   target->id = id;
+  target->tgid = id;
+  target->sid = 1; // to dummy
+  target->ctrlPty = -1;
   target->kernel_task = kernel_task;
   target->state = TASK_STATE_CREATED; // TASK_STATE_READY
-  target->pagedir = pagedir;
+  // target->pagedir = pagedir;
+  target->infoPd = taskInfoPdAllocate(false);
+  target->infoPd->pagedir = pagedir; // no lock cause only we use it
 
   void  *tssRsp = virtual_allocate(USER_STACK_PAGES);
   size_t tssRspSize = USER_STACK_PAGES * BLOCK_SIZE;
@@ -99,13 +136,12 @@ Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir
   memset(syscalltssRsp, 0, syscalltssRspSize);
   target->whileSyscallRsp = (uint64_t)syscalltssRsp + syscalltssRspSize;
 
-  target->heap_start = USER_HEAP_START;
-  target->heap_end = USER_HEAP_START;
+  target->infoFs = taskInfoFsAllocate();
+  target->infoFiles = taskInfoFilesAllocate();
+  target->infoSignals = taskInfoSignalAllocate();
 
-  target->mmap_start = USER_MMAP_START;
-  target->mmap_end = USER_MMAP_START;
-
-  target->umask = S_IWGRP | S_IWOTH;
+  LinkedListInit(&target->dsChildTerminated, sizeof(KilledInfo));
+  LinkedListInit(&target->dsSysIntr, sizeof(TaskSysInterrupted));
 
   memset(target->fpuenv, 0, 512);
   ((uint16_t *)target->fpuenv)[0] = 0x37f;
@@ -113,21 +149,30 @@ Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir
 
   task_attach_def_termios(target);
 
+  // just in case it ends up becoming an orphan
+  target->parent = firstTask;
+
   return target;
 }
 
 Task *task_create_kernel(uint64_t rip, uint64_t rdi) {
-  Task *target = task_create(task_generate_id(), rip, true, page_directory_allocate(), 0, 0);
-
+  Task *target =
+      task_create(task_generate_id(), rip, true, page_directory_allocate(), 0, 0);
   stack_generate_kernel(target, rdi);
   task_create_finish(target);
   return target;
 }
 
+void task_name_kernel(Task *target, const char *str, int len) {
+  target->cmdline = malloc(len);
+  memcpy(target->cmdline, str, len);
+  target->cmdlineLen = len;
+}
+
 void task_create_finish(Task *task) { task->state = TASK_STATE_READY; }
 
 void task_adjust_heap(Task *task, size_t new_heap_end, size_t *start,
-                    size_t *end) {
+                      size_t *end) {
   if (new_heap_end <= *start) {
     printf("[task] Tried to adjust heap behind current values: id{%d}\n",
            task->id);
@@ -161,20 +206,31 @@ void task_adjust_heap(Task *task, size_t new_heap_end, size_t *start,
   *end = new_heap_end;
 }
 
+void task_call_reaper(Task *target) {
+  while (true) {
+    spinlock_acquire(&LOCK_REAPER);
+    if (!reaperTask) {
+      // there is space!
+      reaperTask = target;
+      spinlock_release(&LOCK_REAPER);
+      return;
+    }
+    spinlock_release(&LOCK_REAPER);
+    hand_control();
+  }
+}
+
 void task_kill(uint32_t id, uint16_t ret) {
   Task *task = task_get(id);
   if (!task)
     return;
 
-  // We'll need this later
-  bool parentVfork = task->parent->state == TASK_STATE_WAITING_VFORK;
-
   // Notify that poor parent... they must've been searching all over the
   // place!
   if (task->parent && !task->noInformParent) {
     spinlock_acquire(&task->parent->LOCK_CHILD_TERM);
-    KilledInfo *info = (KilledInfo *)linked_list_allocate(
-        (void **)(&task->parent->firstChildTerminated), sizeof(KilledInfo));
+    KilledInfo *info = (KilledInfo *)LinkedListAllocate(
+        &task->parent->dsChildTerminated, sizeof(KilledInfo));
     info->pid = task->id;
     info->ret = ret;
     task->parent->childrenTerminatedAmnt++;
@@ -183,84 +239,62 @@ void task_kill(uint32_t id, uint16_t ret) {
          task->parent->waitingForPid == task->id))
       task->parent->state = TASK_STATE_READY;
     spinlock_release(&task->parent->LOCK_CHILD_TERM);
+    atomicBitmapSet(&task->parent->sigPendingList, SIGCHLD);
   }
 
   // vfork() children need to notify parents no matter what
-  if (task->parent->state == TASK_STATE_WAITING_VFORK)
+  if (task->parent && task->parent->state == TASK_STATE_WAITING_VFORK)
     task->parent->state = TASK_STATE_READY;
 
+  if (task->tidptr) {
+    // *task->tidptr = 0;
+    atomicWrite32((uint32_t *)task->tidptr, 0);
+    futexSyscall((uint32_t *)task->tidptr, FUTEX_WAKE, 1, 0, 0, 0);
+  }
+
   // close any left open files
-  OpenFile *file = task->firstFile;
-  while (file) {
-    int id = file->id;
-    file = file->next;
-    file_system_user_close(task, id);
-  }
+  taskInfoFilesDiscard(task->infoFiles, task);
 
-  spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
-  Task *browse = firstTask;
-  while (browse) {
-    if (browse->next && browse->next->id == task->id)
-      break;
-    browse = browse->next;
-  }
-  spinlock_cnt_write_release(&TASK_LL_MODIFY);
+  // if (!parentVfork)
+  //   PageDirectoryFree(task->pagedir);
+  taskInfoPdDiscard(task->infoPd);
+  // ^ only changes userspace locations so we don't need to change our pagedir
 
-  if (!parentVfork)
-    page_directory_free(task->pagedir);
-
-  // tssRsp, syscalltssRsp left
-
-  browse->next = task->next;
-
+  // the "reaper" thread will finish everything in a safe context
+  task_call_reaper(task);
   task->state = TASK_STATE_DEAD;
 
   if (currentTask == task) {
     // we're most likely in a syscall context, so...
-    // task_kill_cleanup(task); // left for sched
+    // task_killCleanup(task); // left for sched
     asm volatile("sti");
     // wait until we're outta here
     while (1) {
       //   printf("GET ME OUT ");
     }
   }
-
-  task_kill_cleanup(task);
-}
-
-void task_kill_cleanup(Task *task) {
-  if (task->state != TASK_STATE_DEAD)
-    return;
-
-  return;
-  virtual_free((void *)task->whileTssRsp, USER_STACK_PAGES);
-  virtual_free((void *)task->whileSyscallRsp, USER_STACK_PAGES);
-  free(task);
-
-  task_free_children(task);
 }
 
 void task_free_children(Task *task) {
+  if (task->noInformParent)
+    return; // it's execve() trash most likely
+  spinlock_cnt_read_acquire(&TASK_LL_MODIFY);
   Task *child = firstTask;
   while (child) {
     Task *next = child->next;
-    if (child->parent == task && child->state != TASK_STATE_DEAD)
-      child->parent = firstTask;
-    child = next;
-  }
-}
-
-void task_kill_children(Task *task) {
-  Task *child = firstTask;
-  while (child) {
-    Task *next = child->next;
+    // todo: reparent to init!
     if (child->parent == task && child->state != TASK_STATE_DEAD) {
-      task_kill(child->id, 0);
-      // task_kill_cleanup(child); // done automatically
-      task_kill_children(task); // use recursion
+      // if (!child->parent)
+      // child->parent = firstTask;
+      // else
+      //   child->parent = child->parent->parent;
+
+      // reparent to dummy (it doesn't care one bit, it'd be a bad parent)
+      child->parent = dummyTask;
     }
     child = next;
   }
+  spinlock_cnt_read_release(&TASK_LL_MODIFY);
 }
 
 Task *task_get(uint32_t id) {
@@ -275,95 +309,96 @@ Task *task_get(uint32_t id) {
   return browse;
 }
 
-int taskIdCurr = 1;
+uint64_t taskIdCurr = 1;
+uint64_t task_generate_id() { return taskIdCurr++; }
 
-int16_t task_generate_id() {
-  return taskIdCurr++;
-  // spinlockCntReadAcquire(&TASK_LL_MODIFY);
-  // Task    *browse = firstTask;
-  // uint16_t max = 0;
-  // while (browse) {
-  //   if (browse->id > max)
-  //     max = browse->id;
-  //   browse = browse->next;
-  // }
-
-  // spinlockCntReadRelease(&TASK_LL_MODIFY);
-  // return max + 1;
-}
-
-int task_change_cwd(char *newdir) {
-  stat  stat = {0};
-  char *safeNewdir = file_system_sanitize(currentTask->cwd, newdir);
-  if (!file_system_stat_by_filename(currentTask, safeNewdir, &stat)) {
+size_t task_change_cwd(char *newdir) {
+  stat stat = {0};
+  spinlock_acquire(&currentTask->infoFs->LOCK_FS);
+  char *safeNewdir = fsSanitize(currentTask->infoFs->cwd, newdir);
+  spinlock_release(&currentTask->infoFs->LOCK_FS);
+  if (!fsStatByFilename(currentTask, safeNewdir, &stat)) {
     free(safeNewdir);
-    return -ENOENT;
+    return ERR(ENOENT);
   }
 
   if (!(stat.st_mode & S_IFDIR)) {
     free(safeNewdir);
-    return -ENOTDIR;
+    return ERR(ENOTDIR);
   }
 
   size_t len = strlen(safeNewdir) + 1;
-  currentTask->cwd = realloc(currentTask->cwd, len);
-  memcpy(currentTask->cwd, safeNewdir, len);
+  spinlock_acquire(&currentTask->infoFs->LOCK_FS);
+  currentTask->infoFs->cwd = realloc(currentTask->infoFs->cwd, len);
+  memcpy(currentTask->infoFs->cwd, safeNewdir, len);
+  spinlock_release(&currentTask->infoFs->LOCK_FS);
 
   free(safeNewdir);
   return 0;
 }
 
-void task_files_empty(Task *task) {
-  OpenFile *realFile = task->firstFile;
-  while (realFile) {
-    OpenFile *next = realFile->next;
-    file_system_user_close(task, realFile->id);
-    realFile = next;
-  }
+typedef struct {
+  bool  respect_coe;
+  Task *target;
+} task_files_inorder_args;
+
+void task_files_copy_inorder(AVLheader *root, task_files_inorder_args *args) {
+  if (!root)
+    return;
+  task_files_copy_inorder(root->left, args);
+  // process this
+  OpenFile *curr = (OpenFile *)root->value;
+  if (!args->respect_coe || !curr->closeOnExec)
+    assert(fsUserDuplicateNode(args->target, curr, curr->id));
+  task_files_copy_inorder(root->right, args);
 }
 
-void task_files_copy(Task *original, Task *target, bool respectCOE) {
-  OpenFile *realFile = original->firstFile;
-  while (realFile) {
-    if (respectCOE && realFile->closeOnExec) {
-      realFile = realFile->next;
-      continue;
-    }
-    OpenFile *targetFile = file_system_user_duplicate_node_unsafe(realFile);
-    linkedlist_push_front_unsafe((void **)(&target->firstFile), targetFile);
-    realFile = realFile->next;
-  }
+void task_files_copy(Task *original, Task *target, bool respect_coe) {
+  TaskInfoFiles *originalInfo = original->infoFiles;
+  TaskInfoFiles *targetInfo = target->infoFiles;
+  spinlock_cnt_read_acquire(&originalInfo->WLOCK_FILES);
+  spinlock_cnt_write_acquire(&targetInfo->WLOCK_FILES);
+  targetInfo->rlimitFdsHard = originalInfo->rlimitFdsHard;
+  targetInfo->rlimitFdsSoft = originalInfo->rlimitFdsSoft;
+  targetInfo->fdBitmap = malloc(targetInfo->rlimitFdsHard / 8);
+  memcpy(targetInfo->fdBitmap, originalInfo->fdBitmap,
+         targetInfo->rlimitFdsHard / 8);
+  spinlock_cnt_write_release(&targetInfo->WLOCK_FILES); // inorder will manage this
+  task_files_inorder_args args = {.respect_coe = respect_coe, .target = target};
+  task_files_copy_inorder((void *)originalInfo->firstFile, &args);
+  spinlock_cnt_read_release(&originalInfo->WLOCK_FILES);
 }
 
-Task *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, bool copyPages,
-               bool spinup) {
-  spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
-  Task *browse = firstTask;
-  while (browse) {
-    if (!browse->next)
-      break; // found final
-    browse = browse->next;
-  }
-  if (!browse) {
-    printf("[scheduler] Something went wrong with init!\n");
-    Halt();
-  }
-  Task *target = (Task *)malloc(sizeof(Task));
-  memset(target, 0, sizeof(Task));
-  browse->next = target;
-  spinlock_cnt_write_release(&TASK_LL_MODIFY);
+Task *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, int clone_flags,
+                bool spinup) {
+  Task *target = task_list_allocate();
 
-  if (copyPages) {
-    uint64_t *targetPagedir = page_directory_allocate();
-    page_directory_user_duplicate(currentTask->pagedir, targetPagedir);
-    target->pagedir = targetPagedir;
-  } else
-    target->pagedir = currentTask->pagedir;
+  if (!(clone_flags & CLONE_VM)) {
+    target->infoPd = taskInfoPdClone(currentTask->infoPd);
+  } else {
+    TaskInfoPagedir *share = currentTask->infoPd;
+    spinlock_acquire(&share->LOCK_PD);
+    share->utilizedBy++;
+    spinlock_release(&share->LOCK_PD);
+    target->infoPd = share; // share it yk!
+  }
 
   target->id = task_generate_id();
+  target->tgid = target->id;
   target->pgid = currentTask->pgid;
+  target->sid = currentTask->sid;
+  target->ctrlPty = currentTask->ctrlPty;
   target->kernel_task = currentTask->kernel_task;
   target->state = TASK_STATE_CREATED;
+
+  target->cmdlineLen = currentTask->cmdlineLen;
+  target->cmdline = malloc(target->cmdlineLen);
+  memcpy(target->cmdline, currentTask->cmdline, target->cmdlineLen);
+  if (currentTask->execname)
+    target->execname = strdup(currentTask->execname);
+
+  if (clone_flags & CLONE_THREAD)
+    target->tgid = currentTask->tgid;
 
   // target->registers = currentTask->registers;
   memcpy(&target->registers, cpu, sizeof(AsmPassedInterrupt));
@@ -380,23 +415,52 @@ Task *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, bool copyPages,
   target->fsbase = currentTask->fsbase;
   target->gsbase = currentTask->gsbase;
 
-  target->heap_start = currentTask->heap_start;
-  target->heap_end = currentTask->heap_end;
+  // target->heap_start = currentTask->heap_start;
+  // target->heap_end = currentTask->heap_end;
 
-  target->mmap_start = currentTask->mmap_start;
-  target->mmap_end = currentTask->mmap_end;
+  // target->mmap_start = currentTask->mmap_start;
+  // target->mmap_end = currentTask->mmap_end;
 
   target->term = currentTask->term;
 
   target->tmpRecV = currentTask->tmpRecV;
-  target->firstFile = 0;
-  size_t cmwdLen = strlen(currentTask->cwd) + 1;
-  char  *newcwd = (char *)malloc(cmwdLen);
-  memcpy(newcwd, currentTask->cwd, cmwdLen);
-  target->cwd = newcwd;
-  target->umask = currentTask->umask;
 
-  task_files_copy(currentTask, target, false);
+  if (!(clone_flags & CLONE_FS))
+    target->infoFs = taskInfoFsClone(currentTask->infoFs);
+  else {
+    TaskInfoFs *share = currentTask->infoFs;
+    spinlock_acquire(&share->LOCK_FS);
+    share->utilizedBy++;
+    spinlock_release(&share->LOCK_FS);
+    target->infoFs = share;
+  }
+
+  if (!(clone_flags & CLONE_FILES)) {
+    target->infoFiles = taskInfoFilesAllocate();
+    task_files_copy(currentTask, target, false);
+  } else {
+    TaskInfoFiles *share = currentTask->infoFiles;
+    spinlock_cnt_write_acquire(&share->WLOCK_FILES);
+    share->utilizedBy++;
+    spinlock_cnt_write_release(&share->WLOCK_FILES);
+    target->infoFiles = share;
+  }
+
+  if (!(clone_flags & CLONE_SIGHAND))
+    target->infoSignals = taskInfoSignalClone(currentTask->infoSignals);
+  else {
+    TaskInfoSignal *share = currentTask->infoSignals;
+    spinlock_acquire(&share->LOCK_SIGNAL);
+    share->utilizedBy++;
+    spinlock_release(&share->LOCK_SIGNAL);
+    target->infoSignals = share;
+  }
+
+  LinkedListInit(&target->dsChildTerminated, sizeof(KilledInfo));
+  LinkedListInit(&target->dsSysIntr, sizeof(TaskSysInterrupted));
+
+  // they get inherited, but can still be changed thread-wise!
+  target->sigBlockList = currentTask->sigBlockList;
 
   // returns zero yk
   target->registers.rax = 0;
@@ -409,12 +473,19 @@ Task *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, bool copyPages,
   target->registers.usermode_rsp = rsp;
   target->registers.usermode_ss = GDT_USER_DATA | DPL_USER;
 
+  // since the scheduler, our fpu state might've changed
+  asm volatile(" fxsave %0 " ::"m"(currentTask->fpuenv));
+  asm("stmxcsr (%%rax)" : : "a"(&currentTask->mxcsr));
+
   // yk
   target->parent = currentTask;
+  target->pgid = currentTask->pgid;
 
   // fpu stuff
   memcpy(target->fpuenv, currentTask->fpuenv, 512);
   target->mxcsr = currentTask->mxcsr;
+
+  target->extras = currentTask->extras;
 
   if (spinup)
     task_create_finish(target);
@@ -422,9 +493,15 @@ Task *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, bool copyPages,
   return target;
 }
 
+// Will release lock when task isn't running via the kernel helper
+void task_spinlock_exit(Task *task, Spinlock *lock) {
+  assert(!task->spinlockQueueEntry);
+  task->spinlockQueueEntry = lock;
+}
+
 void kernel_dummy_entry() {
   while (true)
-    dummyTask->state = TASK_STATE_DUMMY;
+    asm volatile("pause");
 }
 
 void tasks_initialize() {
@@ -434,11 +511,16 @@ void tasks_initialize() {
   currentTask = firstTask;
   currentTask->id = KERNEL_TASK_ID;
   currentTask->state = TASK_STATE_READY;
-  currentTask->pagedir = get_page_directory();
+  currentTask->infoPd = taskInfoPdAllocate(false);
+  currentTask->infoPd->pagedir = get_page_directory();
   currentTask->kernel_task = true;
-  currentTask->cwd = malloc(2);
-  currentTask->cwd[0] = '/';
-  currentTask->cwd[1] = '\0';
+  currentTask->infoFs = taskInfoFsAllocate();
+  currentTask->infoFiles = taskInfoFilesAllocate();
+  currentTask->infoFiles->fdBitmap[0] = (uint8_t)-1;
+  currentTask->infoSignals = 0; // no, just no!
+  LinkedListInit(&currentTask->dsChildTerminated, sizeof(KilledInfo));
+  LinkedListInit(&currentTask->dsSysIntr, sizeof(TaskSysInterrupted));
+  task_name_kernel(currentTask, entryCmdline, sizeof(entryCmdline));
 
   void  *tssRsp = virtual_allocate(USER_STACK_PAGES);
   size_t tssRspSize = USER_STACK_PAGES * BLOCK_SIZE;
@@ -453,6 +535,6 @@ void tasks_initialize() {
 
   // create a dummy task in case the scheduler has nothing to do
   dummyTask = task_create_kernel((uint64_t)kernel_dummy_entry, 0);
-
   dummyTask->state = TASK_STATE_DUMMY;
+  task_name_kernel(dummyTask, dummyCmdline, sizeof(dummyCmdline));
 }

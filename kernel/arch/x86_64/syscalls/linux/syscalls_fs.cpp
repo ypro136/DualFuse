@@ -1,248 +1,252 @@
-#include <syscalls.h>
-
 #include <fat32.h>
 #include <linked_list.h>
 #include <linux.h>
 #include <liballoc.h>
+#include <poll.h>
+#include <string.h>
+#include <syscalls.h>
 #include <task.h>
-
 #include <utility.h>
-#include <hcf.hpp>
+
+// Manages all systemcalls related to filesystem operations
+// Copyright (C) 2024 Panagiotis
 
 #define SYSCALL_READ 0
-static int syscallRead(int fd, char *str, uint32_t count) {
+static size_t syscallRead(int fd, char *str, uint32_t count) {
   if (!count)
     return 0;
-  OpenFile *browse = file_system_user_get_node(currentTask, fd);
-  if (!browse) {
-#if DEBUG_SYSCALLS_FAILS
-    printf("[syscalls::read] FAIL! Couldn't find file! fd{%d}\n", fd);
-#endif
-    return -EBADF;
-  }
-  uint32_t read = file_system_read(browse, (uint8_t *)str, count);
-  return read;
+  OpenFile *browse = fsUserGetNode(currentTask, fd);
+  if (!browse)
+    return ERR(EBADF);
+  return fsRead(browse, (uint8_t *)str, count);
 }
 
 #define SYSCALL_WRITE 1
-static int syscallWrite(int fd, char *str, uint32_t count) {
+static size_t syscallWrite(int fd, char *str, uint32_t count) {
   if (!count)
     return 0;
-  OpenFile *browse = file_system_user_get_node(currentTask, fd);
-  if (!browse) {
-#if DEBUG_SYSCALLS_FAILS
-    printf("[syscalls::write] FAIL! Couldn't find file! fd{%d}\n", fd);
-#endif
-    return -EBADF;
-  }
-
-  uint32_t writtenBytes = file_system_write(browse, (uint8_t *)str, count);
-  return writtenBytes;
+  OpenFile *browse = fsUserGetNode(currentTask, fd);
+  if (!browse)
+    return ERR(EBADF);
+  return fsWrite(browse, (uint8_t *)str, count);
 }
 
 #define SYSCALL_OPEN 2
-static int syscallOpen(char *filename, int flags, int mode) {
-#if DEBUG_SYSCALLS_EXTRA
-  printf("[syscalls::open] filename{%s}\n", filename);
-#endif
-  if (!filename) {
-#if DEBUG_SYSCALLS_FAILS
-    printf("[syscalls::open] FAIL! No filename given... yeah.\n");
-#endif
-    return -1;
-  }
-
-  int ret = file_system_user_open(currentTask, filename, flags, mode);
-#if DEBUG_SYSCALLS_FAILS
-  if (ret < 0)
-    printf("[syscalls::open] FAIL! Couldn't open file! filename{%s}\n",
-           filename);
-#endif
-
-  return ret;
+static size_t syscallOpen(char *filename, int flags, int mode) {
+  dbgSysExtraf("filename{%s}", filename);
+  if (!filename)
+    return ERR(EFAULT);
+  return fsUserOpen(currentTask, filename, flags, mode);
 }
 
 #define SYSCALL_CLOSE 3
-static int syscallClose(int fd) { return file_system_user_close(currentTask, fd); }
+static size_t syscallClose(int fd) { return fsUserClose(currentTask, fd); }
 
 #define SYSCALL_STAT 4
-static int syscallStat(char *filename, stat *statbuf) {
-#if DEBUG_SYSCALLS_EXTRA
-  printf("[syscalls::stat] filename{%s}\n", filename);
-#endif
-  bool ret = file_system_stat_by_filename(currentTask, filename, statbuf);
-  if (!ret) {
-#if DEBUG_SYSCALLS_FAILS
-    printf("[syscalls::stat] FAIL! Couldn't stat() file! filename{%s}\n",
-           filename);
-#endif
-    return -ENOENT;
-  }
-
-  return 0;
+static size_t syscallStat(char *filename, stat *statbuf) {
+  dbgSysExtraf("filename{%s}", filename);
+  bool ret = fsStatByFilename(currentTask, filename, statbuf);
+  return (ret ? 0 : ERR(ENOENT));
 }
 
 #define SYSCALL_FSTAT 5
-static int syscallFstat(int fd, stat *statbuf) {
-  OpenFile *file = file_system_user_get_node(currentTask, fd);
+static size_t syscallFstat(int fd, stat *statbuf) {
+  OpenFile *file = fsUserGetNode(currentTask, fd);
   if (!file)
-    return -EBADF;
+    return ERR(EBADF);
 
-  bool ret = file_system_stat(file, statbuf);
-  if (!ret) {
-#if DEBUG_SYSCALLS_FAILS
-    printf("[syscalls::fstat] FAIL! Couldn't fstat() file! fd{%d}\n", fd);
-#endif
-    return -ENOENT;
-  }
-
-  return 0;
+  bool ret = fsStat(file, statbuf);
+  return (ret ? 0 : ERR(ENOENT));
 }
 
 #define SYSCALL_LSTAT 6
-static int syscallLstat(char *filename, stat *statbuf) {
-  bool ret = file_system_Lstat_by_filename(currentTask, filename, statbuf);
-  if (!ret) {
-#if DEBUG_SYSCALLS_FAILS
-    printf("[syscalls::lstat] FAIL! Couldn't lstat() file! filename{%d}\n",
-           filename);
-#endif
-    return -ENOENT;
-  }
+static size_t syscallLstat(char *filename, stat *statbuf) {
+  bool ret = fsLstatByFilename(currentTask, filename, statbuf);
+  return (ret ? 0 : ERR(ENOENT));
+}
 
-  return 0;
+#include <timer.h>
+#define SYSCALL_POLL 7
+static size_t syscallPoll(struct pollfd *fds, int nfds, int timeout) {
+  return poll(fds, nfds, timeout);
+
+  // todo: fixup below
+  int ret = 0;
+  for (int i = 0; i < nfds; i++) {
+    uint64_t start = timerTicks;
+    fds[i].revents = 0; // as a start
+    if (fds[i].fd == -1)
+      continue; // ignore -1 fds
+
+    OpenFile *browse = fsUserGetNode(currentTask, fds[i].fd);
+    if (!browse || !browse->handlers->poll)
+      continue;
+
+    if (browse->handlers->poll(browse, &fds[i], timeout))
+      ret++;
+
+    // ack time
+    if (timeout <= (timerTicks - start))
+      timeout = 0;
+    else
+      timeout -= timerTicks - start;
+  }
+  return ret;
 }
 
 #define SYSCALL_LSEEK 8
-static int syscallLseek(uint32_t file, int offset, int whence) {
-  return file_system_user_seek(currentTask, file, offset, whence);
+static size_t syscallLseek(uint32_t file, int offset, int whence) {
+  return fsUserSeek(currentTask, file, offset, whence);
 }
 
 #define SYSCALL_IOCTL 16
-static int syscallIoctl(int fd, unsigned long request, void *arg) {
-  OpenFile *browse = file_system_user_get_node(currentTask, fd);
-  if (!browse) {
-#if DEBUG_SYSCALLS_FAILS
-    printf(
-        "[syscalls::ioctl] FAIL! Tried to manipulate non-special file! fd{%d} "
-        "req{%lx} arg{%lx}\n",
-        fd, request, arg);
-#endif
-    return -EBADF;
+static size_t syscallIoctl(int fd, unsigned long request, void *arg) {
+  OpenFile *browse = fsUserGetNode(currentTask, fd);
+  if (!browse)
+    return ERR(EBADF);
+
+  if (!browse->handlers->ioctl) {
+    dbgSysFailf("non-special file");
+    return ERR(ENOTTY);
   }
 
-  if (!browse->handlers->ioctl)
-    return -ENOTTY;
-
-  int ret = browse->handlers->ioctl(browse, request, arg);
-
-#if DEBUG_SYSCALLS_STUB
-  if (ret < 0)
-    printf("[syscalls::ioctl] UNIMPLEMENTED! fd{%d} req{%lx} arg{%lx}\n", fd,
-           request, arg);
-#endif
+  spinlock_acquire(&browse->LOCK_OPERATIONS);
+  size_t ret = browse->handlers->ioctl(browse, request, arg);
+  spinlock_release(&browse->LOCK_OPERATIONS);
 
   return ret;
 }
 
 #define SYSCALL_PREAD64 17
-static int syscallPread64(uint64_t fd, char *buff, size_t count, size_t pos) {
-  int seekOp = syscallLseek(fd, pos, SEEK_SET);
-  if (seekOp < 0)
+static size_t syscallPread64(uint64_t fd, char *buff, size_t count,
+                             size_t pos) {
+  size_t seekOp = syscallLseek(fd, pos, SEEK_SET);
+  if (RET_IS_ERR(seekOp))
     return seekOp;
-  int readOp = syscallRead(fd, buff, count);
+  size_t readOp = syscallRead(fd, buff, count);
   return readOp;
 }
 
-#define SYSCALL_WRITEV 20
-static int syscallWriteV(uint32_t fd, iovec *iov, uint32_t ioVcnt) {
-  int cnt = 0;
+#define SYSCALL_READV 19
+static size_t syscallReadV(uint32_t fd, iovec *iov, uint32_t ioVcnt) {
+  OpenFile *file = fsUserGetNode(currentTask, fd);
+  if (!file)
+    return ERR(EBADF);
+
+  size_t cnt = 0;
   for (int i = 0; i < ioVcnt; i++) {
     iovec *curr = (iovec *)((size_t)iov + i * sizeof(iovec));
+    if (!curr->iov_len)
+      continue;
 
-#if DEBUG_SYSCALLS_EXTRA
-    printf("[syscalls::writev(%d)] fd{%d} iov_base{%x} iov_len{%x}\n", i, fd,
-           curr->iov_base, curr->iov_len);
-#endif
-    int singleCnt = syscallWrite(fd, curr->iov_base, curr->iov_len);
-    if (singleCnt < 0)
-      return singleCnt;
+    // possible race condition here, lookup later (only for rare shared table)
+    if (cnt > 0 && file->handlers->internalPoll) {
+      // we already have some data (and are on something that can possibly
+      // block, hence it has internalPoll defined), poll so that it doesn't
+      // block afterwards
+      if (!(file->handlers->internalPoll(file, EPOLLIN) & EPOLLIN))
+        return cnt;
+    }
 
-    cnt += singleCnt;
+    size_t single = fsRead(file, curr->iov_base, curr->iov_len);
+    if (RET_IS_ERR(single))
+      return cnt > 0 ? cnt : single;
+
+    cnt += single;
   }
 
   return cnt;
 }
 
-#define SYSCALL_READV 19
-static int syscallReadV(uint32_t fd, iovec *iov, uint32_t ioVcnt) {
-  int cnt = 0;
+#define SYSCALL_WRITEV 20
+static size_t syscallWriteV(uint32_t fd, iovec *iov, uint32_t ioVcnt) {
+  OpenFile *file = fsUserGetNode(currentTask, fd);
+  if (!file)
+    return ERR(EBADF);
+
+  size_t cnt = 0;
   for (int i = 0; i < ioVcnt; i++) {
     iovec *curr = (iovec *)((size_t)iov + i * sizeof(iovec));
+    if (!curr->iov_len)
+      continue;
 
-#if DEBUG_SYSCALLS_EXTRA
-    printf("[syscalls::readv(%d)] fd{%d} iov_base{%x} iov_len{%x}\n", i, fd,
-           curr->iov_base, curr->iov_len);
-#endif
-    int singleCnt = syscallRead(fd, curr->iov_base, curr->iov_len);
-    if (singleCnt < 0)
-      return singleCnt;
+    if (cnt > 0 && file->handlers->internalPoll) {
+      // we already have some data (and are on something that can possibly
+      // block, hence it has internalPoll defined), poll so that it doesn't
+      // block afterwards
+      if (!(file->handlers->internalPoll(file, EPOLLOUT) & EPOLLOUT))
+        return cnt;
+    }
 
-    cnt += singleCnt;
+    size_t single = fsWrite(file, curr->iov_base, curr->iov_len);
+    if (RET_IS_ERR(single))
+      return cnt > 0 ? cnt : single;
+
+    cnt += single;
   }
 
   return cnt;
 }
 
 #define SYSCALL_ACCESS 21
-static int syscallAccess(char *filename, int mode) {
+static size_t syscallAccess(char *filename, int mode) {
   struct stat buf;
   return syscallStat(filename, &buf);
 }
 
 #define SYSCALL_DUP 32
-static int syscallDup(uint32_t fd) {
-  OpenFile *file = file_system_user_get_node(currentTask, fd);
+static size_t syscallDup(uint32_t fd) {
+  OpenFile *file = fsUserGetNode(currentTask, fd);
   if (!file)
-    return -1;
+    return ERR(EBADF);
 
-  OpenFile *new_OpenFile = file_system_user_duplicate_node(currentTask, file);
-  new_OpenFile->closeOnExec = 0; // does not persist
+  OpenFile *new_open_file = fsUserDuplicateNode(currentTask, file, -1);
+  new_open_file->closeOnExec = 0; // does not persist
 
-  return new_OpenFile ? new_OpenFile->id : -1;
+  return new_open_file ? new_open_file->id : -1;
 }
 
 #define SYSCALL_DUP2 33
-static int syscallDup2(uint32_t oldFd, uint32_t newFd) {
-  OpenFile *realFile = file_system_user_get_node(currentTask, oldFd);
+static size_t syscallDup2(uint32_t oldFd, uint32_t newFd) {
+  OpenFile *realFile = fsUserGetNode(currentTask, oldFd);
   if (!realFile)
-    return -EBADF;
+    return ERR(EBADF);
 
   if (oldFd == newFd)
     return newFd;
 
-  if (file_system_user_get_node(currentTask, newFd))
-    file_system_user_close(currentTask, newFd);
+  // determine how we're going to do this
+  spinlock_cnt_write_acquire(&currentTask->infoFiles->WLOCK_FILES);
+  OpenFile *browse =
+      (OpenFile *)AVLLookup(currentTask->infoFiles->firstFile, newFd);
+  if (!browse) {
+    // we don't have anything to close, reserve the id
+    bitmapGenericSet(currentTask->infoFiles->fdBitmap, newFd, true);
+  } else {
+    // do NOT free the id on close in order to avoid race conditions
+    browse->closeFlags |= VFS_CLOSE_FLAG_RETAIN_ID;
+  }
+  spinlock_cnt_write_release(&currentTask->infoFiles->WLOCK_FILES);
 
-  // OpenFile    *realFile = currentTask->firstFile;
-  OpenFile *targetFile = file_system_user_duplicate_node_unsafe(realFile);
-  targetFile->closeOnExec = 0; // does not persist
+  if (browse)
+    assert(fsUserClose(currentTask, newFd) == 0);
 
-  linkedlist_push_front_unsafe((void **)(&currentTask->firstFile), targetFile);
+  OpenFile *new_open_file = fsUserDuplicateNode(currentTask, realFile, newFd);
+  assert(new_open_file);
+  new_open_file->closeOnExec = 0; // does not persist
 
-  targetFile->id = newFd;
-
-#if DEBUG_SYSCALLS_STUB
-  printf("[syscalls::dup2] wonky... old{%d} new{%d}\n", oldFd, newFd);
-#endif
   return newFd;
 }
 
 #define SYSCALL_FCNTL 72
-static int syscallFcntl(int fd, int cmd, uint64_t arg) {
-  OpenFile *file = file_system_user_get_node(currentTask, fd);
+static size_t syscallFcntl(int fd, int cmd, uint64_t arg) {
+  OpenFile *file = fsUserGetNode(currentTask, fd);
   if (!file)
-    return -EBADF;
+    return ERR(EBADF);
+  spinlock_acquire(&file->LOCK_OPERATIONS);
+  if (file->handlers->fcntl)
+    file->handlers->fcntl(file, cmd, arg);
+  spinlock_release(&file->LOCK_OPERATIONS);
   switch (cmd) {
   case F_GETFD:
     return file->closeOnExec;
@@ -259,63 +263,87 @@ static int syscallFcntl(int fd, int cmd, uint64_t arg) {
     return file->flags;
     break;
   case F_SETFL: {
+    spinlock_acquire(&file->LOCK_OPERATIONS);
     int validFlags = O_APPEND | FASYNC | O_DIRECT | O_NOATIME | O_NONBLOCK;
     file->flags &= ~validFlags;
     file->flags |= arg & validFlags;
+    spinlock_release(&file->LOCK_OPERATIONS);
     return 0;
     break;
   }
   case F_DUPFD_CLOEXEC: {
-    int targ = syscallDup(fd);
-    if (targ < 0)
+    size_t targ = syscallDup(fd);
+    if (RET_IS_ERR(targ))
       return targ;
 
-    int res = syscallFcntl(targ, F_SETFD, FD_CLOEXEC);
-    if (res < 0)
+    size_t res = syscallFcntl(targ, F_SETFD, FD_CLOEXEC);
+    if (RET_IS_ERR(res))
       return res;
 
     return targ;
   }
   default:
-#if DEBUG_SYSCALLS_STUB
-    printf("[syscalls::fcntl] cmd{%d} not implemented!\n", cmd);
-#endif
+    dbgSysStubf("cmd{%d} not implemented", cmd);
     return -1;
     break;
   }
 }
 
+#define SYSCALL_FSYNC 74
+static size_t syscallFsync(int fd) {
+  OpenFile *browse = fsUserGetNode(currentTask, fd);
+  if (!browse)
+    return ERR(EBADF);
+  return 0; // none of our filesystems care enough about write caching
+}
+
 #define SYSCALL_MKDIR 83
-static int syscallMkdir(char *path, uint32_t mode) {
-  mode &= ~(currentTask->umask);
-  return file_system_mkdir(currentTask, path, mode);
+static size_t syscallMkdir(char *path, uint32_t mode) {
+  dbgSysExtraf("path{%s}", path);
+  spinlock_acquire(&currentTask->infoFs->LOCK_FS);
+  mode &= ~(currentTask->infoFs->umask);
+  spinlock_release(&currentTask->infoFs->LOCK_FS);
+  return fsMkdir(currentTask, path, mode);
+}
+
+#define SYSCALL_LINK 86
+static size_t syscallLink(char *oldpath, char *newpath) {
+  return fsLink(currentTask, oldpath, newpath);
+}
+
+#define SYSCALL_UNLINK 87
+static size_t syscallUnlink(char *path) {
+  dbgSysExtraf("path{%s}", path);
+  return fsUnlink(currentTask, path, false);
 }
 
 #define SYSCALL_READLINK 89
-static int syscallReadlink(char *path, char *buf, int size) {
-  return file_system_read_link(currentTask, path, buf, size);
+static size_t syscallReadlink(char *path, char *buf, int size) {
+  dbgSysExtraf("path{%s}", path);
+  return fsReadlink(currentTask, path, buf, size);
 }
 
 #define SYSCALL_UMASK 95
-static int syscallUmask(uint32_t mask) {
-  int old = currentTask->umask;
-  currentTask->umask = mask & 0777;
+static size_t syscallUmask(uint32_t mask) {
+  spinlock_acquire(&currentTask->infoFs->LOCK_FS);
+  int old = currentTask->infoFs->umask;
+  currentTask->infoFs->umask = mask & 0777;
+  spinlock_release(&currentTask->infoFs->LOCK_FS);
   return old;
 }
 
 #define SYSCALL_GETDENTS64 217
-static int syscallGetdents64(unsigned int fd, struct linux_dirent64 *dirp,
-                             unsigned int count) {
-  OpenFile *browse = file_system_user_get_node(currentTask, fd);
-  if (!browse) {
-#if DEBUG_SYSCALLS_FAILS
-    printf("[syscalls::getdents64] FAIL! Couldn't find file! fd{%d}\n", fd);
-#endif
-    return -EBADF;
-  }
+static size_t syscallGetdents64(unsigned int fd, struct linux_dirent64 *dirp,
+                                unsigned int count) {
+  OpenFile *browse = fsUserGetNode(currentTask, fd);
+  if (!browse)
+    return ERR(EBADF);
   if (!browse->handlers->getdents64)
-    return -ENOTDIR;
-  return browse->handlers->getdents64(browse, dirp, count);
+    return ERR(ENOTDIR);
+  spinlock_acquire(&browse->LOCK_OPERATIONS);
+  size_t ret = browse->handlers->getdents64(browse, dirp, count);
+  spinlock_release(&browse->LOCK_OPERATIONS);
+  return ret;
 }
 
 #define FD_SETSIZE 1024
@@ -326,179 +354,200 @@ typedef struct {
   unsigned long fds_bits[FD_SETSIZE / 8 / sizeof(long)];
 } fd_set;
 
+// todo: some issues with flags, last symlink etc. Check others too.
+#define SYSCALL_LINKAT 265
+static size_t syscallLinkat(int oldfd, char *oldname, int newfd, char *newname,
+                            int flags) {
+  if (oldname[0] == '\0' || newname[0] == '\0') { // by fd
+    return ERR(ENOSYS);
+  }
+
+  char *old = atResolvePathname(oldfd, oldname);
+  if (RET_IS_ERR((size_t)old))
+    return (size_t)old;
+
+  char *new_open_file = atResolvePathname(newfd, newname);
+  if (RET_IS_ERR((size_t)new_open_file)) {
+    atResolvePathnameCleanup(oldname, old);
+    return (size_t)new_open_file;
+  }
+
+  size_t ret = syscallLink(old, new_open_file);
+  atResolvePathnameCleanup(oldname, old);
+  atResolvePathnameCleanup(newname, new_open_file);
+  return ret;
+}
+
+typedef struct {
+  sigset_t *ss;
+  size_t    ss_len;
+} WeirdPselect6;
+
 #define SYSCALL_PSELECT6 270
-static int syscallPselect6(int nfds, fd_set *readfds, fd_set *writefds,
-                           fd_set *exceptfds, struct timespec *timeout,
-                           void *smthsignalthing) {
-  if (timeout && !timeout->tv_nsec && !timeout->tv_sec)
-    return 0;
+static size_t syscallPselect6(int nfds, fd_set *readfds, fd_set *writefds,
+                              fd_set *exceptfds, struct timespec *timeout,
+                              WeirdPselect6 *weirdPselect6) {
+  size_t    sigsetsize = weirdPselect6->ss_len;
+  sigset_t *sigmask = weirdPselect6->ss;
 
-#if DEBUG_SYSCALLS_FAILS
-  printf("[syscalls::pselect6::wonky]\n");
-#endif
+  if (sigsetsize < sizeof(sigset_t)) {
+    dbgSysFailf("weird sigset size");
+    return ERR(EINVAL);
+  }
 
-  int amnt = 0;
-  int bits_per_long = sizeof(unsigned long) * 8;
-  if (readfds)
-    for (int fd = 0; fd < nfds; fd++) {
-      int index = fd / bits_per_long;
-      int bit = fd % bits_per_long;
-      if (readfds->fds_bits[index] & (1UL << bit)) {
-        // todo: uhm.. poll?
-        amnt++;
-      }
-    }
-  if (writefds)
-    for (int fd = 0; fd < nfds; fd++) {
-      int index = fd / bits_per_long;
-      int bit = fd % bits_per_long;
-      if (writefds->fds_bits[index] & (1UL << bit)) {
-        // todo: uhm.. poll?
-        amnt++;
-      }
-    }
-  if (exceptfds)
-    for (int fd = 0; fd < nfds; fd++) {
-      int index = fd / bits_per_long;
-      int bit = fd % bits_per_long;
-      if (exceptfds->fds_bits[index] & (1UL << bit)) {
-        // todo: uhm.. poll?
-        amnt++;
-      }
-    }
+  sigset_t origmask;
+  if (sigmask)
+    syscallRtSigprocmask(SIG_SETMASK, sigmask, &origmask, sigsetsize);
 
-  // todo: timelimit (for when I actually poll)
+  struct timeval timeoutConv = {
+      .tv_sec = timeout ? timeout->tv_sec : 0,
+      .tv_usec = timeout ? CEILING_DIVISION(timeout->tv_nsec, 1000) : 0};
+  size_t ret = select(nfds, (uint8_t *)readfds, (uint8_t *)writefds,
+                      (uint8_t *)exceptfds, timeout ? &timeoutConv : 0);
 
-  return amnt;
+  if (sigmask)
+    syscallRtSigprocmask(SIG_SETMASK, &origmask, 0, sigsetsize);
+  return ret;
 }
 
 #define SYSCALL_SELECT 23
-static int syscallSelect(int nfds, fd_set *readfds, fd_set *writefds,
-                         fd_set *exceptfds, struct timeval *timeout) {
-  if (timeout) {
-    struct timespec timeoutformat = {.tv_sec = timeout->tv_sec,
-                                     .tv_nsec = timeout->tv_usec * 1000};
-    return syscallPselect6(nfds, readfds, writefds, exceptfds, &timeoutformat,
-                           0);
+static size_t syscallSelect(int nfds, fd_set *readfds, fd_set *writefds,
+                            fd_set *exceptfds, struct timeval *timeout) {
+  return select(nfds, (uint8_t *)readfds, (uint8_t *)writefds,
+                (uint8_t *)exceptfds, timeout);
+}
+
+char *atResolvePathname(int dirfd, char *pathname) {
+  assert(pathname[0] != '\0'); // by fd, should've checked before running!
+  if (pathname[0] == '/') {    // by absolute pathname
+    return pathname;
+  } else if (pathname[0] != '/') {
+    if (dirfd == AT_FDCWD) { // relative to cwd
+      return pathname;
+    } else { // relative to dirfd, resolve accordingly
+      OpenFile *fd = fsUserGetNode(currentTask, dirfd);
+      if (!fd)
+        return (char *)ERR(EBADF);
+      if (!fd->dirname)
+        return (char *)ERR(ENOTDIR);
+
+      int prefixLen = strlen(fd->mountPoint->prefix);
+      int rootDirLen = strlen(fd->dirname);
+      int pathnameLen = strlen(pathname) + 1;
+
+      char *out = malloc(prefixLen + rootDirLen + 1 + pathnameLen);
+
+      memcpy(out, fd->mountPoint->prefix, prefixLen);
+      memcpy(&out[prefixLen], fd->dirname, rootDirLen);
+      out[prefixLen + rootDirLen] = '/'; // better be safe than sorry
+      memcpy(&out[prefixLen + rootDirLen + 1], pathname, pathnameLen);
+      return out;
+    }
   }
-  return syscallPselect6(nfds, readfds, writefds, exceptfds, 0, 0);
+
+  assert(false); // will never be reached
+  return 0;
+}
+
+void atResolvePathnameCleanup(char *pathname, char *resolved) {
+  if ((size_t)pathname != (size_t)resolved)
+    free(resolved);
 }
 
 #define SYSCALL_OPENAT 257
-static int syscallOpenat(int dirfd, char *pathname, int flags, int mode) {
+static size_t syscallOpenat(int dirfd, char *pathname, int flags, int mode) {
   if (pathname[0] == '\0') { // by fd
     return dirfd;
-  } else if (pathname[0] == '/') { // by absolute pathname
-    return syscallOpen(pathname, flags, mode);
-  } else if (pathname[0] != '/') {
-    if (dirfd == AT_FDCWD) { // relative to cwd
-      return syscallOpen(pathname, flags, mode);
-    } else {
-#if DEBUG_SYSCALLS_STUB
-      printf("[syscalls::openat] todo: partial sanitization!");
-#endif
-      return -1;
-    }
-  } else {
-#if DEBUG_SYSCALLS_FAILS
-    printf("[syscalls::openat] Unsupported!\n");
-#endif
-    return -1;
   }
-  return -ENOSYS;
+
+  char *resolved = atResolvePathname(dirfd, pathname);
+  if (RET_IS_ERR((size_t)resolved))
+    return (size_t)resolved;
+
+  size_t ret = syscallOpen(resolved, flags, mode);
+  atResolvePathnameCleanup(pathname, resolved);
+  return ret;
 }
 
 #define SYSCALL_MKDIRAT 258
-static int syscallMkdirAt(int dirfd, char *pathname, int mode) {
+static size_t syscallMkdirAt(int dirfd, char *pathname, int mode) {
   if (pathname[0] == '\0') { // by fd
-    return dirfd;
-  } else if (pathname[0] == '/') { // by absolute pathname
-    return syscallMkdir(pathname, mode);
-  } else if (pathname[0] != '/') {
-    if (dirfd == AT_FDCWD) { // relative to cwd
-      return syscallMkdir(pathname, mode);
-    } else {
-#if DEBUG_SYSCALLS_STUB
-      printf("[syscalls::mkdirat] todo: partial sanitization!");
-#endif
-      return -1;
-    }
-  } else {
-#if DEBUG_SYSCALLS_FAILS
-    printf("[syscalls::mkdirat] Unsupported!\n");
-#endif
-    return -1;
+    return ERR(ENOENT);
   }
-  return -ENOSYS;
+
+  char *resolved = atResolvePathname(dirfd, pathname);
+  if (RET_IS_ERR((size_t)resolved))
+    return (size_t)resolved;
+
+  size_t ret = syscallMkdir(resolved, mode);
+  atResolvePathnameCleanup(pathname, resolved);
+  return ret;
+}
+
+#define SYSCALL_NEWFSTATAT 262
+static size_t syscallNewfstatat(int dirfd, char *pathname, struct stat *statbuf,
+                                int flag) {
+  if (pathname[0] == '\0')
+    return syscallFstat(dirfd, statbuf);
+
+  char *resolved = atResolvePathname(dirfd, pathname);
+  if (RET_IS_ERR((size_t)resolved))
+    return (size_t)resolved;
+
+  size_t ret = flag & AT_SYMLINK_NOFOLLOW ? syscallLstat(resolved, statbuf)
+                                          : syscallStat(resolved, statbuf);
+  atResolvePathnameCleanup(pathname, resolved);
+  return ret;
+}
+
+#define SYSCALL_UNLINKAT 263
+static size_t syscallUnlinkat(int dirfd, char *pathname, int mode) {
+  bool directory = mode & 0x200;
+  if (pathname[0] == '\0') { // by fd
+    dbgSysFailf("unsupported!");
+    return ERR(ENOSYS);
+  }
+
+  char *resolved = atResolvePathname(dirfd, pathname);
+  if (RET_IS_ERR((size_t)resolved))
+    return (size_t)resolved;
+
+  dbgSysExtraf("path{%s}", resolved);
+
+  size_t ret = fsUnlink(currentTask, resolved, directory);
+  atResolvePathnameCleanup(pathname, resolved);
+  return ret;
 }
 
 #define SYSCALL_FACCESSAT 269
-static int syscallFaccessat(int dirfd, char *pathname, int mode) {
+static size_t syscallFaccessat(int dirfd, char *pathname, int mode) {
   if (pathname[0] == '\0') { // by fd
     return 0;
-  } else if (pathname[0] == '/') { // by absolute pathname
-    return syscallAccess(pathname, mode);
-  } else if (pathname[0] != '/') {
-    if (dirfd == AT_FDCWD) { // relative to cwd
-      return syscallAccess(pathname, mode);
-    } else {
-#if DEBUG_SYSCALLS_STUB
-      printf("[syscalls::access] todo: partial sanitization!");
-#endif
-      return -1;
-    }
-  } else {
-#if DEBUG_SYSCALLS_FAILS
-    printf("[syscalls::access] Unsupported!\n");
-#endif
-    return -1;
   }
-  return -ENOSYS;
+
+  char *resolved = atResolvePathname(dirfd, pathname);
+  if (RET_IS_ERR((size_t)resolved))
+    return (size_t)resolved;
+
+  size_t ret = syscallAccess(resolved, mode);
+  atResolvePathnameCleanup(pathname, resolved);
+  return ret;
+}
+
+#define SYSCALL_PPOLL 271
+static size_t syscallPpoll(struct pollfd *fds, int nfds,
+                           struct timespec *timeout, sigset_t *sigmask,
+                           size_t sigsetsize) {
+  return ppoll(fds, nfds, timeout, sigmask, sigsetsize);
 }
 
 #define SYSCALL_STATX 332
-static int syscallStatx(int dirfd, char *pathname, int flags, uint32_t mask,
-                        struct statx *buff) {
+static size_t syscallStatx(int dirfd, char *pathname, int flags, uint32_t mask,
+                           struct statx *buff) {
   struct stat simple = {0};
-  if (pathname[0] == '\0') { // by fd
-    OpenFile *file = file_system_user_get_node(currentTask, dirfd);
-    if (!file)
-      return -ENOENT;
-    if (!file_system_stat(file, &simple))
-      return -EBADF;
-  } else if (pathname[0] == '/') { // by absolute pathname
-    char *safeFilename = file_system_sanitize(currentTask->cwd, pathname);
-    bool  ret = false;
-    if (flags & AT_SYMLINK_NOFOLLOW)
-      ret = file_system_Lstat_by_filename(currentTask, safeFilename, &simple);
-    else
-      ret = file_system_stat_by_filename(currentTask, safeFilename, &simple);
-    free(safeFilename);
-    if (!ret)
-      return -ENOENT;
-  } else if (pathname[0] != '/') {
-    if (dirfd == AT_FDCWD) { // relative to cwd
-      char *safeFilename = file_system_sanitize(currentTask->cwd, pathname);
-      bool  ret = false;
-      if (flags & AT_SYMLINK_NOFOLLOW)
-        ret = file_system_Lstat_by_filename(currentTask, safeFilename, &simple);
-      else
-        ret = file_system_stat_by_filename(currentTask, safeFilename, &simple);
-      free(safeFilename);
-      if (!ret)
-        return -ENOENT;
-    } else {
-#if DEBUG_SYSCALLS_STUB
-      printf("[syscalls::statx] todo: partial sanitization!");
-#endif
-      return -1;
-    }
-  } else {
-#if DEBUG_SYSCALLS_FAILS
-    printf("[syscalls::statx] Unsupported!\n");
-#endif
-    return -1;
-  }
+  size_t      statRet = syscallNewfstatat(dirfd, pathname, &simple, flags);
+  if (RET_IS_ERR(statRet))
+    return statRet;
 
   memset(buff, 0, sizeof(struct statx));
 
@@ -533,38 +582,47 @@ static int syscallStatx(int dirfd, char *pathname, int flags, uint32_t mask,
 }
 
 // #define SYSCALL_FACCESSAT2 439
-// static int syscallFaccessat2(int dirfd, char *pathname, int mode, int flags)
+// static size_t syscallFaccessat2(int dirfd, char *pathname, int mode, int
+// flags)
 // {
 //   return -1;
 // }
 
 void syscallRegFs() {
-  register_syscall(SYSCALL_WRITE, syscallWrite);
-  register_syscall(SYSCALL_READ, syscallRead);
-  register_syscall(SYSCALL_OPEN, syscallOpen);
-  register_syscall(SYSCALL_OPENAT, syscallOpenat);
-  register_syscall(SYSCALL_MKDIRAT, syscallMkdirAt);
-  register_syscall(SYSCALL_CLOSE, syscallClose);
-  register_syscall(SYSCALL_LSEEK, syscallLseek);
-  register_syscall(SYSCALL_STAT, syscallStat);
-  register_syscall(SYSCALL_FSTAT, syscallFstat);
-  register_syscall(SYSCALL_LSTAT, syscallLstat);
-  register_syscall(SYSCALL_MKDIR, syscallMkdir);
-  register_syscall(SYSCALL_UMASK, syscallUmask);
-  register_syscall(SYSCALL_PREAD64, syscallPread64);
+  registerSyscall(SYSCALL_WRITE, syscallWrite);
+  registerSyscall(SYSCALL_READ, syscallRead);
+  registerSyscall(SYSCALL_OPEN, syscallOpen);
+  registerSyscall(SYSCALL_OPENAT, syscallOpenat);
+  registerSyscall(SYSCALL_POLL, syscallPoll);
+  registerSyscall(SYSCALL_PPOLL, syscallPpoll);
+  registerSyscall(SYSCALL_MKDIRAT, syscallMkdirAt);
+  registerSyscall(SYSCALL_CLOSE, syscallClose);
+  registerSyscall(SYSCALL_LSEEK, syscallLseek);
+  registerSyscall(SYSCALL_STAT, syscallStat);
+  registerSyscall(SYSCALL_FSTAT, syscallFstat);
+  registerSyscall(SYSCALL_LSTAT, syscallLstat);
+  registerSyscall(SYSCALL_MKDIR, syscallMkdir);
+  registerSyscall(SYSCALL_UMASK, syscallUmask);
+  registerSyscall(SYSCALL_PREAD64, syscallPread64);
+  registerSyscall(SYSCALL_UNLINK, syscallUnlink);
+  registerSyscall(SYSCALL_LINK, syscallLink);
+  registerSyscall(SYSCALL_LINKAT, syscallLinkat);
+  registerSyscall(SYSCALL_FSYNC, syscallFsync);
 
-  register_syscall(SYSCALL_IOCTL, syscallIoctl);
-  register_syscall(SYSCALL_READV, syscallReadV);
-  register_syscall(SYSCALL_WRITEV, syscallWriteV);
-  register_syscall(SYSCALL_DUP2, syscallDup2);
-  register_syscall(SYSCALL_DUP, syscallDup);
-  register_syscall(SYSCALL_ACCESS, syscallAccess);
-  register_syscall(SYSCALL_FACCESSAT, syscallFaccessat);
-  register_syscall(SYSCALL_GETDENTS64, syscallGetdents64);
-  register_syscall(SYSCALL_PSELECT6, syscallPselect6);
-  register_syscall(SYSCALL_SELECT, syscallSelect);
-  register_syscall(SYSCALL_FCNTL, syscallFcntl);
-  register_syscall(SYSCALL_STATX, syscallStatx);
-  register_syscall(SYSCALL_READLINK, syscallReadlink);
+  registerSyscall(SYSCALL_IOCTL, syscallIoctl);
+  registerSyscall(SYSCALL_READV, syscallReadV);
+  registerSyscall(SYSCALL_WRITEV, syscallWriteV);
+  registerSyscall(SYSCALL_DUP2, syscallDup2);
+  registerSyscall(SYSCALL_DUP, syscallDup);
+  registerSyscall(SYSCALL_ACCESS, syscallAccess);
+  registerSyscall(SYSCALL_FACCESSAT, syscallFaccessat);
+  registerSyscall(SYSCALL_GETDENTS64, syscallGetdents64);
+  registerSyscall(SYSCALL_PSELECT6, syscallPselect6);
+  registerSyscall(SYSCALL_SELECT, syscallSelect);
+  registerSyscall(SYSCALL_FCNTL, syscallFcntl);
+  registerSyscall(SYSCALL_STATX, syscallStatx);
+  registerSyscall(SYSCALL_READLINK, syscallReadlink);
+  registerSyscall(SYSCALL_NEWFSTATAT, syscallNewfstatat);
+  registerSyscall(SYSCALL_UNLINKAT, syscallUnlinkat);
   // registerSyscall(SYSCALL_FACCESSAT2, syscallFaccessat2);
 }

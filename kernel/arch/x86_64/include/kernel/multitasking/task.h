@@ -1,23 +1,38 @@
 #include <isr.h>
-//#include <utility.h>
 #include <hcf.hpp>
 
 #include <utility.h>
 
+#include <avl_tree.h>
+#include <semaphore.h>
+#include <data_structures/linked_list.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <linux.h>
 
- #include <types.h>
+#include <string.h>
+#include <types.h>
+#include <signal.h>
+
 
 #include <vfs.h>
-#include<spinlock.h>
+#include <spinlock.h>
 
 #ifndef TASK_H
 #define TASK_H
-
 
 // "Descriptor Privilege Level"
 #define DPL_USER 3
 
 #define KERNEL_TASK_ID 0
+
+#define entryCmdline ("kernel")
+#define helperCmdline ("kernel")
+#define dummyCmdline ("dummy")
+#define lwipCmdline ("lwip")
 
 typedef struct {
   uint64_t edi;
@@ -36,21 +51,14 @@ typedef enum TASK_STATE {
   TASK_STATE_WAITING_CHILD = 5,
   TASK_STATE_WAITING_CHILD_SPECIFIC = 6, // task->waitingForPid
   TASK_STATE_WAITING_VFORK = 7,
+  TASK_STATE_BLOCKED = 8,
+  TASK_STATE_SIGKILLED = 9,
+  TASK_STATE_FUTEX = 10,
   TASK_STATE_DUMMY = 69,
 } TASK_STATE;
 
-#define NCCS 32
-typedef struct termios {
-  uint32_t c_iflag;    /* input mode flags */
-  uint32_t c_oflag;    /* output mode flags */
-  uint32_t c_cflag;    /* control mode flags */
-  uint32_t c_lflag;    /* local mode flags */
-  uint8_t  c_line;     /* line discipline */
-  uint8_t  c_cc[NCCS]; /* control characters */
-} termios;
-
 typedef struct KilledInfo {
-  struct KilledInfo *next;
+  LLheader _ll;
 
   uint64_t pid;
   uint16_t ret;
@@ -58,28 +66,28 @@ typedef struct KilledInfo {
 
 typedef struct Task Task;
 
-struct Task {
-  uint64_t id;
-  int      pgid;
-  bool     kernel_task;
-  uint8_t  state;
+// task_info.c
+typedef struct TaskInfoFs {
+  Spinlock LOCK_FS;
+  int      utilizedBy;
 
-  uint64_t waitingForPid; // wait4()
+  char    *cwd;
+  uint32_t umask;
+} TaskInfoFs;
 
-  AsmPassedInterrupt registers;
-  uint64_t          *pagedir;
-  uint64_t           whileTssRsp;
-  uint64_t           whileSyscallRsp;
+TaskInfoFs *taskInfoFsAllocate();
+TaskInfoFs *taskInfoFsClone(TaskInfoFs *old);
+void        taskInfoFsDiscard(TaskInfoFs *target);
 
-  bool systemCallInProgress;
-  bool schedPageFault;
+typedef struct UserspaceMapping {
+  void  *virt; // it is the key aswell
+  size_t pages;
+  bool   onDemand;
+} UserspaceMapping;
 
-  AsmPassedInterrupt *syscallRegs;
-  uint64_t            syscallRsp;
-
-  // Useful to switch, for when TLS is available
-  uint64_t fsbase;
-  uint64_t gsbase;
+typedef struct TaskInfoPagedir {
+  Spinlock LOCK_PD;
+  int      utilizedBy;
 
   uint64_t heap_start;
   uint64_t heap_end;
@@ -87,23 +95,126 @@ struct Task {
   uint64_t mmap_start;
   uint64_t mmap_end;
 
+  // todo: maybe make it a linked list, might be more efficient
+  AVLheader *mappings; // UserspaceMapping*
+
+  uint64_t *pagedir;
+} TaskInfoPagedir;
+
+TaskInfoPagedir *taskInfoPdAllocate(bool pagedir);
+TaskInfoPagedir *taskInfoPdClone(TaskInfoPagedir *old);
+void             taskInfoPdDiscard(TaskInfoPagedir *target);
+
+typedef struct IntTimerInternal {
+  uint64_t at;    // checked agains timerTicks (ms)
+  uint64_t reset; // reset value (ms)
+} IntTimerInternal;
+
+typedef struct TaskInfoSignal {
+  Spinlock LOCK_SIGNAL;
+  int      utilizedBy;
+
+  IntTimerInternal itimerReal; // ITIMER_REAL
+  struct sigaction signals[_NSIG + 1];
+} TaskInfoSignal;
+
+TaskInfoSignal *taskInfoSignalAllocate();
+TaskInfoSignal *taskInfoSignalClone(TaskInfoSignal *old);
+void            taskInfoSignalDiscard(TaskInfoSignal *target);
+
+typedef struct TaskInfoFiles {
+  SpinlockCnt WLOCK_FILES;
+  int         utilizedBy;
+
+  size_t rlimitFdsSoft;
+  size_t rlimitFdsHard;
+
+  uint8_t *fdBitmap;
+
+  AVLheader *firstFile; // value of OpenFile*
+} TaskInfoFiles;
+
+TaskInfoFiles *taskInfoFilesAllocate();
+// TaskInfoFiles *taskInfoFilesClone(TaskInfoFiles *old);
+void taskInfoFilesDiscard(TaskInfoFiles *target, void *task);
+
+typedef struct TaskSysInterrupted {
+  LLheader _ll;
+
+  uint64_t number; // rax
+} TaskSysInterrupted;
+
+#define EXTRAS_DISABLE_FUTEX (1 << 0)
+#define EXTRAS_INVOLUTARY_WAKEUP (1 << 1)
+
+struct Task {
+  uint64_t id;
+  int      pgid;
+  int      tgid;
+  int      sid;
+  bool     kernel_task;
+  uint8_t  state;
+
+  uint64_t waitingForPid; // wait4()
+
+  AsmPassedInterrupt registers;
+  // uint64_t          *pagedir;
+  uint64_t whileTssRsp;
+  uint64_t whileSyscallRsp;
+
+  // needed for syscalls
+  uint64_t *pagedirOverride;
+
+  bool systemCallInProgress;
+  bool schedPageFault;
+
+  AsmPassedInterrupt *syscallRegs;
+  uint64_t            syscallRsp;
+
+  LLcontrol dsSysIntr; // struct TaskSysInterrupted
+  // no need for a lock, only we access it directly
+
+  // Useful to switch, for when TLS is available
+  uint64_t fsbase;
+  uint64_t gsbase;
+
+  // PLEASE assert() it is zero after use and zero it manually if state changes
+  // are involved. It WILL NOT care at which point a wakeup happens and how
+  // disruptive the context can be!
+  size_t forcefulWakeupTimeUnsafe;
+
   termios  term;
   uint32_t tmpRecV;
+  int      kernelErrno;
+  int      ctrlPty;
+  void    *spinlockQueueEntry; // check on kill!
 
-  char    *cwd;
-  uint32_t umask;
+  Semaphore lwipSem;
 
-  SpinlockCnt WLOCK_FILES;
-  OpenFile   *firstFile;
+  char  *cmdline;
+  size_t cmdlineLen;
+  char  *execname; // elf executable name
+
+  // Remember, this is per THREAD! It just gets cloned
+  sigset_t sigBlockList;
+  sigset_t sigPendingList;
+
+  TaskInfoFs      *infoFs;
+  TaskInfoPagedir *infoPd;
+  TaskInfoFiles   *infoFiles;
+  TaskInfoSignal  *infoSignals;
 
   __attribute__((aligned(16))) uint8_t fpuenv[512];
   uint32_t                             mxcsr;
 
   bool noInformParent;
 
-  Spinlock    LOCK_CHILD_TERM;
-  KilledInfo *firstChildTerminated;
-  int         childrenTerminatedAmnt;
+  Spinlock  LOCK_CHILD_TERM;
+  LLcontrol dsChildTerminated; // struct KilledInfo
+  int       childrenTerminatedAmnt;
+  int      *tidptr;
+
+  uint64_t extras; // extra flags
 
   Task *parent;
   Task *next;
@@ -116,26 +227,37 @@ extern Task *currentTask;
 
 extern Task *dummyTask;
 
-
 extern bool tasksInitiated;
 
-void  tasks_initialize();
+extern Task *netHelperTask;
+extern void  kernelHelpEntry();
+
+extern Spinlock LOCK_REAPER;
+extern Task    *reaperTask;
+
+// needed for libraries that still depend on some sort of errno
+// should be safe as it's per-thread
+#define errno (currentTask->kernelErrno)
+
+void task_spinlock_exit(Task *task, Spinlock *lock);
+void tasks_initialize();
 Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir,
-                 uint32_t argc, char **argv);
+                  uint32_t argc, char **argv);
 Task *task_create_kernel(uint64_t rip, uint64_t rdi);
-void  task_create_finish(Task *task);
-void  task_adjust_heap(Task *task, size_t new_heap_end, size_t *start,
-                     size_t *end);
-void  task_kill(uint32_t id, uint16_t ret);
-void  task_kill_cleanup(Task *task);
-void  task_kill_children(Task *task);
-void  task_free_children(Task *task);
+void task_name_kernel(Task *target, const char *str, int len);
+void task_create_finish(Task *task);
+void task_adjust_heap(Task *task, size_t new_heap_end, size_t *start,
+                      size_t *end);
 Task *task_get(uint32_t id);
-int16_t task_generate_id();
-int     task_change_cwd(char *newdir);
-Task   *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, bool copyPages,
-                 bool spinup);
-void    task_files_copy(Task *original, Task *target, bool respectCOE);
-void    task_files_empty(Task *task);
+void task_kill(uint32_t id, uint16_t ret);
+void task_free_children(Task *task);
+size_t task_change_cwd(char *newdir);
+Task *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, int clone_flags,
+                bool spinup);
+void task_files_copy(Task *original, Task *target, bool respect_coe);
+Task *task_list_allocate();
+void task_list_destroy(Task *target);
+uint64_t task_generate_id();
+void task_call_reaper(Task *target);
 
 #endif

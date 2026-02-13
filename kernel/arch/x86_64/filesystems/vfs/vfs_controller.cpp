@@ -1,53 +1,80 @@
-#include <vfs.h>
-
 #include <disk.h>
 #include <ext2.h>
 #include <fat32.h>
-#include <data_structures/linked_list.h>
 #include <liballoc.h>
+#include <poll.h>
 #include <string.h>
+#include <syscalls.h>
+#include <system.h>
 #include <task.h>
-
+#include <unixSocket.h>
 #include <utility.h>
-#include <hcf.hpp>
+#include <vfs.h>
 
+// Simple VFS abstraction to manage filesystems
 
+OpenFile *fsRegisterNode(Task *task, size_t id) {
+  TaskInfoFiles *files = task->infoFiles;
+  spinlock_cnt_write_acquire(&files->WLOCK_FILES);
+  // printf("reg %d\n", id);
+  OpenFile *file = calloc(sizeof(OpenFile), 1);
+  file->id = id;
+  assert(AVLAllocate((void **)&files->firstFile, id, (avlval)file));
+  spinlock_cnt_write_release(&files->WLOCK_FILES);
+  return file;
+}
 
-OpenFile *file_system_register_node(Task *task) {
-  spinlock_cnt_write_acquire(&task->WLOCK_FILES);
-  OpenFile *ret =
-      linked_list_allocate((void **)&task->firstFile, sizeof(OpenFile));
-  spinlock_cnt_write_release(&task->WLOCK_FILES);
+bool fsUnregisterNode(Task *task, OpenFile *file) {
+  TaskInfoFiles *files = task->infoFiles;
+  spinlock_cnt_write_acquire(&files->WLOCK_FILES);
+  // printf("unreg %d\n", file->id);
+  bool ret = AVLUnregister((void **)&files->firstFile, file->id);
+  spinlock_cnt_write_release(&files->WLOCK_FILES);
   return ret;
 }
 
-bool file_system_unregister_node(Task *task, OpenFile *file) {
-  spinlock_cnt_write_acquire(&task->WLOCK_FILES);
-  bool ret = linkedlist_unregister((void **)&task->firstFile, file);
-  spinlock_cnt_write_release(&task->WLOCK_FILES);
+size_t fsIdFind(TaskInfoFiles *infoFiles) {
+  size_t ret = -1;
+  spinlock_cnt_write_acquire(&infoFiles->WLOCK_FILES);
+  for (size_t i = 0; i < infoFiles->rlimitFdsSoft; i++) {
+    if (!bitmapGenericGet(infoFiles->fdBitmap, i)) {
+      bitmapGenericSet(infoFiles->fdBitmap, i, true);
+      ret = i;
+      break;
+    }
+  }
+  spinlock_cnt_write_release(&infoFiles->WLOCK_FILES);
+
+  assert(ret != -1); // todo: RLIMIT errors
   return ret;
 }
 
-// TODO! flags! modes!
-// todo: openId in a bitmap or smth, per task/kernel
+void fsIdRemove(TaskInfoFiles *infoFiles, size_t fd) {
+  spinlock_cnt_write_acquire(&infoFiles->WLOCK_FILES);
+  bitmapGenericSet(infoFiles->fdBitmap, fd, false);
+  spinlock_cnt_write_release(&infoFiles->WLOCK_FILES);
+}
 
 char     *prefix = "/";
-int       openId = 3;
-OpenFile *file_system_open_generic(char *filename, Task *task, int flags, int mode) {
-  char *safeFilename = file_system_sanitize(task ? task->cwd : prefix, filename);
+OpenFile *fsOpenGeneric(char *filename, Task *task, int flags, int mode) {
+  spinlock_acquire(&task->infoFs->LOCK_FS);
+  char *safeFilename = fsSanitize(task ? task->infoFs->cwd : prefix, filename);
+  spinlock_release(&task->infoFs->LOCK_FS);
 
-  OpenFile *target = file_system_register_node(task);
-  target->id = openId++;
+  size_t    id = fsIdFind(task->infoFiles);
+  OpenFile *target = fsRegisterNode(task, id);
+  // target->id = fsIdFind(task->infoFiles);
   target->mode = mode;
   target->flags = flags;
 
   target->pointer = 0;
   target->tmp1 = 0;
 
-  MountPoint *mnt = file_system_determine_mount_point(safeFilename);
+  MountPoint *mnt = fsDetermineMountPoint(safeFilename);
   if (!mnt) {
     // no mountpoint for this
-    file_system_unregister_node(task, target);
+    fsUnregisterNode(task, target);
+    fsIdRemove(task->infoFiles, target->id);
     free(target);
     free(safeFilename);
     return 0;
@@ -58,217 +85,349 @@ OpenFile *file_system_open_generic(char *filename, Task *task, int flags, int mo
   if (flags & O_CLOEXEC)
     target->closeOnExec = true;
 
-  char *strippedFilename = file_system_strip_mount_point(safeFilename, mnt);
+  char *strippedFilename = fsStripMountpoint(safeFilename, mnt);
   // check for open handler
   if (target->handlers->open) {
-    char *symlink = 0;
-    int   ret =
+    char  *symlink = 0;
+    size_t ret =
         target->handlers->open(strippedFilename, flags, mode, target, &symlink);
-    if (ret < 0) {
+    if (RET_IS_ERR(ret)) {
       // failed to open
-      file_system_unregister_node(task, target);
+      fsUnregisterNode(task, target);
+      fsIdRemove(task->infoFiles, target->id);
       free(target);
       free(safeFilename);
 
-      if (symlink && ret != -ELOOP) {
+      if (symlink && ret != ERR(ELOOP)) {
         // we came across a symbolic link
-        char *symlinkResolved = file_system_resolve_symlink(mnt, symlink);
+        char *symlinkResolved = fsResolveSymlink(mnt, symlink);
         free(symlink);
-        OpenFile *res = file_system_open_generic(symlinkResolved, task, flags, mode);
+        OpenFile *res = fsOpenGeneric(symlinkResolved, task, flags, mode);
         free(symlinkResolved);
         return res;
       }
-      return (OpenFile *)((size_t)(-ret));
+      return (OpenFile *)((size_t)(ret));
     }
     free(safeFilename);
   }
   return target;
 }
 
-// returns an ORPHAN!
-OpenFile *file_system_user_duplicate_node_unsafe(OpenFile *original) {
-  OpenFile *orphan = (OpenFile *)malloc(sizeof(OpenFile));
-  orphan->next = 0; // duh
+bool fsUserDuplicateNodeUnsafe(OpenFile *original, OpenFile *orphan) {
+  memcpy((void *)((size_t)orphan + sizeof(original->id)),
+         (void *)((size_t)original + sizeof(original->id)),
+         sizeof(OpenFile) - sizeof(original->id));
 
-  memcpy((void *)((size_t)orphan + sizeof(orphan->next)),
-         (void *)((size_t)original + sizeof(original->next)),
-         sizeof(OpenFile) - sizeof(orphan->next));
+  return !original->handlers->duplicate ||
+         original->handlers->duplicate(original, orphan);
+}
 
-  if (original->handlers->duplicate &&
-      !original->handlers->duplicate(original, orphan)) {
+// keep in mind that the taskPtr is of the target. original can be anywhere
+OpenFile *fsUserDuplicateNode(void *taskPtr, OpenFile *original,
+                              size_t suggid) {
+  Task          *task = (Task *)taskPtr;
+  TaskInfoFiles *files = task->infoFiles;
+
+  size_t    id = suggid == (size_t)(-1) ? fsIdFind(files) : suggid;
+  OpenFile *orphan = fsRegisterNode(task, id);
+  // OpenFile *target = fsUserDuplicateNodeUnsafe(original);
+  // target->id = fsIdFind(files);
+
+  if (!fsUserDuplicateNodeUnsafe(original, orphan)) {
     free(orphan);
     return 0;
   }
-
   return orphan;
 }
 
-OpenFile *file_system_user_duplicate_node(void *taskPtr, OpenFile *original) {
-  Task *task = (Task *)taskPtr;
-
-  OpenFile *target = file_system_user_duplicate_node_unsafe(original);
-  target->id = openId++;
-
-  spinlock_cnt_write_acquire(&task->WLOCK_FILES);
-  linkedlist_push_front_unsafe((void **)(&task->firstFile), target);
-  spinlock_cnt_write_release(&task->WLOCK_FILES);
-
-  return target;
-}
-
-OpenFile *file_system_user_get_node(void *task, int fd) {
-  Task *target = (Task *)task;
-  spinlock_cnt_read_acquire(&target->WLOCK_FILES);
-  OpenFile *browse = target->firstFile;
-  while (browse) {
-    if (browse->id == fd)
-      break;
-
-    browse = browse->next;
-  }
-  spinlock_cnt_read_release(&target->WLOCK_FILES);
+OpenFile *fsUserGetNode(void *task, int fd) {
+  Task          *target = (Task *)task;
+  TaskInfoFiles *files = target->infoFiles;
+  spinlock_cnt_read_acquire(&files->WLOCK_FILES);
+  OpenFile *browse = (OpenFile *)AVLLookup(files->firstFile, fd);
+  spinlock_cnt_read_release(&files->WLOCK_FILES);
 
   return browse;
 }
 
-OpenFile *file_system_kernel_open(char *filename, int flags, uint32_t mode) {
+OpenFile *fsKernelOpen(char *filename, int flags, uint32_t mode) {
   Task     *target = task_get(KERNEL_TASK_ID);
-  OpenFile *ret = file_system_open_generic(filename, target, flags, mode);
-  if ((size_t)(ret) < 1024)
+  OpenFile *ret = fsOpenGeneric(filename, target, flags, mode);
+  if (RET_IS_ERR((size_t)(ret)))
     return 0;
   return ret;
 }
 
-int file_system_user_open(void *task, char *filename, int flags, int mode) {
+size_t fsUserOpen(void *task, char *filename, int flags, int mode) {
   if (flags & FASYNC) {
     printf("[syscalls::fs] FATAL! Tried to open %s with O_ASYNC!\n", filename);
-    return -ENOSYS;
+    return ERR(ENOSYS);
   }
-  OpenFile *file = file_system_open_generic(filename, (Task *)task, flags, mode);
-  if ((size_t)(file) < 1024)
-    return -((size_t)file);
+  OpenFile *file = fsOpenGeneric(filename, (Task *)task, flags, mode);
+  if (RET_IS_ERR((size_t)file))
+    return (size_t)file;
 
   return file->id;
 }
 
-bool file_system_close_generic(OpenFile *file, Task *task) {
-  file_system_unregister_node(task, file);
+bool fsCloseGeneric(OpenFile *file, Task *task) {
+  spinlock_acquire(&file->LOCK_OPERATIONS); // once and never again haha
+  fsUnregisterNode(task, file);
 
   bool res = file->handlers->close ? file->handlers->close(file) : true;
+  epollCloseNotify(file);
+  if (!(file->closeFlags & VFS_CLOSE_FLAG_RETAIN_ID))
+    fsIdRemove(task->infoFiles, file->id);
   free(file);
   return res;
 }
 
-bool file_system_kernel_close(OpenFile *file) {
+bool fsKernelClose(OpenFile *file) {
   Task *target = task_get(KERNEL_TASK_ID);
-  return file_system_close_generic(file, target);
+  return fsCloseGeneric(file, target);
 }
 
-int file_system_user_close(void *task, int fd) {
-  OpenFile *file = file_system_user_get_node(task, fd);
+size_t fsUserClose(void *task, int fd) {
+  OpenFile *file = fsUserGetNode(task, fd);
   if (!file)
-    return -EBADF;
-  bool res = file_system_close_generic(file, (Task *)task);
+    return ERR(EBADF);
+  bool res = fsCloseGeneric(file, (Task *)task);
   if (res)
     return 0;
   else
     return -1;
 }
 
-size_t file_system_get_filesize(OpenFile *file) {
-  return file->handlers->getFilesize(file);
+size_t fsGetFilesize(OpenFile *file) {
+  spinlock_acquire(&file->LOCK_OPERATIONS);
+  size_t ret = file->handlers->getFilesize(file);
+  spinlock_release(&file->LOCK_OPERATIONS);
+  return ret;
 }
 
-uint32_t file_system_read(OpenFile *file, uint8_t *out, uint32_t limit) {
-  if (!file->handlers->read)
-    return -EBADF;
-  return file->handlers->read(file, out, limit);
+/* When using read/write, don't take the risk of using LOCK_OPERATIONS if
+ * blocking is possible */
+
+size_t fsRead(OpenFile *file, uint8_t *out, uint32_t limit) {
+  size_t ret = -1;
+  if (!file->handlers->internalPoll)
+    spinlock_acquire(&file->LOCK_OPERATIONS);
+  if (!file->handlers->read) {
+    if (file->handlers->recvfrom) { // we got a socket!
+      ret = file->handlers->recvfrom(file, out, limit, 0, 0, 0);
+      goto cleanup;
+    }
+    ret = ERR(EBADF);
+    goto cleanup;
+  }
+  ret = file->handlers->read(file, out, limit);
+cleanup:
+  if (!file->handlers->internalPoll)
+    spinlock_release(&file->LOCK_OPERATIONS);
+  return ret;
 }
 
-uint32_t file_system_write(OpenFile *file, uint8_t *in, uint32_t limit) {
-  if (!(file->flags & O_RDWR) && !(file->flags & O_WRONLY))
-    return -EBADF;
-  if (!file->handlers->write)
-    return -EBADF;
-  return file->handlers->write(file, in, limit);
+size_t fsWrite(OpenFile *file, uint8_t *in, uint32_t limit) {
+  size_t ret = -1;
+  if (!file->handlers->internalPoll)
+    spinlock_acquire(&file->LOCK_OPERATIONS);
+  if (!(file->flags & O_RDWR) && !(file->flags & O_WRONLY)) {
+    ret = ERR(EBADF);
+    goto cleanup;
+  }
+  if (!file->handlers->write) {
+    if (file->handlers->sendto) { // we got a socket!
+      ret = file->handlers->sendto(file, in, limit, 0, 0, 0);
+      goto cleanup;
+    }
+    ret = ERR(EBADF);
+    goto cleanup;
+  }
+  ret = file->handlers->write(file, in, limit);
+cleanup:
+  if (!file->handlers->internalPoll)
+    spinlock_release(&file->LOCK_OPERATIONS);
+  return ret;
 }
 
-void file_system_read_full_file(OpenFile *file, uint8_t *out) {
-  file_system_read(file, out, file_system_get_filesize(file));
-}
-
-int file_system_user_seek(void *task, uint32_t fd, int offset, int whence) {
-  OpenFile *file = file_system_user_get_node(task, fd);
+size_t fsUserSeek(void *task, uint32_t fd, int offset, int whence) {
+  OpenFile *file = fsUserGetNode(task, fd);
   if (!file) // todo "special"
     return -1;
+
+  spinlock_acquire(&file->LOCK_OPERATIONS);
   int target = offset;
   if (whence == SEEK_SET)
     target += 0;
   else if (whence == SEEK_CURR)
     target += file->pointer;
   else if (whence == SEEK_END)
-    target += file_system_get_filesize(file);
+    target += file->handlers->getFilesize(file);
 
-  if (!file->handlers->seek)
-    return -ESPIPE;
+  size_t ret = 0;
+  if (!file->handlers->seek) {
+    ret = ERR(ESPIPE);
+    goto cleanup;
+  }
 
-  return file->handlers->seek(file, target, offset, whence);
+  ret = file->handlers->seek(file, target, offset, whence);
+cleanup:
+  spinlock_release(&file->LOCK_OPERATIONS);
+  return ret;
 }
 
-int file_system_read_link(void *task, char *path, char *buf, int size) {
-  Task       *target = task;
-  char       *safeFilename = file_system_sanitize(target->cwd, path);
-  MountPoint *mnt = file_system_determine_mount_point(safeFilename);
-  int         ret = -1;
+size_t fsReadlink(void *task, char *path, char *buf, int size) {
+  if (strlen(path) == 14 && memcmp(path, "/proc/self/exe", 15) == 0 &&
+      currentTask->execname) {
+    // todo: hack-y, needs to be done properly sometime!
+    size_t total = strlen(currentTask->execname);
+    size_t toCopy = MIN(size, total);
+    memcpy(buf, currentTask->execname, toCopy);
+    return toCopy;
+    // memcpy(buf, "/usr/libexec/webkit2gtk-4.1/MiniBrowser", 40);
+    // return 40;
+    // memcpy(buf, "/usr/bin/mpv", 13);
+    // return 13;
+  }
+  Task *target = task;
+  spinlock_acquire(&target->infoFs->LOCK_FS);
+  char *safeFilename = fsSanitize(target->infoFs->cwd, path);
+  spinlock_release(&target->infoFs->LOCK_FS);
+  MountPoint *mnt = fsDetermineMountPoint(safeFilename);
+  size_t      ret = -1;
 
   char *symlink = 0;
-  switch (mnt->filesystem) {
-  case FS_FATFS:
-    ret = -EINVAL;
-    break;
-  case FS_EXT2:
-    ret =
-        ext2_read_link((Ext2 *)(mnt->fsInfo), safeFilename, buf, size, &symlink);
-    break;
-  default:
-    printf("[vfs] Tried to readLink() with bad filesystem! id{%d}\n",
-           mnt->filesystem);
-    break;
+  if (!mnt->readlink) {
+    free(safeFilename);
+    return ERR(EINVAL);
   }
+  char *strippedFilename = fsStripMountpoint(safeFilename, mnt);
+  ret = mnt->readlink(mnt, strippedFilename, buf, size, &symlink);
 
   free(safeFilename);
 
   if (symlink) {
-    char *symlinkResolved = file_system_resolve_symlink(mnt, symlink);
+    char *symlinkResolved = fsResolveSymlink(mnt, symlink);
     free(symlink);
-    ret = file_system_read_link(task, symlinkResolved, buf, size);
+    ret = fsReadlink(task, symlinkResolved, buf, size);
     free(symlinkResolved);
   }
   return ret;
 }
 
-int file_system_mkdir(void *task, char *path, uint32_t mode) {
-  Task       *target = (Task *)task;
-  char       *safeFilename = file_system_sanitize(target->cwd, path);
-  MountPoint *mnt = file_system_determine_mount_point(safeFilename);
+size_t fsMkdir(void *task, char *path, uint32_t mode) {
+  Task *target = (Task *)task;
+  spinlock_acquire(&target->infoFs->LOCK_FS);
+  char *safeFilename = fsSanitize(target->infoFs->cwd, path);
+  spinlock_release(&target->infoFs->LOCK_FS);
+  MountPoint *mnt = fsDetermineMountPoint(safeFilename);
 
-  int ret = 0;
+  size_t ret = 0;
 
   char *symlink = 0;
   if (mnt->mkdir) {
     ret = mnt->mkdir(mnt, safeFilename, mode, &symlink);
   } else {
-    ret = -EROFS;
+    ret = ERR(EROFS);
   }
 
   free(safeFilename);
 
   if (symlink) {
-    char *symlinkResolved = file_system_resolve_symlink(mnt, symlink);
+    char *symlinkResolved = fsResolveSymlink(mnt, symlink);
     free(symlink);
-    ret = file_system_mkdir(task, symlinkResolved, mode);
+    ret = fsMkdir(task, symlinkResolved, mode);
     free(symlinkResolved);
   }
 
   return ret;
+}
+
+size_t fsUnlink(void *task, char *path, bool directory) {
+  Task *target = (Task *)task;
+  spinlock_acquire(&target->infoFs->LOCK_FS);
+  char *safeFilename = fsSanitize(target->infoFs->cwd, path);
+  spinlock_release(&target->infoFs->LOCK_FS);
+  MountPoint *mnt = fsDetermineMountPoint(safeFilename);
+
+  size_t ret = 0;
+  if (unixSocketUnlinkNotify(safeFilename)) {
+    free(safeFilename);
+    return 0;
+  }
+
+  char *symlink = 0;
+  if (mnt->remove) {
+    ret = mnt->remove(mnt, safeFilename, directory, &symlink);
+  } else {
+    ret = ERR(EROFS);
+  }
+
+  free(safeFilename);
+
+  if (symlink) {
+    char *symlinkResolved = fsResolveSymlink(mnt, symlink);
+    free(symlink);
+    ret = fsUnlink(task, symlinkResolved, directory);
+    free(symlinkResolved);
+  }
+
+  return ret;
+}
+
+size_t fsLink(void *task, char *oldpath, char *newpath) {
+  Task *target = (Task *)task;
+  spinlock_acquire(&target->infoFs->LOCK_FS);
+  char *oldpathSafe = fsSanitize(target->infoFs->cwd, oldpath);
+  char *newpathSafe = fsSanitize(target->infoFs->cwd, newpath);
+  spinlock_release(&target->infoFs->LOCK_FS);
+  MountPoint *mnt = fsDetermineMountPoint(oldpathSafe);
+  if (fsDetermineMountPoint(newpathSafe) != mnt) {
+    free(oldpathSafe);
+    free(newpathSafe);
+    return ERR(EXDEV);
+  }
+
+  size_t ret = 0;
+
+  char *symlinkold = 0;
+  char *symlinknew = 0;
+  if (mnt->remove) {
+    ret = mnt->link(mnt, oldpathSafe, newpathSafe, &symlinkold, &symlinknew);
+  } else {
+    ret = ERR(EPERM);
+  }
+
+  free(oldpathSafe);
+  free(newpathSafe);
+
+  char *old = oldpath;
+  char *new_file_name = newpath;
+  if (symlinkold)
+    old = fsResolveSymlink(mnt, symlinkold);
+  if (symlinknew)
+    new_file_name = fsResolveSymlink(mnt, symlinknew);
+
+  if (symlinkold)
+    free(symlinkold);
+  if (symlinknew)
+    free(symlinknew);
+
+  if (symlinkold || symlinknew)
+    ret = fsLink(task, old, new_file_name );
+
+  if (symlinkold)
+    free(old);
+  if (symlinknew)
+    free( new_file_name );
+
+  return ret;
+}
+
+// shared for fake filesystems etc
+size_t fsSimpleSeek(OpenFile *file, size_t target, long int offset,
+                    int whence) {
+  // we're using the official ->pointer so no need to worry about much
+  file->pointer = target;
+  return 0;
 }

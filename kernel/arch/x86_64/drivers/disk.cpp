@@ -42,7 +42,7 @@ void disk_bytes(uint8_t *target_address, uint32_t LBA, uint32_t sector_count,
   while (browse) {
     if (browse->driver == PCI_DRIVER_AHCI && browse->extra && ((ahci *)browse->extra)->sata)
       break;
-    browse = browse->next;
+    browse = (PCI *)browse->_ll.next;
   }
 
   if (!browse || !browse->extra) {

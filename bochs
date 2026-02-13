@@ -7,5 +7,5 @@ display_library: x, options = "gui_debug"
 cpu: reset_on_triple_fault=0
 log: logs/bochs.log
 logprefix: %t %e %d
-panic: action=ask
+Halt: action=ask
 error: action=report

@@ -85,14 +85,17 @@ void change_page_directory_fake(uint64_t *pd) {
 
 void change_page_directory(uint64_t *pd) 
 {
-
-  if (tasksInitiated){
-
-      currentTask->pagedir = pd;
+  if (tasksInitiated) {
+    spinlock_acquire(&currentTask->infoPd->LOCK_PD);
+    if (pd == currentTask->infoPd->pagedir)
+      currentTask->pagedirOverride = 0;
+    else
+      currentTask->pagedirOverride = pd;
+    spinlock_release(&currentTask->infoPd->LOCK_PD);
   }
-  
   change_page_directory_unsafe(pd);
 }
+
 
 uint64_t *get_page_directory() { return (uint64_t *)globalPagedir; }
 
@@ -227,6 +230,17 @@ uint32_t virtual_unmap(uint32_t virt_addr) {
   return 0;
 }
 
+uint64_t *GetTaskPageDirectory(void *taskPtr) {
+  Task *task = (Task *)taskPtr;
+
+  TaskInfoPagedir *info = task->infoPd;
+  spinlock_acquire(&info->LOCK_PD);
+  uint64_t *ret = task->pagedirOverride ? task->pagedirOverride : info->pagedir;
+  spinlock_release(&info->LOCK_PD);
+
+  return ret;
+}
+
 uint64_t *page_directory_allocate() {
   if (!tasksInitiated) {
     printf("[paging] FATAL! Tried to allocate pd without tasks initiated!\n");
@@ -236,7 +250,7 @@ uint64_t *page_directory_allocate() {
 
   memset(out, 0, PAGE_SIZE);
 
-  uint64_t *model = task_get(KERNEL_TASK_ID)->pagedir;
+  uint64_t *model = GetTaskPageDirectory(task_get(KERNEL_TASK_ID));
   for (int i = 0; i < 512; i++)
     out[i] = model[i];
 

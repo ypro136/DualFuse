@@ -25,7 +25,7 @@ PCI *lookup_pci_device(pci_device *device) {
     if (browse->bus == device->bus && browse->slot == device->slot &&
         browse->function == device->function)
       break;
-    browse = browse->next;
+    browse = (PCI *)browse->_ll.next;
   }
   return browse;
 }
@@ -150,6 +150,7 @@ void pci_initialize()
   #if defined(DEBUG_PCI)
   printf("[PCI] Starting PCI initialization...\n");
   #endif
+  
 
   pci_device *device = (pci_device *)malloc(sizeof(pci_device));
   #if defined(DEBUG_PCI)
@@ -158,6 +159,8 @@ void pci_initialize()
     return;
   }
   #endif
+
+  LinkedListInit(&dsPCI, sizeof(PCI));
 
 
   for (uint16_t bus = 0; bus < PCI_MAX_BUSES; bus++) {
@@ -177,7 +180,7 @@ void pci_initialize()
         printf("[PCI] Device class: %02x, subclass: %02x\n", device->class_id, device->subclass_id);
         #endif
 
-        PCI *target = linked_list_allocate((void **)(&firstPCI), sizeof(PCI));
+        PCI *target = LinkedListAllocate(&dsPCI, sizeof(PCI));
         #if defined(DEBUG_PCI)
         if (!target) {
           printf("[PCI] Failed to allocate PCI list entry. target is NULL\n");

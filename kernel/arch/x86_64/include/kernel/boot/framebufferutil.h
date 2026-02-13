@@ -13,6 +13,8 @@
 #include <limine.h>
 
 extern volatile struct limine_framebuffer *tempframebuffer;
+extern volatile struct limine_framebuffer tempframebuffer_data;
+
 
 extern uint64_t screen_width;
 extern uint64_t screen_height;

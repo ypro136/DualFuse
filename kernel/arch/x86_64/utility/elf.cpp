@@ -232,18 +232,18 @@ Task *elfExecute(char *filepath, uint32_t argc, char **argv, uint32_t envc, char
   // fsUserOpenSpecial(a, "/dev/fb0", target, -1, &fb0);
   // fsUserOpenSpecial(a, "/dev/tty", target, -1, &stdio);
 
-  int stdin = file_system_user_open(target, "/dev/stdin", O_RDWR, 0);
-  int stdout = file_system_user_open(target, "/dev/stdout", O_RDWR, 0);
-  int stderr = file_system_user_open(target, "/dev/stderr", O_RDWR, 0);
+  int stdin = fsUserOpen(target, "/dev/stdin", O_RDWR, 0);
+  int stdout = fsUserOpen(target, "/dev/stdout", O_RDWR, 0);
+  int stderr = fsUserOpen(target, "/dev/stderr", O_RDWR, 0);
 
   if (stdin < 0 || stdout < 0 || stderr < 0) {
     printf("[elf] Couldn't establish basic IO!\n");
     Halt();
   }
 
-  OpenFile *fdStdin = file_system_user_get_node(target, stdin);
-  OpenFile *fdStdout = file_system_user_get_node(target, stdout);
-  OpenFile *fdStderr = file_system_user_get_node(target, stderr);
+  OpenFile *fdStdin = fsUserGetNode(target, stdin);
+  OpenFile *fdStdout = fsUserGetNode(target, stdout);
+  OpenFile *fdStderr = fsUserGetNode(target, stderr);
 
   fdStdin->id = 0;
   fdStdout->id = 1;

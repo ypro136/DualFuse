@@ -389,7 +389,7 @@ void ahci_interrupt_handler(AsmPassedInterrupt *regs) {
         HBA_PORT *port = &ahciPtr->mem->ports[portNum];
         if (port->is & HBA_PxIS_TFES) {
           // Task file error
-          printf("[pci::ahci] FATAL! Task file error!\n");
+          printf("[pci::ahci] Warning: Task file error!\n");
           Halt();
         }
         ahciPtr->mem->is = ahciPtr->mem->is;
@@ -397,7 +397,7 @@ void ahci_interrupt_handler(AsmPassedInterrupt *regs) {
       }
     }
 
-    browse = browse->next;
+    browse = (PCI *)browse->_ll.next;
   }
 }
 

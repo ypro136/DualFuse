@@ -226,22 +226,24 @@ typedef struct {
   } _sifields;
 } siginfo_t;
 
-// /usr/include/bits/types/__sigset_t.h
-#define _SIGSET_NWORDS (1024 / (8 * sizeof(unsigned long int)))
-typedef struct {
-  unsigned long int __val[_SIGSET_NWORDS];
-} __sigset_t;
+// Change this section (around line 230):
 
 // /usr/include/linux/time.h
+#ifndef __DEFINED_struct_timespec
+#define __DEFINED_struct_timespec
 typedef struct timespec {
   int64_t tv_sec;  // seconds
   int64_t tv_nsec; // nanoseconds
 } timespec;
+#endif
 
+#ifndef __DEFINED_struct_timeval
+#define __DEFINED_struct_timeval
 typedef struct timeval {
   int64_t tv_sec;  /* Seconds */
   int64_t tv_usec; /* Microseconds */
 } timeval;
+#endif
 
 // /usr/include/bits/types/struct_rusage.h
 typedef struct rusage {
@@ -263,22 +265,14 @@ typedef struct rusage {
   long    ru_nivcsw;   /* involuntary context switches */
 } rusage;
 
-// /usr/include/bits/sigaction.h
-struct sigaction {
-  union {
-    void (*sa_handler)(int);
-    void (*sa_sigaction)(int, siginfo_t *, void *);
-  } __sa_handler;
-  __sigset_t sa_mask;
-  int        sa_flags;
-  void (*sa_restorer)(void);
-};
-
 // /usr/include/asm-generic/ioctls.h
 #define TCGETS 0x5401
 #define TCSETS 0x5402
 #define TCSETSW 0x5403
 #define TCSETSF 0x5404
+#define TIOCSCTTY 0x540E
+#define TIOCGWINSZ 0x5413
+#define TIOCSWINSZ 0x5414
 
 // /usr/include/bits/termios-c_cc.h
 #define VINTR 0
@@ -424,6 +418,7 @@ struct sigaction {
 #define ECHONL 0000100 /* Echo NL.  */
 #define NOFLSH 0000200 /* Disable flush after interrupt or quit.  */
 #define TOSTOP 0000400 /* Send SIGTTOU for background output.  */
+#define __USE_MISC 1
 #ifdef __USE_MISC
 #define ECHOCTL                                                                \
   0001000 /* If ECHO is also set, terminal special characters                  \
@@ -497,6 +492,12 @@ struct sigaction {
 #define MS_SYNC 4       /* Synchronous memory sync.  */
 #define MS_INVALIDATE 2 /* Invalidate the caches.  */
 
+#define MAP_POPULATE 0x008000 /* populate (prefault) pagetables */
+#define MAP_FIXED_NOREPLACE                                                    \
+  0x100000 /* MAP_FIXED which doesn't unmap underlying mapping */
+#define MAP_GROWSDOWN 0x0100 /* stack-like segment */
+#define MAP_LOCKED 0x2000    /* pages are locked */
+
 // /usr/include/linux/time.h
 // Standard POSIX clocks
 #define CLOCK_REALTIME                                                         \
@@ -520,7 +521,7 @@ struct sigaction {
 #define CLOCK_TAI                                                              \
   9 // International Atomic Time (TAI) clock, not subject to leap seconds
 
-// https://docs.huihoo.com/doxygen/linux/3.7/uapi_2linux_2utsname_8h_source.html
+// https://docs.huihoo.com/doxygen/linux/kernel/3.7/uapi_2linux_2utsname_8h_source.html
 struct old_utsname {
   char sysname[65];
   char nodename[65];
@@ -622,9 +623,9 @@ typedef struct stat {
      identifier 'timespec' to appear in the <sys/stat.h> header.
      Therefore we have to handle the use of this header in strictly
      standard-compliant sources special.  */
-  struct timespec st_atim; /* Time of last access.  */
-  struct timespec st_mtim; /* Time of last modification.  */
-  struct timespec st_ctim; /* Time of last status change.  */
+  struct timespec st_atim;      /* Time of last access.  */
+  struct timespec st_mtim;      /* Time of last modification.  */
+  struct timespec st_ctim;      /* Time of last status change.  */
 #define st_atime st_atim.tv_sec /* Backward compatibility.  */
 #define st_mtime st_mtim.tv_sec
 #define st_ctime st_ctim.tv_sec
@@ -834,12 +835,12 @@ struct statx {
 #define EIDRM 43           /* Identifier removed */
 #define ECHRNG 44          /* Channel number out of range */
 #define EL2NSYNC 45        /* Level 2 not synchronized */
-#define EL3HLT 46          /* Level 3 halted */
+#define EL3HLT 46          /* Level 3 Halted */
 #define EL3RST 47          /* Level 3 reset */
 #define ELNRNG 48          /* Link number out of range */
 #define EUNATCH 49         /* Protocol driver not attached */
 #define ENOCSI 50          /* No CSI structure available */
-#define EL2HLT 51          /* Level 2 halted */
+#define EL2HLT 51          /* Level 2 Halted */
 #define EBADE 52           /* Invalid exchange */
 #define EBADR 53           /* Invalid request descriptor */
 #define EXFULL 54          /* Exchange full */
@@ -1033,8 +1034,541 @@ struct fb_fix_screeninfo {
   __u16 reserved[2];         /* Reserved for future compatibility */
 };
 
-// assumed myself, pty
-#define TIOCSPTLCK 0x40045431
-#define TIOCGPTN 0xffffffff80045430
+#define POLLIN 0x0001
+#define POLLPRI 0x0002
+#define POLLOUT 0x0004
+#define POLLERR 0x0008
+#define POLLHUP 0x0010
+#define POLLNVAL 0x0020
+#define POLLRDNORM 0x0040
+typedef unsigned int nfds_t;
+struct pollfd {
+  int   fd;      /* file descriptor */
+  short events;  /* requested events */
+  short revents; /* returned events */
+};
+
+typedef struct {
+  uint16_t sa_family;
+  char     sa_data[];
+} sockaddr_linux;
+
+#define SOCK_CLOEXEC 02000000
+#define SOCK_NONBLOCK 04000
+
+// include/linux/sched.h
+/*
+ * cloning flags:
+ */
+#define CSIGNAL 0x000000ff  /* signal mask to be sent at exit */
+#define CLONE_VM 0x00000100 /* set if VM shared between processes */
+#define CLONE_FS 0x00000200 /* set if fs info shared between processes */
+#define CLONE_FILES                                                            \
+  0x00000400 /* set if open files shared between processes                     \
+              */
+#define CLONE_SIGHAND                                                          \
+  0x00000800 /* set if signal handlers and blocked signals shared */
+#define CLONE_PIDFD 0x00001000 /* set if a pidfd should be placed in parent */
+#define CLONE_PTRACE                                                           \
+  0x00002000 /* set if we want to let tracing continue on the child too */
+#define CLONE_VFORK                                                            \
+  0x00004000 /* set if the parent wants the child to wake it up on mm_release  \
+              */
+#define CLONE_PARENT                                                           \
+  0x00008000 /* set if we want to have the same parent as the cloner */
+#define CLONE_THREAD 0x00010000         /* Same thread group? */
+#define CLONE_NEWNS 0x00020000          /* New mount namespace group */
+#define CLONE_SYSVSEM 0x00040000        /* share system V SEM_UNDO semantics */
+#define CLONE_SETTLS 0x00080000         /* create a new TLS for the child */
+#define CLONE_PARENT_SETTID 0x00100000  /* set the TID in the parent */
+#define CLONE_CHILD_CLEARTID 0x00200000 /* clear the TID in the child */
+#define CLONE_DETACHED 0x00400000       /* Unused, ignored */
+#define CLONE_UNTRACED                                                         \
+  0x00800000 /* set if the tracing process can't force CLONE_PTRACE on this    \
+                clone */
+#define CLONE_CHILD_SETTID 0x01000000 /* set the TID in the child */
+#define CLONE_NEWCGROUP 0x02000000    /* New cgroup namespace */
+#define CLONE_NEWUTS 0x04000000       /* New utsname namespace */
+#define CLONE_NEWIPC 0x08000000       /* New ipc namespace */
+#define CLONE_NEWUSER 0x10000000      /* New user namespace */
+#define CLONE_NEWPID 0x20000000       /* New pid namespace */
+#define CLONE_NEWNET 0x40000000       /* New network namespace */
+#define CLONE_IO 0x80000000           /* Clone io context */
+
+// include/linux/eventpoll.h
+#define EPOLL_CLOEXEC O_CLOEXEC
+
+/* Valid opcodes to issue to sys_epoll_ctl() */
+#define EPOLL_CTL_ADD 1
+#define EPOLL_CTL_DEL 2
+#define EPOLL_CTL_MOD 3
+
+/* Epoll event masks */
+#define EPOLLIN (__poll_t)0x00000001
+#define EPOLLPRI (__poll_t)0x00000002
+#define EPOLLOUT (__poll_t)0x00000004
+#define EPOLLERR (__poll_t)0x00000008
+#define EPOLLHUP (__poll_t)0x00000010
+#define EPOLLNVAL (__poll_t)0x00000020
+#define EPOLLRDNORM (__poll_t)0x00000040
+#define EPOLLRDBAND (__poll_t)0x00000080
+#define EPOLLWRNORM (__poll_t)0x00000100
+#define EPOLLWRBAND (__poll_t)0x00000200
+#define EPOLLMSG (__poll_t)0x00000400
+#define EPOLLRDHUP (__poll_t)0x00002000
+
+/*
+ * Internal flag - wakeup generated by io_uring, used to detect recursion back
+ * into the io_uring poll handler.
+ */
+#define EPOLL_URING_WAKE ((__poll_t)(1U << 27))
+
+/* Set exclusive wakeup mode for the target file descriptor */
+#define EPOLLEXCLUSIVE ((__poll_t)(1U << 28))
+
+/*
+ * Request the handling of system wakeup events so as to prevent system suspends
+ * from happening while those events are being processed.
+ *
+ * Assuming neither EPOLLET nor EPOLLONESHOT is set, system suspends will not be
+ * re-allowed until epoll_wait is called again after consuming the wakeup
+ * event(s).
+ *
+ * Requires CAP_BLOCK_SUSPEND
+ */
+#define EPOLLWAKEUP ((__poll_t)(1U << 29))
+
+/* Set the One Shot behaviour for the target file descriptor */
+#define EPOLLONESHOT ((__poll_t)(1U << 30))
+
+/* Set the Edge Triggered behaviour for the target file descriptor */
+#define EPOLLET ((__poll_t)(1U << 31))
+
+/*
+ * On x86-64 make the 64bit structure have the same alignment as the
+ * 32bit structure. This makes 32bit emulation easier.
+ *
+ * UML/x86_64 needs the same packing as x86_64
+ */
+#define EPOLL_PACKED __attribute__((packed))
+typedef unsigned int __poll_t;
+struct epoll_event {
+  __poll_t events;
+  __u64    data;
+} EPOLL_PACKED;
+
+struct ucred {
+  pid_t    pid; /* Process ID of the sending process */
+  uid_t    uid; /* User ID of the sending process */
+  unsigned gid; /* Group ID of the sending process */
+};
+
+struct msghdr_linux {
+  void         *msg_name;    /* Socket name          */
+  int           msg_namelen; /* Length of name       */
+  struct iovec *msg_iov;     /* Data blocks          */
+  size_t        msg_iovlen;  /* Number of blocks     */
+  void  *msg_control; /* Per protocol magic (eg BSD file descriptor passing) */
+  size_t msg_controllen; /* Length of cmsg list */
+  unsigned int msg_flags;
+};
+
+// include/asm-generic/signal.h
+#define __BITS_PER_LONG 64
+#define _NSIG 64
+#define _NSIG_BPW __BITS_PER_LONG
+#define _NSIG_WORDS (_NSIG / _NSIG_BPW)
+
+#define SIGHUP 1
+#define SIGINT 2
+#define SIGQUIT 3
+#define SIGILL 4
+#define SIGTRAP 5
+#define SIGABRT 6
+#define SIGIOT 6
+#define SIGBUS 7
+#define SIGFPE 8
+#define SIGKILL 9
+#define SIGUSR1 10
+#define SIGSEGV 11
+#define SIGUSR2 12
+#define SIGPIPE 13
+#define SIGALRM 14
+#define SIGTERM 15
+#define SIGSTKFLT 16
+#define SIGCHLD 17
+#define SIGCONT 18
+#define SIGSTOP 19
+#define SIGTSTP 20
+#define SIGTTIN 21
+#define SIGTTOU 22
+#define SIGURG 23
+#define SIGXCPU 24
+#define SIGXFSZ 25
+#define SIGVTALRM 26
+#define SIGPROF 27
+#define SIGWINCH 28
+#define SIGIO 29
+#define SIGPOLL SIGIO
+/*
+#define SIGLOST		29
+*/
+#define SIGPWR 30
+#define SIGSYS 31
+#define SIGUNUSED 31
+
+/* These should not be considered constants from userland.  */
+#define SIGRTMIN 32
+#ifndef SIGRTMAX
+#define SIGRTMAX _NSIG
+#endif
+
+#if !defined MINSIGSTKSZ || !defined SIGSTKSZ
+#define MINSIGSTKSZ 2048
+#define SIGSTKSZ 8192
+#endif
+
+// typedef struct {
+//   unsigned long sig[_NSIG_WORDS];
+// } sigset_t;
+
+// !! Modified for ease of use! If _NSIG_WORDS > 1, this will NOT work!
+typedef uint64_t sigset_t;
+
+// include/asm-generic/signal-defs.h
+#ifndef SA_NOCLDSTOP
+#define SA_NOCLDSTOP 0x00000001
+#endif
+#ifndef SA_NOCLDWAIT
+#define SA_NOCLDWAIT 0x00000002
+#endif
+#ifndef SA_SIGINFO
+#define SA_SIGINFO 0x00000004
+#endif
+/* 0x00000008 used on alpha, mips, parisc */
+/* 0x00000010 used on alpha, parisc */
+/* 0x00000020 used on alpha, parisc, sparc */
+/* 0x00000040 used on alpha, parisc */
+/* 0x00000080 used on parisc */
+/* 0x00000100 used on sparc */
+/* 0x00000200 used on sparc */
+#define SA_UNSUPPORTED 0x00000400
+#define SA_EXPOSE_TAGBITS 0x00000800
+/* 0x00010000 used on mips */
+/* 0x00800000 used for internal SA_IMMUTABLE */
+/* 0x01000000 used on x86 */
+/* 0x02000000 used on x86 */
+/*
+ * New architectures should not define the obsolete
+ *	SA_RESTORER	0x04000000
+ */
+#ifndef SA_ONSTACK
+#define SA_ONSTACK 0x08000000
+#endif
+#ifndef SA_RESTART
+#define SA_RESTART 0x10000000
+#endif
+#ifndef SA_NODEFER
+#define SA_NODEFER 0x40000000
+#endif
+#ifndef SA_RESETHAND
+#define SA_RESETHAND 0x80000000
+#endif
+#define SA_RESTORER 0x04000000
+
+#define SIG_BLOCK 0   /* for blocking signals */
+#define SIG_UNBLOCK 1 /* for unblocking signals */
+#define SIG_SETMASK 2 /* for setting the signal mask */
+
+typedef void          __signalfn_t(int);
+typedef __signalfn_t *__sighandler_t;
+
+typedef void           __restorefn_t(void);
+typedef __restorefn_t *__sigrestore_t;
+
+#define SIG_DFL ((__sighandler_t)0)    /* default signal handling */
+#define SIG_IGN ((__sighandler_t)1)    /* ignore signal */
+#define SIG_ERR ((__sighandler_t) - 1) /* error return from signal */
+
+// musl sources (include/asm/signal.h was bad)
+struct sigaction {
+  void (*sa_handler)(int);
+  unsigned long sa_flags;
+  void (*sa_restorer)(void);
+  sigset_t sa_mask;
+};
+
+// include/asm/sigcontext.h & valgrind sources
+struct fpstate {
+  uint16_t cwd;
+  uint16_t swd;
+  uint16_t twd; /* Note this is not the same as the 32bit/x87/FSAVE twd */
+  uint16_t fop;
+  uint64_t rip;
+  uint64_t rdp;
+  uint32_t mxcsr;
+  uint32_t mxcsr_mask;
+  uint32_t st_space[32];  /* 8*16 bytes for each FP-reg */
+  uint32_t xmm_space[64]; /* 16*16 bytes for each XMM-reg  */
+  uint32_t reserved2[24];
+};
+
+struct sigcontext {
+  unsigned long   r8;
+  unsigned long   r9;
+  unsigned long   r10;
+  unsigned long   r11;
+  unsigned long   r12;
+  unsigned long   r13;
+  unsigned long   r14;
+  unsigned long   r15;
+  unsigned long   rdi;
+  unsigned long   rsi;
+  unsigned long   rbp;
+  unsigned long   rbx;
+  unsigned long   rdx;
+  unsigned long   rax;
+  unsigned long   rcx;
+  unsigned long   rsp;
+  unsigned long   rip;
+  unsigned long   eflags; /* RFLAGS */
+  unsigned short  cs;
+  unsigned short  gs;
+  unsigned short  fs;
+  unsigned short  ss; /* __pad0 */
+  unsigned long   err;
+  unsigned long   trapno;
+  unsigned long   oldmask;
+  unsigned long   cr2;
+  struct fpstate *fpstate; /* zero when no FPU context */
+  unsigned long   reserved1[8];
+};
+
+// include/linux/time.h
+struct itimerval {
+  struct timeval it_interval; /* timer interval */
+  struct timeval it_value;    /* current value */
+};
+
+#define ITIMER_REAL 0
+#define ITIMER_VIRTUAL 1
+#define ITIMER_PROF 2
+
+// doesn't exactly belong below but yeah
+#define FIONREAD 0x541B
+#define FIONBIO 0x5421
+
+// include/asm-generic/ioctl.h
+#define _IOC_NRBITS 8
+#define _IOC_TYPEBITS 8
+
+/*
+ * Let any architecture override either of the following before
+ * including this file.
+ */
+
+#ifndef _IOC_SIZEBITS
+#define _IOC_SIZEBITS 14
+#endif
+
+#ifndef _IOC_DIRBITS
+#define _IOC_DIRBITS 2
+#endif
+
+#define _IOC_NRMASK ((1 << _IOC_NRBITS) - 1)
+#define _IOC_TYPEMASK ((1 << _IOC_TYPEBITS) - 1)
+#define _IOC_SIZEMASK ((1 << _IOC_SIZEBITS) - 1)
+#define _IOC_DIRMASK ((1 << _IOC_DIRBITS) - 1)
+
+#define _IOC_NRSHIFT 0
+#define _IOC_TYPESHIFT (_IOC_NRSHIFT + _IOC_NRBITS)
+#define _IOC_SIZESHIFT (_IOC_TYPESHIFT + _IOC_TYPEBITS)
+#define _IOC_DIRSHIFT (_IOC_SIZESHIFT + _IOC_SIZEBITS)
+
+/*
+ * Direction bits, which any architecture can choose to override
+ * before including this file.
+ *
+ * NOTE: _IOC_WRITE means userland is writing and kernel is
+ * reading. _IOC_READ means userland is reading and kernel is writing.
+ */
+
+#ifndef _IOC_NONE
+#define _IOC_NONE 0U
+#endif
+
+#ifndef _IOC_WRITE
+#define _IOC_WRITE 1U
+#endif
+
+#ifndef _IOC_READ
+#define _IOC_READ 2U
+#endif
+
+#define _IOC(dir, type, nr, size)                                              \
+  (((dir) << _IOC_DIRSHIFT) | ((type) << _IOC_TYPESHIFT) |                     \
+   ((nr) << _IOC_NRSHIFT) | ((size) << _IOC_SIZESHIFT))
+
+#define _IOC_TYPECHECK(t) (sizeof(t))
+
+/*
+ * Used to create numbers.
+ *
+ * NOTE: _IOW means userland is writing and kernel is reading. _IOR
+ * means userland is reading and kernel is writing.
+ */
+#define _IO(type, nr) _IOC(_IOC_NONE, (type), (nr), 0)
+#define _IOR(type, nr, size)                                                   \
+  _IOC(_IOC_READ, (type), (nr), (_IOC_TYPECHECK(size)))
+#define _IOW(type, nr, size)                                                   \
+  _IOC(_IOC_WRITE, (type), (nr), (_IOC_TYPECHECK(size)))
+#define _IOWR(type, nr, size)                                                  \
+  _IOC(_IOC_READ | _IOC_WRITE, (type), (nr), (_IOC_TYPECHECK(size)))
+#define _IOR_BAD(type, nr, size) _IOC(_IOC_READ, (type), (nr), sizeof(size))
+#define _IOW_BAD(type, nr, size) _IOC(_IOC_WRITE, (type), (nr), sizeof(size))
+#define _IOWR_BAD(type, nr, size)                                              \
+  _IOC(_IOC_READ | _IOC_WRITE, (type), (nr), sizeof(size))
+
+/* used to decode ioctl numbers.. */
+#define _IOC_DIR(nr) (((nr) >> _IOC_DIRSHIFT) & _IOC_DIRMASK)
+#define _IOC_TYPE(nr) (((nr) >> _IOC_TYPESHIFT) & _IOC_TYPEMASK)
+#define _IOC_NR(nr) (((nr) >> _IOC_NRSHIFT) & _IOC_NRMASK)
+#define _IOC_SIZE(nr) (((nr) >> _IOC_SIZESHIFT) & _IOC_SIZEMASK)
+
+/* ...and for the drivers/sound files... */
+
+#define IOC_IN (_IOC_WRITE << _IOC_DIRSHIFT)
+#define IOC_OUT (_IOC_READ << _IOC_DIRSHIFT)
+#define IOC_INOUT ((_IOC_WRITE | _IOC_READ) << _IOC_DIRSHIFT)
+#define IOCSIZE_MASK (_IOC_SIZEMASK << _IOC_SIZESHIFT)
+#define IOCSIZE_SHIFT (_IOC_SIZESHIFT)
+
+// include/linux/input.h
+struct input_event {
+  uint64_t sec;
+  uint64_t usec;
+  __u16    type;
+  __u16    code;
+  __s32    value;
+};
+
+struct input_id {
+  __u16 bustype;
+  __u16 vendor;
+  __u16 product;
+  __u16 version;
+};
+
+struct input_absinfo {
+  __s32 value;
+  __s32 minimum;
+  __s32 maximum;
+  __s32 fuzz;
+  __s32 flat;
+  __s32 resolution;
+};
+
+#define EVIOCGKEY(len)                                                         \
+  _IOC(_IOC_READ, 'E', 0x18, len) /* get global key state */
+#define EVIOCGLED(len) _IOC(_IOC_READ, 'E', 0x19, len) /* get all LEDs */
+#define EVIOCGSND(len)                                                         \
+  _IOC(_IOC_READ, 'E', 0x1a, len) /* get all sounds status */
+#define EVIOCGSW(len)                                                          \
+  _IOC(_IOC_READ, 'E', 0x1b, len) /* get all switch states */
+
+#define EVIOCGBIT(ev, len)                                                     \
+  _IOC(_IOC_READ, 'E', 0x20 + (ev), len) /* get event bits */
+#define EVIOCGABS(abs)                                                         \
+  _IOR('E', 0x40 + (abs), struct input_absinfo) /* get abs value/limits */
+#define EVIOCSABS(abs)                                                         \
+  _IOW('E', 0xc0 + (abs), struct input_absinfo) /* set abs value/limits */
+
+#define EVIOCSFF                                                               \
+  _IOW('E', 0x80,                                                              \
+       struct ff_effect) /* send a force effect to a force feedback device */
+#define EVIOCRMFF _IOW('E', 0x81, int) /* Erase a force effect */
+#define EVIOCGEFFECTS                                                          \
+  _IOR('E', 0x84, int) /* Report number of effects playable at the same time   \
+                        */
+
+#define EVIOCGRAB _IOW('E', 0x90, int)   /* Grab/Release device */
+#define EVIOCREVOKE _IOW('E', 0x91, int) /* Revoke device access */
+
+// include/linux/linux-event-codes.h
+#include "linux_event_codes.h"
+
+// include/asm-generic/ioctls.h
+#define TIOCGPTN                                                               \
+  _IOR('T', 0x30, unsigned int)         /* Get Pty Number (of pty-mux device) */
+#define TIOCSPTLCK _IOW('T', 0x31, int) /* Lock/unlock Pty */
+
+// include/asm-generic/termbits.h
+#define NCCS 32
+typedef struct termios {
+  uint32_t c_iflag;    /* input mode flags */
+  uint32_t c_oflag;    /* output mode flags */
+  uint32_t c_cflag;    /* control mode flags */
+  uint32_t c_lflag;    /* local mode flags */
+  uint8_t  c_line;     /* line discipline */
+  uint8_t  c_cc[NCCS]; /* control characters */
+} termios;
+
+// include/linux/reboot.h
+#define LINUX_REBOOT_MAGIC1 0xfee1dead
+#define LINUX_REBOOT_MAGIC2 672274793
+#define LINUX_REBOOT_MAGIC2A 85072278
+#define LINUX_REBOOT_MAGIC2B 369367448
+#define LINUX_REBOOT_MAGIC2C 537993216
+
+#define LINUX_REBOOT_CMD_RESTART 0x01234567
+#define LINUX_REBOOT_CMD_HALT 0xCDEF0123
+#define LINUX_REBOOT_CMD_CAD_ON 0x89ABCDEF
+#define LINUX_REBOOT_CMD_CAD_OFF 0x00000000
+#define LINUX_REBOOT_CMD_POWER_OFF 0x4321FEDC
+#define LINUX_REBOOT_CMD_RESTART2 0xA1B2C3D4
+#define LINUX_REBOOT_CMD_SW_SUSPEND 0xD000FCE2
+#define LINUX_REBOOT_CMD_KEXEC 0x45584543
+
+// include/linux/eventfd.h
+#define EFD_SEMAPHORE (1 << 0)
+#define EFD_CLOEXEC O_CLOEXEC
+#define EFD_NONBLOCK O_NONBLOCK
+
+// include/linux/futex.h
+#define FUTEX_WAIT 0
+#define FUTEX_WAKE 1
+#define FUTEX_FD 2
+#define FUTEX_REQUEUE 3
+#define FUTEX_CMP_REQUEUE 4
+#define FUTEX_WAKE_OP 5
+#define FUTEX_LOCK_PI 6
+#define FUTEX_UNLOCK_PI 7
+#define FUTEX_TRYLOCK_PI 8
+#define FUTEX_WAIT_BITSET 9
+#define FUTEX_WAKE_BITSET 10
+#define FUTEX_WAIT_REQUEUE_PI 11
+#define FUTEX_CMP_REQUEUE_PI 12
+#define FUTEX_LOCK_PI2 13
+
+#define FUTEX_PRIVATE_FLAG 128
+#define FUTEX_CLOCK_REALTIME 256
+#define FUTEX_CMD_MASK ~(FUTEX_PRIVATE_FLAG | FUTEX_CLOCK_REALTIME)
+
+#define FUTEX_WAIT_PRIVATE (FUTEX_WAIT | FUTEX_PRIVATE_FLAG)
+#define FUTEX_WAKE_PRIVATE (FUTEX_WAKE | FUTEX_PRIVATE_FLAG)
+#define FUTEX_REQUEUE_PRIVATE (FUTEX_REQUEUE | FUTEX_PRIVATE_FLAG)
+#define FUTEX_CMP_REQUEUE_PRIVATE (FUTEX_CMP_REQUEUE | FUTEX_PRIVATE_FLAG)
+#define FUTEX_WAKE_OP_PRIVATE (FUTEX_WAKE_OP | FUTEX_PRIVATE_FLAG)
+#define FUTEX_LOCK_PI_PRIVATE (FUTEX_LOCK_PI | FUTEX_PRIVATE_FLAG)
+#define FUTEX_LOCK_PI2_PRIVATE (FUTEX_LOCK_PI2 | FUTEX_PRIVATE_FLAG)
+#define FUTEX_UNLOCK_PI_PRIVATE (FUTEX_UNLOCK_PI | FUTEX_PRIVATE_FLAG)
+#define FUTEX_TRYLOCK_PI_PRIVATE (FUTEX_TRYLOCK_PI | FUTEX_PRIVATE_FLAG)
+#define FUTEX_WAIT_BITSET_PRIVATE (FUTEX_WAIT_BITSET | FUTEX_PRIVATE_FLAG)
+#define FUTEX_WAKE_BITSET_PRIVATE (FUTEX_WAKE_BITSET | FUTEX_PRIVATE_FLAG)
+#define FUTEX_WAIT_REQUEUE_PI_PRIVATE                                          \
+  (FUTEX_WAIT_REQUEUE_PI | FUTEX_PRIVATE_FLAG)
+#define FUTEX_CMP_REQUEUE_PI_PRIVATE (FUTEX_CMP_REQUEUE_PI | FUTEX_PRIVATE_FLAG)
+
+#define FUTEX_WAITERS 0x80000000
 
 #endif

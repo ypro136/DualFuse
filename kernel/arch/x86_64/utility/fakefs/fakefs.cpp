@@ -9,7 +9,7 @@
 FakefsFile *fake_file_system_add_file(Fakefs *fake_file_system, FakefsFile *under, char *filename,
                           char *symlink, uint16_t filetype,
                           VfsHandlers *handlers) {
-  FakefsFile *file = (FakefsFile *)linked_list_allocate((void **)(&under->inner),
+  FakefsFile *file = (FakefsFile *)LinkedListAllocate((&under->inner),
                                                       sizeof(FakefsFile));
 
   file->filename = filename;
@@ -186,62 +186,60 @@ VfsHandlers fake_file_systemHandlers = {
 
 
 int fake_file_systemGetDents64(OpenFile *fd, struct linux_dirent64 *start,
-                     unsigned int hardlimit) {
-  FakefsOverlay *fake_file_system = (FakefsOverlay *)fd->mountPoint->fsInfo;
-
-  FakefsFile *weAt = fake_file_systemTraversePath(fake_file_system->fake_file_system->rootFile, fd->dirname);
-
-  if (!fd->tmp1)
-    fd->tmp1 = (size_t)weAt->inner;
-
-  if (!fd->tmp1)
-    fd->tmp1 = (size_t)(-1); // in case it's empty
-
-  struct linux_dirent64 *dirp = (struct linux_dirent64 *)start;
-  int                    allocatedlimit = 0;
-
-  while (fd->tmp1 != (size_t)(-1)) {
-    FakefsFile *current = (FakefsFile *)fd->tmp1;
-    DENTS_RES   res =
-        dents_add(start, &dirp, &allocatedlimit, hardlimit, current->filename,
-                 current->filenameLength, current->inode, 0); // todo: type
-
-    if (res == DENTS_NO_SPACE) {
-      allocatedlimit = -EINVAL;
-      goto cleanup;
-    } else if (res == DENTS_RETURN)
-      goto cleanup;
-
-    fd->tmp1 = (size_t)current->next;
+                               unsigned int hardlimit) {
+    FakefsOverlay *fake_file_system = (FakefsOverlay *)fd->mountPoint->fsInfo;
+    FakefsFile *weAt = fake_file_systemTraversePath(fake_file_system->fake_file_system->rootFile, fd->dirname);
+    
     if (!fd->tmp1)
-      fd->tmp1 = (size_t)(-1);
-  }
-
-cleanup:
-  return allocatedlimit;
+        fd->tmp1 = (size_t)weAt->inner;
+    if (!fd->tmp1)
+        fd->tmp1 = (size_t)(-1); // in case it's empty
+    
+    struct linux_dirent64 *dirp = (struct linux_dirent64 *)start;
+    int                    allocatedlimit = 0;
+    bool done = false;
+    
+    while (fd->tmp1 != (size_t)(-1) && !done) {
+        FakefsFile *current = (FakefsFile *)fd->tmp1;
+        DENTS_RES   res =
+            dents_add(start, &dirp, &allocatedlimit, hardlimit, current->filename,
+                      current->filenameLength, current->inode, 0); // todo: type
+        
+        if (res == DENTS_NO_SPACE) {
+            allocatedlimit = -EINVAL;
+            done = true;
+        } else if (res == DENTS_RETURN) {
+            done = true;
+        } else {
+            fd->tmp1 = (size_t)current->next;
+            if (!fd->tmp1)
+                fd->tmp1 = (size_t)(-1);
+        }
+    }
+    
+    return allocatedlimit;
 }
 
 // taking in mind that void *extra points to a null terminated string
 int fake_file_systemSimpleRead(OpenFile *fd, uint8_t *out, size_t limit) {
-  FakefsFile *file = (FakefsFile *)fd->fake_file_system;
-  if (!file->extra) {
-    printf("[vfs::fake_file_system] simple read failed! no extra! FATAL!\n");
-    Halt();
-  }
-
-  char *in = (char *)((size_t)file->extra + fd->pointer);
-  int   cnt = 0;
-  for (int i = 0; i < limit; i++) {
-    if (!in[i])
-      goto cleanup;
-
-    out[i] = in[i];
-    fd->pointer++;
-    cnt++;
-  }
-
-cleanup:
-  return cnt;
+    FakefsFile *file = (FakefsFile *)fd->fake_file_system;
+    if (!file->extra) {
+        printf("[vfs::fake_file_system] simple read failed! no extra! FATAL!\n");
+        Halt();
+    }
+    
+    char *in = (char *)((size_t)file->extra + fd->pointer);
+    int   cnt = 0;
+    
+    for (int i = 0; i < limit; i++) {
+        if (!in[i])
+            break;
+        out[i] = in[i];
+        fd->pointer++;
+        cnt++;
+    }
+    
+    return cnt;
 }
 
 size_t fake_file_systemSimpleSeek(OpenFile *file, size_t target, long int offset,

@@ -22,7 +22,50 @@
 size_t   syscalls[MAX_SYSCALLS] = {0};
 uint32_t syscallCnt = 0;
 
+
+#if DEBUG_SYSCALLS_EXTRA
+int dbgSysExtraf(const char *format, ...) {
+  printf(" %s//%s ", ANSI_BLUE, ANSI_RESET);
+  spinlock_acquire(&LOCK_DEBUGF);
+  va_list va;
+  va_start(va, format);
+  int ret = vfctprintf(debug, 0, format, va);
+  va_end(va);
+  spinlock_release(&LOCK_DEBUGF);
+  return ret;
+}
+#endif
+
+#if DEBUG_SYSCALLS_STUB
+int dbgSysStubf(const char *format, ...) {
+  printf(" %s//%s ", ANSI_BLACK, ANSI_RESET);
+  spinlock_acquire(&LOCK_DEBUGF);
+  va_list va;
+  va_start(va, format);
+  int ret = vfctprintf(debug, 0, format, va);
+  va_end(va);
+  spinlock_release(&LOCK_DEBUGF);
+  return ret;
+}
+#endif
+
 void register_syscall(uint32_t id, void *handler) {
+  if (id > MAX_SYSCALLS) {
+    printf("[syscalls] FATAL! Exceded limit! limit{%d} id{%d}\n", MAX_SYSCALLS,
+           id);
+    Halt();
+  }
+
+  if (syscalls[id]) {
+    printf("[syscalls] FATAL! id{%d} found duplicate!\n", id);
+    Halt();
+  }
+
+  syscalls[id] = (size_t)handler;
+  syscallCnt++;
+}
+
+void registerSyscall(uint32_t id, void *handler) {
   if (id > MAX_SYSCALLS) {
     printf("[syscalls] FATAL! Exceded limit! limit{%d} id{%d}\n", MAX_SYSCALLS,
            id);

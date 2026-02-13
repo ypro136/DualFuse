@@ -4,6 +4,7 @@
 #include <fat32.h>
 #include <linked_list.h>
 #include <liballoc.h>
+//#include <proc.h>
 #include <string.h>
 #include <sys.h>
 #include <system.h>
@@ -11,11 +12,14 @@
 #include <utility.h>
 #include <vfs.h>
 
+// Different mount point separation
 
-bool file_system_unmount(MountPoint *mnt) {
+// todo: add LL lock to mountPoints
+
+bool fsUnmount(MountPoint *mnt) {
   printf("[vfs] Tried to unmount!\n");
   Halt();
-  linkedlist_unregister((void **)&firstMountPoint, mnt);
+  LinkedListUnregister(&dsMountPoint, sizeof(MountPoint) , mnt);
 
   // todo!
   // switch (mnt->filesystem) {
@@ -30,7 +34,7 @@ bool file_system_unmount(MountPoint *mnt) {
   return true;
 }
 
-bool is_fat(mbr_partition *mbr) {
+bool isFat(mbr_partition *mbr) {
   uint8_t *rawArr = (uint8_t *)malloc(SECTOR_SIZE);
   get_disk_bytes(rawArr, mbr->lba_first_sector, 1);
 
@@ -41,18 +45,18 @@ bool is_fat(mbr_partition *mbr) {
   return ret;
 }
 
-bool is_ext2(mbr_partition *mbr) { return mbr->type == 0x83; }
+bool isExt2(mbr_partition *mbr) { return mbr->type == 0x83; }
 
 // prefix MUST end with '/': /mnt/handle/
-MountPoint *file_system_mount(char *prefix, CONNECTOR connector, uint32_t disk,
+MountPoint *fsMount(char *prefix, CONNECTOR connector, uint32_t disk,
                     uint8_t partition) {
-  MountPoint *mount = (MountPoint *)linked_list_allocate(
-      (void **)&firstMountPoint, sizeof(MountPoint));
+  MountPoint *mount = (MountPoint *)LinkedListAllocate(
+      &dsMountPoint, sizeof(MountPoint));
 
-  uint32_t string_length = strlen(prefix);
-  mount->prefix = (char *)(malloc(string_length + 1));
-  memcpy(mount->prefix, prefix, string_length);
-  mount->prefix[string_length] = '\0'; // null terminate
+  uint32_t strlength = strlen(prefix);
+  mount->prefix = (char *)(malloc(strlength + 1));
+  memcpy(mount->prefix, prefix, strlength);
+  mount->prefix[strlength] = '\0'; // null terminate
 
   mount->disk = disk;
   mount->partition = partition;
@@ -62,26 +66,30 @@ MountPoint *file_system_mount(char *prefix, CONNECTOR connector, uint32_t disk,
   switch (connector) {
   case CONNECTOR_AHCI:
     if (!open_disk(disk, partition, &mount->mbr)) {
-      file_system_unmount(mount);
+      fsUnmount(mount);
       return 0;
     }
 
-    if (is_fat(&mount->mbr)) {
+    if (isFat(&mount->mbr)) {
       mount->filesystem = FS_FATFS;
       ret = fat32_mount(mount);
-    } else if (is_ext2(&mount->mbr)) {
+    } else if (isExt2(&mount->mbr)) {
       mount->filesystem = FS_EXT2;
       ret = ext2_mount(mount);
     }
     break;
   case CONNECTOR_DEV:
     mount->filesystem = FS_DEV;
-    ret = dev_mount(mount);
+    ret = devMount(mount);
     break;
   case CONNECTOR_SYS:
     mount->filesystem = FS_SYS;
     ret = sys_mount(mount);
     break;
+  // case CONNECTOR_PROC:
+  //   mount->filesystem = FS_PROC;
+  //   ret = procMount(mount);
+  //   break;
   default:
     printf("[vfs] Tried to mount with bad connector! id{%d}\n", connector);
     ret = 0;
@@ -89,7 +97,7 @@ MountPoint *file_system_mount(char *prefix, CONNECTOR connector, uint32_t disk,
   }
 
   if (!ret) {
-    file_system_unmount(mount);
+    fsUnmount(mount);
     return 0;
   }
 
@@ -98,11 +106,11 @@ MountPoint *file_system_mount(char *prefix, CONNECTOR connector, uint32_t disk,
   return mount;
 }
 
-MountPoint *file_system_determine_mount_point(char *filename) {
+MountPoint *fsDetermineMountPoint(char *filename) {
   MountPoint *largestAddr = 0;
   uint32_t    largestLen = 0;
 
-  MountPoint *browse = firstMountPoint;
+  MountPoint *browse = (MountPoint *)dsMountPoint.firstObject;
   while (browse) {
     size_t len = strlen(browse->prefix) - 1; // without trailing /
     if (len >= largestLen && memcmp(filename, browse->prefix, len) == 0 &&
@@ -110,14 +118,14 @@ MountPoint *file_system_determine_mount_point(char *filename) {
       largestAddr = browse;
       largestLen = len;
     }
-    browse = browse->next;
+    browse = (MountPoint *)browse->_ll.next;
   }
 
   return largestAddr;
 }
 
 // make SURE to free both! also returns non-safe filename, obviously
-char *file_system_resolve_symlink(MountPoint *mnt, char *symlink) {
+char *fsResolveSymlink(MountPoint *mnt, char *symlink) {
   int symlinkLength = strlen(symlink);
   int prefixLength = strlen(mnt->prefix) - 1; // remove slash
 

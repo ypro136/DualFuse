@@ -7,6 +7,8 @@
 #include <vfs.h>
 #include <spinlock.h>
 
+#include <system.h>
+
 
 #ifndef EXT2_H
 #define EXT2_H
@@ -143,6 +145,40 @@ typedef struct Ext2Directory {
 #define EXT2_MAX_CONSEC_INODE 32
 #define EXT2_MAX_CONSEC_WRITE 32
 
+typedef struct Ext2CacheObject {
+  struct Ext2CacheObject *next;
+  struct Ext2CacheObject *prev;
+
+  uint32_t blockIndex;
+  uint8_t *buff;
+  uint32_t blocks; // size = this * ext2->blockSize
+} Ext2CacheObject;
+
+// basically something that has been accessed even once in the whole system
+typedef struct Ext2FoundObject {
+  struct Ext2FoundObject *next;
+  struct Ext2FoundObject *prev;
+
+  // id
+  uint32_t inode;
+  uint32_t openFds;
+
+  // properties lock
+  Spinlock LOCK_PROP;
+
+  // global file lock
+  SpinlockCnt WLOCK_FILE; // todo
+
+  // cache lock
+  SpinlockCnt WLOCK_CACHE;
+
+  // deletion
+  char *filenameToBeDeleted;
+
+  // caching
+  Ext2CacheObject *firstCacheObj;
+} Ext2FoundObject;
+
 typedef struct Ext2 {
   // various offsets
   size_t offsetBase;
@@ -163,6 +199,13 @@ typedef struct Ext2 {
   Ext2BlockGroup *bgdts; // regular old array
   Ext2Superblock  superblock;
 
+  // list for low-memory pruning (LRU discarding system)
+  Spinlock         LOCK_OBJECT;
+  Ext2FoundObject *firstObject;
+
+  // global lock for when a file descriptor isn't present, limiting reach
+  SpinlockCnt WLOCK_GLOBAL_NOFD;
+
   // special locks for ext2Dir(De)Allocate
   // uint32_t dirOperations[EXT2_MAX_CONSEC_DIRALLOC];
   // Spinlock LOCK_DIRALLOC_GLOBAL;
@@ -180,17 +223,14 @@ typedef struct Ext2 {
   // Spinlock LOCK_WRITES;
 
   // regular Spinlock[] array for every bgdt item
-  Spinlock *LOCKS_BLOCK_BITMAP;
-  Spinlock *LOCKS_INODE_BITMAP;
+  SpinlockCnt *WLOCKS_BLOCK_BITMAP;
+  SpinlockCnt *WLOCKS_INODE; // not just for bitmap operations!
 
   // bgdt & superblock global write locks
   Spinlock LOCK_BGDT_WRITE;
   Spinlock LOCK_SUPERBLOCK_WRITE;
 
-  SpinlockCnt WLOCK_BLOCK;
-  SpinlockCnt WLOCK_INODE;
-  Spinlock    LOCK_DIRALLOC;
-  Spinlock    LOCK_WRITE;
+  Spinlock LOCK_DIRALLOC;
 } Ext2;
 
 typedef struct Ext2LookupControl {
@@ -207,6 +247,8 @@ typedef struct Ext2LookupControl {
 typedef struct Ext2OpenFd {
   Ext2LookupControl lookup;
   // ^ serves as our inodeCurr somewhat
+
+  Ext2FoundObject *globalObject;
 
   // size_t   blockNum;
   uint64_t ptr;
@@ -232,63 +274,78 @@ typedef struct Ext2OpenFd {
 
 // ext2_controller.c
 bool   ext2_mount(MountPoint *mount);
-int    ext2_open(char *filename, int flags, int mode, OpenFile *fd,
+size_t ext2Open(char *filename, int flags, int mode, OpenFile *fd,
                 char **symlinkResolve);
-bool   ext2_close(OpenFile *fd);
-int    ext2_read(OpenFile *fd, uint8_t *buff, size_t limit);
-bool   ext2_stat(MountPoint *mnt, char *filename, struct stat *target,
+bool   ext2Close(OpenFile *fd);
+size_t ext2Read(OpenFile *fd, uint8_t *buff, size_t limit);
+size_t ext2ReadInner(OpenFile *fd, uint8_t *buff, size_t limit);
+bool   ext2Stat(MountPoint *mnt, char *filename, struct stat *target,
                 char **symlinkResolve);
-bool   ext2_lstat(MountPoint *mnt, char *filename, struct stat *target,
+bool   ext2Lstat(MountPoint *mnt, char *filename, struct stat *target,
                  char **symlinkResolve);
-int    ext2_statFd(OpenFile *fd, struct stat *target);
-size_t ext2_seek(OpenFile *fd, size_t target, long int offset, int whence);
-size_t ext2_get_filesize(OpenFile *fd);
-int    ext2_read_link(Ext2 *ext2, char *path, char *buf, int size,
+size_t ext2StatFd(OpenFile *fd, struct stat *target);
+size_t ext2Seek(OpenFile *fd, size_t target, long int offset, int whence);
+size_t ext2GetFilesize(OpenFile *fd);
+size_t ext2Readlink(MountPoint *mnt, char *path, char *buf, int size,
                     char **symlinkResolve);
+size_t ext2Delete(MountPoint *mnt, char *filename, bool directory,
+                  char **symlinkResolve);
+size_t ext2Link(MountPoint *mnt, char *filename, char *target,
+                char **symlinkResolve, char **symlinkResolveTarget);
 
 // ext2_create.c
-int ext2_mkdir(MountPoint *mnt, char *dirname, uint32_t mode,
-              char **symlinkResolve);
-int ext2_touch(MountPoint *mnt, char *filename, uint32_t mode,
-              char **symlinkResolve);
+size_t ext2Mkdir(MountPoint *mnt, char *dirname, uint32_t mode,
+                 char **symlinkResolve);
+size_t ext2Touch(MountPoint *mnt, char *filename, uint32_t mode,
+                 char **symlinkResolve);
 
 // ext2_util.c
-void ext2_block_fetch_init(Ext2 *ext2, Ext2LookupControl *control);
-void ext2_block_fetch_cleanup(Ext2LookupControl *control);
+void ext2BlockFetchInit(Ext2 *ext2, Ext2LookupControl *control);
+void ext2BlockFetchCleanup(Ext2LookupControl *control);
 
-uint32_t  ext2_block_fetch(Ext2 *ext2, Ext2Inode *ino, Ext2LookupControl *control,
-                         size_t curr);
-uint32_t *ext2_block_chain(Ext2 *ext2, Ext2OpenFd *fd, size_t curr,
+uint32_t  ext2BlockFetch(Ext2 *ext2, Ext2Inode *ino, uint32_t inodeNum,
+                         Ext2LookupControl *control, size_t curr);
+uint32_t *ext2BlockChain(Ext2 *ext2, Ext2OpenFd *fd, size_t curr,
                          size_t blocks);
 
-void     ext2_block_assign(Ext2 *ext2, Ext2Inode *ino, uint32_t inodeNum,
+void     ext2BlockAssign(Ext2 *ext2, Ext2Inode *ino, uint32_t inodeNum,
                          Ext2LookupControl *control, size_t curr, uint32_t val);
-uint32_t ext2_block_find(Ext2 *ext2, int groupSuggestion, uint32_t amnt);
-uint32_t ext2_block_findL(Ext2 *ext2, int group, uint32_t amnt);
+uint32_t ext2BlockFind(Ext2 *ext2, int groupSuggestion, uint32_t amnt);
+uint32_t ext2BlockFindL(Ext2 *ext2, int group, uint32_t amnt);
+size_t   ext2BlockSizeCalculate(Ext2 *ext2, size_t raw);
+void     ext2BlockDelete(Ext2 *ext2, uint32_t group, uint32_t index);
 
 // ext2_traverse.c
-uint32_t ext2_traverse(Ext2 *ext2, size_t initInode, char *search,
+uint32_t ext2Traverse(Ext2 *ext2, size_t initInode, char *search,
                       size_t searchLength);
-uint32_t ext2_traverse_path(Ext2 *ext2, char *path, size_t initInode, bool follow,
+uint32_t ext2TraversePath(Ext2 *ext2, char *path, size_t initInode, bool follow,
                           char **symlinkResolve);
 
 // ext2_inode.c
-Ext2Inode *ext2_inode_fetch(Ext2 *ext2, size_t inode);
-void       ext2_inode_modifyM(Ext2 *ext2, size_t inode, Ext2Inode *target);
+Ext2Inode *ext2InodeFetch(Ext2 *ext2, size_t inode);
+void       ext2InodeModifyM(Ext2 *ext2, size_t inode, Ext2Inode *target);
+void       ext2InodeDelete(Ext2 *ext2, size_t inode);
 
-uint32_t ext2_inode_findL(Ext2 *ext2, int group);
-uint32_t ext2_inode_find(Ext2 *ext2, int groupSuggestion);
+uint32_t ext2InodeFindL(Ext2 *ext2, int group);
+uint32_t ext2InodeFind(Ext2 *ext2, int groupSuggestion);
 
 // ext2_dirs.c
-bool ext2_air_allocate(Ext2 *ext2, uint32_t inodeNum, Ext2Inode *parentDirInode,
-                     char *filename, uint8_t filenameLen, uint8_t type,
-                     uint32_t inode);
-int  ext2_get_dents64(OpenFile *file, struct linux_dirent64 *start, unsigned int hardlimit);
-// typedef int (*SpecialGetdents64)(OpenFile *fd, struct linux_dirent64 *dirp, unsigned int count);
+bool   ext2DirAllocate(Ext2 *ext2, uint32_t inodeNum, Ext2Inode *parentDirInode,
+                       char *filename, uint8_t filenameLen, uint8_t type,
+                       uint32_t inode);
+size_t ext2Getdents64(OpenFile *file, struct linux_dirent64 *start,
+                      unsigned int hardlimit);
 
+void ext2BgdtPushM(Ext2 *ext2);
+void ext2SuperblockPushM(Ext2 *ext2);
+bool ext2DirRemove(Ext2 *ext2, Ext2Inode *parentDirInode,
+                   uint32_t parentDirInodeNum, char *filename,
+                   uint8_t filenameLen);
 
-void ext2_bgdt_pushM(Ext2 *ext2);
-void ext2_superblock_pushM(Ext2 *ext2);
+// ext2_caching.c
+void ext2CacheAddSecurely(MountPoint *mnt, Ext2FoundObject *global,
+                          uint8_t *buff, size_t blockIndex, size_t blocks);
+void ext2CachePush(Ext2 *ext2, Ext2OpenFd *fd);
 
 // finale
 extern VfsHandlers ext2Handlers;

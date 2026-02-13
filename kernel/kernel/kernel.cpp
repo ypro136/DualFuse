@@ -1,4 +1,4 @@
- #include <types.h>
+#include <types.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,16 +18,22 @@
 
 
 #include <framebufferutil.h>
+#include <graphic_composer.h>
 #include <console.h>
+#include <psf.h>
+#include <state_monitor.h>
 #include <paging.h>
 #include <task.h>
 #include <syscalls.h>
 #include <fastSyscall.h>
 #include <system.h>
+#include <minimal_acpi.h>
+#include <mouse.h>
+#include <apic.h>
+
+
 
 bool systemDiskInit;
-
-
 
 extern "C" void _init(void);
 
@@ -64,10 +70,20 @@ extern "C" void kernel_main(void)
 	memory_initialize();
 	printf("memory initialized.\n");
 
+    // Initialize the global console as a window at position (100,50)
+    console = Console(800, 600, 10, 10);
+
+    // Use the legacy initializer to set the global `console_initialized` flag
     console_initialize();
-    printf("console initialized.\n");
-    clear_screen();
-    printf("Welcome to Nachtlauf kernel!\n");
+    console.clear_screen();
+    // Set a visible title for the console window
+    console.set_title("Kernel Console");
+
+    // Initialize the global StateMonitor window (updates driven by timer IRQ)
+    stateMonitor = *(new StateMonitor(800, 170, 10, 620));
+    stateMonitor.initialize();
+    stateMonitor.clear_screen();
+
 
     pci_initialize();
 
@@ -82,17 +98,21 @@ extern "C" void kernel_main(void)
     
     initiateSSE();
 
-    // fsMount("/", CONNECTOR_AHCI, 0, 1);
-    // fsMount("/boot/", CONNECTOR_AHCI, 0, 0);
-    // fsMount("/sys/", CONNECTOR_SYS, 0, 0);
-    // fsMount("/proc/", CONNECTOR_PROC, 0, 0);
+    //acpiInit();
+
+    initiateAPIC();
+    printf("[kernel] APIC initialization complete\n");
+
+    printf("[kernel] About to call initiateMouse...\n");
+    initiateMouse();
+    printf("[kernel] Mouse initialization complete\n");
 
     //syscall test
+    printf("[kernel] Getting PID...\n");
     printf("task id is :%d \n",syscallGetPid());
     
-    // test_framebuffer(0xffffff);
-
     // breakpoint; tested and works
 	
     for (;;) {}
 }
+

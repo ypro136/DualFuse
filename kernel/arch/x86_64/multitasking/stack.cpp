@@ -9,9 +9,9 @@
 
 // Stack creation for userland & kernelspace tasks
 
-void stack_generate_mutual(Task *task) {
+void stackGenerateMutual(Task *task) {
   // if (get_page_directory() != task->pagedir) {
-  //   printf("[stack] Do NOT run stack_generate_mutual() without changing to the
+  //   printf("[stack] Do NOT run stackGenerateMutual() without changing to the
   //   "
   //          "correct page directory first!\n");
   //   Halt();
@@ -30,14 +30,17 @@ typedef struct StackStorePtrStyle {
   uint8_t *start;
   int      ellapsed;
 } StackStorePtrStyle;
-StackStorePtrStyle stack_store_ptr_style(Task *target, int ptrc, char **ptrv) {
+StackStorePtrStyle stackStorePtrStyle(Task *target, int ptrc, char **ptrv) {
   // Store argument contents
   uint32_t argSpace = 0;
   for (int i = 0; i < ptrc; i++)
     argSpace += strlen(ptrv[i]) + 1; // null terminator
-  uint8_t *argStart = (uint8_t *)target->heap_end;
-  task_adjust_heap(target, target->heap_end + argSpace, &target->heap_start,
-                 &target->heap_end);
+
+  spinlock_acquire(&target->infoPd->LOCK_PD);
+  uint8_t *argStart = (uint8_t *)target->infoPd->heap_end;
+  task_adjust_heap(target, target->infoPd->heap_end + argSpace,
+                 &target->infoPd->heap_start, &target->infoPd->heap_end);
+  spinlock_release(&target->infoPd->LOCK_PD);
   size_t ellapsed = 0;
   for (int i = 0; i < ptrc; i++) {
     uint32_t len = strlen(ptrv[i]) + 1; // null terminator
@@ -48,23 +51,29 @@ StackStorePtrStyle stack_store_ptr_style(Task *target, int ptrc, char **ptrv) {
   return ret;
 }
 
-void stack_generate_user(Task *target, uint32_t argc, char **argv, uint32_t envc, char **envv, uint8_t *out, size_t filesize, void *elf_ehdr_ptr) 
-{
+void stackGenerateUser(Task *target, uint32_t argc, char **argv, uint32_t envc,
+                       char **envv, uint8_t *out, size_t filesize,
+                       void *elf_ehdr_ptr, size_t at_base,
+                       size_t executableBase) {
   Elf64_Ehdr *elf_ehdr = (Elf64_Ehdr *)(elf_ehdr_ptr);
 
   // yeah, we will need to construct a stackframe...
   void *oldPagedir = get_page_directory();
-  change_page_directory(target->pagedir);
+  spinlock_acquire(&target->infoPd->LOCK_PD);
+  change_page_directory(target->infoPd->pagedir);
+  spinlock_release(&target->infoPd->LOCK_PD);
 
-  stack_generate_mutual(target);
+  stackGenerateMutual(target);
 
 #define PUSH_TO_STACK(a, b, c)                                                 \
   a -= sizeof(b);                                                              \
   *((b *)(a)) = c
 
-  int *randomByteStart = (int *)target->heap_end;
-  task_adjust_heap(target, target->heap_end + sizeof(int) * 4,
-                 &target->heap_start, &target->heap_end);
+  spinlock_acquire(&target->infoPd->LOCK_PD);
+  int *randomByteStart = (int *)target->infoPd->heap_end;
+  task_adjust_heap(target, target->infoPd->heap_end + sizeof(int) * 4,
+                 &target->infoPd->heap_start, &target->infoPd->heap_end);
+  spinlock_release(&target->infoPd->LOCK_PD);
   for (int i = 0; i < 4; i++) {
     int thing = 0;
     while (!thing)
@@ -107,10 +116,11 @@ void stack_generate_user(Task *target, uint32_t argc, char **argv, uint32_t envc
                 elf_ehdr->e_phentsize);
   PUSH_TO_STACK(target->registers.usermode_rsp, uint64_t, 4);
   // aux: AT_ENTRY
-  PUSH_TO_STACK(target->registers.usermode_rsp, uint64_t, elf_ehdr->e_entry);
+  PUSH_TO_STACK(target->registers.usermode_rsp, uint64_t,
+                executableBase + elf_ehdr->e_entry);
   PUSH_TO_STACK(target->registers.usermode_rsp, uint64_t, 9);
   // aux: AT_BASE // todo: not hardcode
-  PUSH_TO_STACK(target->registers.usermode_rsp, uint64_t, 0x100000000000);
+  PUSH_TO_STACK(target->registers.usermode_rsp, uint64_t, at_base);
   PUSH_TO_STACK(target->registers.usermode_rsp, uint64_t, 7);
   // aux: AT_FLAGS
   PUSH_TO_STACK(target->registers.usermode_rsp, uint64_t, 0);
@@ -120,14 +130,14 @@ void stack_generate_user(Task *target, uint32_t argc, char **argv, uint32_t envc
   PUSH_TO_STACK(target->registers.usermode_rsp, uint64_t, 16);
   // aux: AT_PHDR
   PUSH_TO_STACK(target->registers.usermode_rsp, size_t,
-                phdrThing + elf_ehdr->e_phoff);
+                executableBase + phdrThing + elf_ehdr->e_phoff);
   PUSH_TO_STACK(target->registers.usermode_rsp, uint64_t, 3);
 
   // store arguments & environment variables in heap
-  StackStorePtrStyle arguments = stack_store_ptr_style(target, argc, argv);
+  StackStorePtrStyle arguments = stackStorePtrStyle(target, argc, argv);
   StackStorePtrStyle environment = {0};
   if (envc > 0)
-    environment = stack_store_ptr_style(target, envc, envv);
+    environment = stackStorePtrStyle(target, envc, envv);
 
   // end of environ
   PUSH_TO_STACK(target->registers.usermode_rsp, uint64_t, 0);
@@ -166,23 +176,23 @@ void stack_generate_user(Task *target, uint32_t argc, char **argv, uint32_t envc
   change_page_directory(oldPagedir);
 }
 
-void task_kernel_return() {
+void taskKernelReturn() {
   task_kill(currentTask->id, 0);
   while (1) {
   }
 }
 
 void stack_generate_kernel(Task *target, uint64_t parameter) {
-
   void *oldPagedir = get_page_directory();
-  
-  change_page_directory(target->pagedir);
+  spinlock_acquire(&target->infoPd->LOCK_PD);
+  change_page_directory(target->infoPd->pagedir);
+  spinlock_release(&target->infoPd->LOCK_PD);
 
-  stack_generate_mutual(target);
+  stackGenerateMutual(target);
   target->registers.rdi = parameter;
 
   PUSH_TO_STACK(target->registers.usermode_rsp, uint64_t,
-                (uint64_t)task_kernel_return);
+                (uint64_t)taskKernelReturn);
 
   change_page_directory(oldPagedir);
 }
