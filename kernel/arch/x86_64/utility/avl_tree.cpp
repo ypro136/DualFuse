@@ -1,5 +1,6 @@
 #include <avl_tree.h>
 #include <liballoc.h>
+#include <system.h>
 #include <utility.h>
 #include <hcf.hpp>
 
@@ -9,6 +10,10 @@
 #define CALC_HEIGHT(node) ((node) ? (node)->height : 0)
 #define CALC_BALANCE(node)                                                     \
   ((node) ? CALC_HEIGHT((node)->left) - CALC_HEIGHT((node)->right) : 0)
+
+
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 AVLheader *AVLAllocateNode(avlkey key) {
   AVLheader *node = calloc(sizeof(AVLheader), 1);

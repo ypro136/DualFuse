@@ -14,6 +14,12 @@
 // for tmp exclusions
 #include <socket.h>
 
+LLcontrol dsPollRoot; // struct PollInstance
+Spinlock  LOCK_POLL_ROOT;
+
+Spinlock  LOCK_LL_EPOLL;
+LLcontrol dsEpoll; // struct Epoll
+
 // Polling APIs & kernel helper utility
 
 // poll instance helpers
@@ -284,6 +290,7 @@ size_t epollCtl(OpenFile *epollFd, int op, int fd, struct epoll_event *event) {
 
   switch (op) {
   case EPOLL_CTL_ADD: {
+    printf("[poll] FATAL: socketHandlers used while its a place holder");// see end of this file 
     assert(fdNode->handlers != &socketHandlers); // todo legacyMode
     EpollWatch *epollWatch =
         LinkedListAllocate(&epoll->firstEpollWatch, sizeof(EpollWatch));
@@ -523,6 +530,7 @@ size_t poll(struct pollfd *fds, int nfds, int timeout) {
       }
 
       if (!first) {
+        printf("[poll] FATAL: socketHandlers used while its a place holder");// see end of this file 
         if (fd->handlers == &socketHandlers)
           legacy = true;
         size_t    key = fd->handlers->reportKey(fd);
@@ -693,3 +701,34 @@ size_t select(int nfds, uint8_t *read, uint8_t *write, uint8_t *except,
   free(comp);
   return verify;
 }
+
+// TODO: move me to sockets.cpp 
+VfsHandlers socketHandlers = {
+    .read = NULL,
+    .write = NULL,
+    .seek = NULL,
+    .ioctl = NULL,
+    .stat = NULL,
+    .mmap = NULL,
+    .getdents64 = NULL,
+    .getFilesize = NULL,
+    .poll = NULL,
+    .fcntl = NULL,
+    .bind = NULL,
+    .listen = NULL,
+    .accept = NULL,
+    .connect = NULL,
+    .recvfrom = NULL,
+    .sendto = NULL,
+    .recvmsg = NULL,
+    .sendmsg = NULL,
+    .getsockname = NULL,
+    .getsockopts = NULL,
+    .getpeername = NULL,
+    .internalPoll = NULL,
+    .reportKey = NULL,
+    .addWatchlist = NULL,
+    .duplicate = NULL,
+    .open = NULL,
+    .close = NULL
+};

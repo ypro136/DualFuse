@@ -8,7 +8,7 @@
 #include <linux_event_codes.h>
 
 // PS/2 mouse driver, should work with USB mice too
-// Copyright (C) 2024 Panagiotis
+ 
 
 /* Global variable definition */
 DevInputEvent *mouseEvent = nullptr;

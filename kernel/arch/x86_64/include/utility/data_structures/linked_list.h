@@ -20,6 +20,10 @@ typedef struct LLcontrol {
   uint32_t structSize;
   Spinlock LOCK_LL;
 
+  bool operator!() const {
+        return firstObject == NULL;
+    }
+
   LLheader *firstObject;
 } LLcontrol;
 

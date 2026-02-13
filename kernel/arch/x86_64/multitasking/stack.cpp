@@ -6,6 +6,7 @@
 #include <utility.h>
 #include <hcf.hpp>
 #include <cstdlib>
+#include <task.h>
 
 // Stack creation for userland & kernelspace tasks
 

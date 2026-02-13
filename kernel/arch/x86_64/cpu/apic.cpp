@@ -332,7 +332,9 @@ void initiateAPIC() {
   }
 
   printf("[apic] MADT if\n");
-  if (!ioapics) {
+  printf("[apic] ioapics is :%d\n", ioapics);
+  if (ioapics == 0) 
+  {
     printf("[apic] No I/O APICs found - skipping I/O APIC setup\n");
   }
 
@@ -350,3 +352,44 @@ void smpInitiateAPIC() {
   apicSetBase(apicPhys);
   apicWrite(0xF0, apicRead(0xF0) | 0x1FF);
 }
+
+
+/* TODO: uncomment this and make it work
+size_t acpiPoweroff() {
+  uacpi_status ret = uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
+  if (uacpi_unlikely_error(ret)) {
+    debugf("[acpi] Couldn't prepare for poweroff: %s\n",
+           uacpi_status_to_string(ret));
+    return ERR(EIO);
+  }
+
+  asm volatile("cli");
+  uacpi_status retPoweroff = uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
+  if (uacpi_unlikely_error(retPoweroff)) {
+    asm volatile("sti");
+    debugf("[acpi] Couldn't power off the system: %s\n",
+           uacpi_status_to_string(retPoweroff));
+    return ERR(EIO);
+  }
+
+  debugf("[acpi] Shouldn't be reached after power off!\n");
+  panic();
+  return 0;
+}
+
+size_t acpiReboot() {
+  uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
+
+  uacpi_status ret = uacpi_reboot();
+  if (uacpi_unlikely_error(ret)) {
+    debugf("[acpi] Couldn't restart the system: %s\n",
+           uacpi_status_to_string(ret));
+    return ERR(EIO);
+  }
+
+  debugf("[acpi] Shouldn't be reached after reboot!\n");
+  panic();
+  return 0;
+}
+
+*/

@@ -36,8 +36,10 @@ typedef struct PollInstance {
   int haha;
 } PollInstance;
 
-LLcontrol dsPollRoot; // struct PollInstance
-Spinlock  LOCK_POLL_ROOT;
+extern LLcontrol dsPollRoot; // struct PollInstance
+extern Spinlock  LOCK_POLL_ROOT;
+
+extern VfsHandlers socketHandlers;
 
 void pollInstanceRing(size_t key, int epollEvent);
 
@@ -63,8 +65,8 @@ typedef struct Epoll {
   LLcontrol firstEpollWatch; // struct EpollWatch
 } Epoll;
 
-Spinlock  LOCK_LL_EPOLL;
-LLcontrol dsEpoll; // struct Epoll
+extern Spinlock  LOCK_LL_EPOLL;
+extern LLcontrol dsEpoll; // struct Epoll
 
 size_t epollCreate1(int flags);
 size_t epollCtl(OpenFile *epollFd, int op, int fd, struct epoll_event *event);
@@ -75,7 +77,7 @@ size_t epollPwait(OpenFile *epollFd, struct epoll_event *events, int maxevents,
 
 void epollCloseNotify(OpenFile *fd);
 
-VfsHandlers epollHandlers;
+extern VfsHandlers epollHandlers;
 
 uint32_t epollToPollComp(uint32_t epoll_events);
 uint32_t pollToEpollComp(uint32_t poll_events);

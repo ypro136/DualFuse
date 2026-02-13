@@ -8,6 +8,9 @@
 
 #include <lwip/sockets.h>
 
+LLcontrol dsUnixSocket; // struct UnixSocket
+Spinlock  LOCK_LL_UNIX_SOCKET;
+
 // AF_UNIX socket implementation (still needs a lot of testing)
 
 OpenFile *unixSocketAcceptCreate(UnixSocketPair *dir) {
@@ -233,8 +236,8 @@ typedef struct {
   char  *filename;
 } UnlinkNotifyCb;
 bool unixSocketUnlinkNotifyCb(void *data, void *ctx) {
-  UnixSocket     *browse = data;
-  UnlinkNotifyCb *p = ctx;
+  UnixSocket     *browse = (UnixSocket *)data;
+  UnlinkNotifyCb *p = (UnlinkNotifyCb *)ctx;
   spinlock_acquire(&browse->LOCK_SOCK);
   if (browse->bindAddr && strlen(browse->bindAddr) == p->len &&
       memcmp(browse->bindAddr, p->filename, p->len) == 0)
@@ -244,10 +247,9 @@ bool unixSocketUnlinkNotifyCb(void *data, void *ctx) {
 }
 
 bool unixSocketUnlinkNotify(char *filename) {
-  UnlinkNotifyCb args = {.filename = filename, .len = strlen(filename)};
+     UnlinkNotifyCb args = {.len = strlen(filename), .filename = filename};
   spinlock_acquire(&LOCK_LL_UNIX_SOCKET);
-  UnixSocket *browse =
-      LinkedListSearch(&dsUnixSocket, unixSocketUnlinkNotifyCb, &args);
+  UnixSocket *browse = (UnixSocket *)LinkedListSearch(&dsUnixSocket, unixSocketUnlinkNotifyCb, &args);
   spinlock_release(&LOCK_LL_UNIX_SOCKET);
 
   if (browse) {
@@ -738,25 +740,62 @@ size_t unixSocketPair(int type, int protocol, int *sv) {
   return 0;
 }
 
-VfsHandlers unixSocketHandlers = {.sendto = unixSocketSendto,
-                                  .recvfrom = unixSocketRecvfrom,
-                                  .bind = unixSocketBind,
-                                  .listen = unixSocketListen,
-                                  .accept = unixSocketAccept,
-                                  .connect = unixSocketConnect,
-                                  .getpeername = unixSocketGetpeername,
-                                  .recvmsg = unixSocketRecvmsg,
-                                  .sendmsg = unixSocketSendmsg,
-                                  .duplicate = unixSocketDuplicate,
-                                  .close = unixSocketClose,
-                                  .reportKey = unixSocketReportKey,
-                                  .internalPoll = unixSocketInternalPoll};
+VfsHandlers unixSocketHandlers = {
+    .read = NULL,
+    .write = NULL,
+    .seek = NULL,
+    .ioctl = NULL,
+    .stat = NULL,
+    .mmap = NULL,
+    .getdents64 = NULL,
+    .getFilesize = NULL,
+    .poll = NULL,
+    .fcntl = NULL,
+    .bind = unixSocketBind,
+    .listen = unixSocketListen,
+    .accept = unixSocketAccept,
+    .connect = unixSocketConnect,
+    .recvfrom = unixSocketRecvfrom,
+    .sendto = unixSocketSendto,
+    .recvmsg = unixSocketRecvmsg,
+    .sendmsg = unixSocketSendmsg,
+    .getsockname = NULL,
+    .getsockopts = NULL,
+    .getpeername = unixSocketGetpeername,
+    .internalPoll = unixSocketInternalPoll,
+    .reportKey = unixSocketReportKey,
+    .addWatchlist = NULL,
+    .duplicate = unixSocketDuplicate,
+    .open = NULL,
+    .close = unixSocketClose
+};
 
-VfsHandlers unixAcceptHandlers = {.sendto = unixSocketAcceptSendto,
-                                  .recvfrom = unixSocketAcceptRecvfrom,
-                                  .recvmsg = unixSocketAcceptRecvmsg,
-                                  .getpeername = unixSocketAcceptGetpeername,
-                                  .duplicate = unixSocketAcceptDuplicate,
-                                  .close = unixSocketAcceptClose,
-                                  .reportKey = unixSocketAcceptReportKey,
-                                  .internalPoll = unixSocketAcceptInternalPoll};
+VfsHandlers unixAcceptHandlers = {
+    .read = NULL,
+    .write = NULL,
+    .seek = NULL,
+    .ioctl = NULL,
+    .stat = NULL,
+    .mmap = NULL,
+    .getdents64 = NULL,
+    .getFilesize = NULL,
+    .poll = NULL,
+    .fcntl = NULL,
+    .bind = NULL,
+    .listen = NULL,
+    .accept = NULL,
+    .connect = NULL,
+    .recvfrom = unixSocketAcceptRecvfrom,
+    .sendto = unixSocketAcceptSendto,
+    .recvmsg = unixSocketAcceptRecvmsg,
+    .sendmsg = NULL,
+    .getsockname = NULL,
+    .getsockopts = NULL,
+    .getpeername = unixSocketAcceptGetpeername,
+    .internalPoll = unixSocketAcceptInternalPoll,
+    .reportKey = unixSocketAcceptReportKey,
+    .addWatchlist = NULL,
+    .duplicate = unixSocketAcceptDuplicate,
+    .open = NULL,
+    .close = unixSocketAcceptClose
+};

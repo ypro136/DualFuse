@@ -36,35 +36,29 @@ bool validate_mbr(uint8_t *mbrSector) {
   return mbrSector[510] == 0x55 && mbrSector[511] == 0xaa;
 }
 
+bool diskBytesCb(void *data, void *ctx) {
+  PCI *browse = data;
+  return browse->driver == PCI_DRIVER_AHCI && ((ahci *)browse->extra)->sata;
+}
+
 void disk_bytes(uint8_t *target_address, uint32_t LBA, uint32_t sector_count,
                bool write) {
-  PCI *browse = firstPCI;
-  while (browse) {
-    if (browse->driver == PCI_DRIVER_AHCI && browse->extra && ((ahci *)browse->extra)->sata)
-      break;
-    browse = (PCI *)browse->_ll.next;
-  }
+  // todo: yeah, this STILL is NOT ideal
 
-  if (!browse || !browse->extra) {
+  PCI *browse = LinkedListSearch(&dsPCI, diskBytesCb, 0);
+
+  if (!browse) {
     memset(target_address, 0, sector_count * SECTOR_SIZE);
     return;
   }
 
   ahci *target = (ahci *)browse->extra;
-  if (!target->mem) {
-    memset(target_address, 0, sector_count * SECTOR_SIZE);
-    return;
-  }
   int   pos = 0;
   while (!(target->sata & (1 << pos)))
     pos++;
 
-  if (write)
-    ahci_write(target, pos, &target->mem->ports[pos], LBA, 0, sector_count,
-              target_address);
-  else
-    ahci_read(target, pos, &target->mem->ports[pos], LBA, 0, sector_count,
-             target_address);
+  (write ? ahci_write : ahci_read)(target, pos, &target->mem->ports[pos], LBA, 0,
+                                 sector_count, target_address);
 }
 
 // todo: allow concurrent stuff

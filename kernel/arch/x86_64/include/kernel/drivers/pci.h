@@ -148,7 +148,7 @@ struct PCI {
   void       *extra;
   irqHandler *irqHandler;
 };
-LLcontrol dsPCI; // struct PCI
+extern LLcontrol dsPCI; // struct PCI
 
 
 #define EXPORT_BYTE(target, first)                                             \

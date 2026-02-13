@@ -72,33 +72,38 @@ extern "C" void kernel_main(void)
 
     // Initialize the global console as a window at position (100,50)
     console = Console(800, 600, 10, 10);
-
     // Use the legacy initializer to set the global `console_initialized` flag
     console_initialize();
     console.clear_screen();
     // Set a visible title for the console window
-    console.set_title("Kernel Console");
+    console.set_title("Kernel Console\n");
+    printf("Console initialized.\n");
 
     // Initialize the global StateMonitor window (updates driven by timer IRQ)
     stateMonitor = *(new StateMonitor(800, 170, 10, 620));
     stateMonitor.initialize();
     stateMonitor.clear_screen();
-
-
-    pci_initialize();
+    printf("stateMonitor initialized.\n");
 
 	keyboard_initialize();
     printf("keyboard initialized.\n");
 
+    pci_initialize();
+    printf("pci initialized.\n");
+
     tasks_initialize();
+    printf("tasks initialized.\n");
     
     syscall_inst_initialize();
     
     syscalls_initialize();
+    printf("syscalls initialized.\n");
     
     initiateSSE();
+    printf("SSE initialized.\n");
 
-    //acpiInit();
+    acpiInit();// TODO: this is very minimal
+    printf("acpi initialized.\n");
 
     initiateAPIC();
     printf("[kernel] APIC initialization complete\n");

@@ -256,7 +256,7 @@ void task_kill(uint32_t id, uint16_t ret) {
   taskInfoFilesDiscard(task->infoFiles, task);
 
   // if (!parentVfork)
-  //   PageDirectoryFree(task->pagedir);
+  //   page_directory_free(task->pagedir);
   taskInfoPdDiscard(task->infoPd);
   // ^ only changes userspace locations so we don't need to change our pagedir
 
@@ -311,6 +311,136 @@ Task *task_get(uint32_t id) {
 
 uint64_t taskIdCurr = 1;
 uint64_t task_generate_id() { return taskIdCurr++; }
+
+
+TaskInfoFs *taskInfoFsClone(TaskInfoFs *old) {
+  TaskInfoFs *new_task_info_filesystem = taskInfoFsAllocate();
+
+  spinlockAcquire(&old->LOCK_FS);
+  new_task_info_filesystem->umask = old->umask;
+  size_t len = strlen(old->cwd) + 1;
+  free(new_task_info_filesystem->cwd); // no more default
+  new_task_info_filesystem->cwd = malloc(len);
+  memcpy(new_task_info_filesystem->cwd, old->cwd, len);
+  spinlockRelease(&old->LOCK_FS);
+
+  return new_task_info_filesystem;
+}
+
+
+// CLONE_FS
+TaskInfoFs *taskInfoFsAllocate() {
+  TaskInfoFs *target = calloc(sizeof(TaskInfoFs), 1);
+  target->utilizedBy = 1;
+  target->cwd = calloc(2, 1);
+  target->cwd[0] = '/';
+  target->umask = S_IWGRP | S_IWOTH;
+  return target;
+}
+
+void taskInfoFsDiscard(TaskInfoFs *target) {
+  spinlockAcquire(&target->LOCK_FS);
+  target->utilizedBy--;
+  if (!target->utilizedBy) {
+    free(target->cwd);
+    free(target);
+  } else
+    spinlockRelease(&target->LOCK_FS);
+}
+
+void taskInfoPdDiscard(TaskInfoPagedir *target) {
+  spinlockAcquire(&target->LOCK_PD);
+  target->utilizedBy--;
+  if (!target->utilizedBy) {
+    page_directory_free(target->pagedir);
+    // todo: find a safe way to free target
+    // cannot be done w/the current layout as it's done inside taskKill and the
+    // scheduler needs it in case it's switched in between (will point to
+    // invalid/unsafe memory). maybe with overrides but we'll see later when the
+    // system is more stable.
+  } else
+    spinlockRelease(&target->LOCK_PD);
+}
+
+// CLONE_FILES
+TaskInfoFiles *taskInfoFilesAllocate() {
+  TaskInfoFiles *target = calloc(sizeof(TaskInfoFiles), 1);
+  target->utilizedBy = 1;
+  target->rlimitFdsHard = 1024;
+  target->rlimitFdsSoft = 1024;
+  target->fdBitmap = calloc(target->rlimitFdsHard / 8, 1);
+  return target;
+}
+
+void taskInfoFilesDiscard(TaskInfoFiles *target, void *task) {
+  spinlock_cnt_write_acquire(&target->WLOCK_FILES);
+  target->utilizedBy--;
+  if (!target->utilizedBy) {
+    // we don't care about locks anymore (we are alone in the darkness)
+    spinlock_cnt_write_release(&target->WLOCK_FILES);
+    while (target->firstFile)
+      fsUserClose(task, target->firstFile->key);
+    free(target->fdBitmap);
+    free(target);
+  } else
+    spinlock_cnt_write_release(&target->WLOCK_FILES);
+}
+
+// Signal stuff
+TaskInfoSignal *taskInfoSignalAllocate() {
+  // everything will be initiated to 0, standing for SIG_DFL (default handling)
+  TaskInfoSignal *target = calloc(sizeof(TaskInfoSignal), 1);
+  target->utilizedBy = 1;
+  return target;
+}
+TaskInfoSignal *taskInfoSignalClone(TaskInfoSignal *old) {
+  TaskInfoSignal *target = taskInfoSignalAllocate();
+
+  spinlockAcquire(&old->LOCK_SIGNAL);
+  memcpy(target->signals, old->signals, sizeof(old->signals));
+  spinlockRelease(&old->LOCK_SIGNAL);
+
+  return target;
+}
+void taskInfoSignalDiscard(TaskInfoSignal *target) {
+  spinlockAcquire(&target->LOCK_SIGNAL);
+  target->utilizedBy--;
+  if (!target->utilizedBy) {
+    free(target);
+  } else
+    spinlockRelease(&target->LOCK_SIGNAL);
+}
+
+
+// CLONE_VM
+TaskInfoPagedir *taskInfoPdAllocate(bool pagedir) {
+  TaskInfoPagedir *target = calloc(sizeof(TaskInfoPagedir), 1);
+  target->utilizedBy = 1;
+  if (pagedir)
+    target->pagedir = page_directory_allocate();
+  target->heap_start = USER_HEAP_START;
+  target->heap_end = USER_HEAP_START;
+
+  target->mmap_start = USER_MMAP_START;
+  target->mmap_end = USER_MMAP_START;
+  return target;
+}
+
+TaskInfoPagedir *taskInfoPdClone(TaskInfoPagedir *old) {
+  TaskInfoPagedir *new_task_info_pagedir = taskInfoPdAllocate(true);
+
+  spinlockAcquire(&old->LOCK_PD);
+  page_directory_user_duplicate(old->pagedir, new_task_info_pagedir->pagedir);
+  new_task_info_pagedir->heap_start = old->heap_start;
+  new_task_info_pagedir->heap_end = old->heap_end;
+
+  new_task_info_pagedir->mmap_start = old->mmap_start;
+  new_task_info_pagedir->mmap_end = old->mmap_end;
+  spinlockRelease(&old->LOCK_PD);
+
+  return new_task_info_pagedir;
+}
+
 
 size_t task_change_cwd(char *newdir) {
   stat stat = {0};

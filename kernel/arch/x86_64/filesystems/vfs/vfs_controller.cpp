@@ -11,6 +11,8 @@
 #include <utility.h>
 #include <vfs.h>
 
+
+LLcontrol dsMountPoint; // struct MountPoint
 // Simple VFS abstraction to manage filesystems
 
 OpenFile *fsRegisterNode(Task *task, size_t id) {

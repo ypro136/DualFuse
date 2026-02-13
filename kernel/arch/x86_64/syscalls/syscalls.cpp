@@ -18,6 +18,7 @@
 #include <linux_syscalls.h>
 #endif
 
+SignalInternal signalInternalDecisions[65] = {0};
 
 size_t   syscalls[MAX_SYSCALLS] = {0};
 uint32_t syscallCnt = 0;
@@ -48,6 +49,79 @@ int dbgSysStubf(const char *format, ...) {
   return ret;
 }
 #endif
+
+
+// fast function to tell if a signal is pending (for constant-pull syscalls) TODO:move to signal.cpp
+bool signalsPendingQuick(void *taskPtr) {
+  Task *task = (Task *)taskPtr;
+  if (task->kernel_task)
+    return false;
+  sigset_t pendingList = atomicBitmapGet(&task->sigPendingList);
+  sigset_t unblockedList = pendingList & ~task->sigBlockList;
+  for (int i = 0; i < _NSIG; i++) {
+    // todo: do this EVERYWHERE (1<<i) won't work above 32
+    if (!bitmapGenericGet((uint8_t *)&unblockedList, i))
+      continue;
+    struct sigaction *action = &task->infoSignals->signals[i];
+    __sighandler_t    userHandler =
+        (__sighandler_t)atomicRead64((size_t *)(size_t)&action->sa_handler);
+    if (userHandler == SIG_IGN)
+      continue;
+    if (userHandler == SIG_DFL &&
+        signalInternalDecisions[i] == SIGNAL_INTERNAL_IGN)
+      continue;
+    // otherwise, we passed!
+    return true;
+  }
+  return false;
+}
+
+// stack is laid out like this afterwards
+// * uint64_t retaddr;
+// * struct sigcontext ucontext;
+// * struct siginfo info; (optional)
+// * struct fpstate fp;
+
+void initiateSignalDefs() {
+  signalInternalDecisions[SIGABRT] = SIGNAL_INTERNAL_CORE;
+  signalInternalDecisions[SIGALRM] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGBUS] = SIGNAL_INTERNAL_CORE;
+  signalInternalDecisions[SIGCHLD] = SIGNAL_INTERNAL_IGN;
+  // signalInternalDecisions[SIGCLD] = SIGNAL_INTERNAL_IGN;
+  signalInternalDecisions[SIGCONT] = SIGNAL_INTERNAL_CONT;
+  // signalInternalDecisions[SIGEMT] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGFPE] = SIGNAL_INTERNAL_CORE;
+  signalInternalDecisions[SIGHUP] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGILL] = SIGNAL_INTERNAL_CORE;
+  signalInternalDecisions[SIGINT] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGIO] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGIOT] = SIGNAL_INTERNAL_CORE;
+  signalInternalDecisions[SIGKILL] = SIGNAL_INTERNAL_TERM;
+  // signalInternalDecisions[SIGLOST] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGPIPE] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGPOLL] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGPROF] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGPWR] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGQUIT] = SIGNAL_INTERNAL_CORE;
+  signalInternalDecisions[SIGSEGV] = SIGNAL_INTERNAL_CORE;
+  signalInternalDecisions[SIGSTKFLT] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGSTOP] = SIGNAL_INTERNAL_STOP;
+  signalInternalDecisions[SIGTSTP] = SIGNAL_INTERNAL_STOP;
+  signalInternalDecisions[SIGSYS] = SIGNAL_INTERNAL_CORE;
+  signalInternalDecisions[SIGTERM] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGTRAP] = SIGNAL_INTERNAL_CORE;
+  signalInternalDecisions[SIGTTIN] = SIGNAL_INTERNAL_STOP;
+  signalInternalDecisions[SIGTTOU] = SIGNAL_INTERNAL_STOP;
+  signalInternalDecisions[SIGUNUSED] = SIGNAL_INTERNAL_CORE;
+  signalInternalDecisions[SIGURG] = SIGNAL_INTERNAL_IGN;
+  signalInternalDecisions[SIGUSR1] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGUSR2] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGVTALRM] = SIGNAL_INTERNAL_TERM;
+  signalInternalDecisions[SIGXCPU] = SIGNAL_INTERNAL_CORE;
+  signalInternalDecisions[SIGXFSZ] = SIGNAL_INTERNAL_CORE;
+  signalInternalDecisions[SIGWINCH] = SIGNAL_INTERNAL_IGN;
+}
+
 
 void register_syscall(uint32_t id, void *handler) {
   if (id > MAX_SYSCALLS) {

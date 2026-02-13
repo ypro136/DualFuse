@@ -45,7 +45,7 @@ VfsHandlers handlePciConfig = {
                                .read = pci_config_read,
                                .write = 0,
                                .ioctl = 0,
-                               .stat = fake_file_systemFstat,
+                               .stat = fakefsFstat,
                                .mmap = 0,
                                .getdents64 = 0,
                                .duplicate = 0
@@ -75,38 +75,38 @@ void sys_setup_pci(FakefsFile *devices) {
         pciconf->function = function;
 
         FakefsFile *dir =
-            fake_file_system_add_file(&rootSys, devices, dirname, 0,
-                          S_IFDIR | S_IRUSR | S_IWUSR, &fake_file_systemRootHandlers);
+            fakefsAddFile(&rootSys, devices, dirname, 0,
+                          S_IFDIR | S_IRUSR | S_IWUSR, &fakefsRootHandlers);
 
         // [..]/config
         FakefsFile *confFile =
-            fake_file_system_add_file(&rootSys, dir, "config", 0,
+            fakefsAddFile(&rootSys, dir, "config", 0,
                           S_IFREG | S_IRUSR | S_IWUSR, &handlePciConfig);
-        fake_file_system_attach_file(confFile, pciconf, 4096);
+        fakefsAttachFile(confFile, pciconf, 4096);
 
         // [..]/vendor
         char *vendorStr = (char *)malloc(8);
         sprintf(vendorStr, "0x%04x\n", device->vendor_id);
-        FakefsFile *vendorFile = fake_file_system_add_file(&rootSys, dir, "vendor", 0,
+        FakefsFile *vendorFile = fakefsAddFile(&rootSys, dir, "vendor", 0,
                                                S_IFREG | S_IRUSR | S_IWUSR,
-                                               &fake_file_systemSimpleReadHandlers);
-        fake_file_system_attach_file(vendorFile, vendorStr, 4096);
+                                               &fakefsSimpleReadHandlers);
+        fakefsAttachFile(vendorFile, vendorStr, 4096);
 
         // [..]/irq
         char *irqStr = (char *)malloc(8);
         sprintf(irqStr, "%d\n", out->interruptLine);
         FakefsFile *irqFile =
-            fake_file_system_add_file(&rootSys, dir, "irq", 0, S_IFREG | S_IRUSR | S_IWUSR,
-                          &fake_file_systemSimpleReadHandlers);
-        fake_file_system_attach_file(irqFile, irqStr, 4096);
+            fakefsAddFile(&rootSys, dir, "irq", 0, S_IFREG | S_IRUSR | S_IWUSR,
+                          &fakefsSimpleReadHandlers);
+        fakefsAttachFile(irqFile, irqStr, 4096);
 
         // [..]/device
         char *deviceStr = (char *)malloc(8);
         sprintf(deviceStr, "0x%04x\n", device->device_id);
-        FakefsFile *deviceFile = fake_file_system_add_file(&rootSys, dir, "device", 0,
+        FakefsFile *deviceFile = fakefsAddFile(&rootSys, dir, "device", 0,
                                                S_IFREG | S_IRUSR | S_IWUSR,
-                                               &fake_file_systemSimpleReadHandlers);
-        fake_file_system_attach_file(deviceFile, deviceStr, 4096);
+                                               &fakefsSimpleReadHandlers);
+        fakefsAttachFile(deviceFile, deviceStr, 4096);
 
         // [..]/class
         uint32_t class_code = config_read_word(device->bus, device->slot,
@@ -115,10 +115,10 @@ void sys_setup_pci(FakefsFile *devices) {
         class_code |= ((uint32_t)device->progIF) << 8;
         char *classStr = (char *)malloc(16);
         sprintf(classStr, "0x%x\n", class_code);
-        FakefsFile *device_class = fake_file_system_add_file(&rootSys, dir, "class", 0,
+        FakefsFile *device_class = fakefsAddFile(&rootSys, dir, "class", 0,
                                           S_IFREG | S_IRUSR | S_IWUSR,
-                                          &fake_file_systemSimpleReadHandlers);
-        fake_file_system_attach_file(device_class, classStr, 4096);
+                                          &fakefsSimpleReadHandlers);
+        fakefsAttachFile(device_class, classStr, 4096);
       }
     }
   }
@@ -129,31 +129,31 @@ void sys_setup_pci(FakefsFile *devices) {
 
 void sys_setup() {
   FakefsFile *bus =
-      fake_file_system_add_file(&rootSys, rootSys.rootFile, "bus", 0,
-                    S_IFDIR | S_IRUSR | S_IWUSR, &fake_file_systemRootHandlers);
+      fakefsAddFile(&rootSys, (FakefsFile *)&rootSys.rootFile, "bus", 0,
+                    S_IFDIR | S_IRUSR | S_IWUSR, &fakefsRootHandlers);
   FakefsFile *pci =
-      fake_file_system_add_file(&rootSys, bus, "pci", 0, S_IFDIR | S_IRUSR | S_IWUSR,
-                    &fake_file_systemRootHandlers);
+      fakefsAddFile(&rootSys, bus, "pci", 0, S_IFDIR | S_IRUSR | S_IWUSR,
+                    &fakefsRootHandlers);
   FakefsFile *devices =
-      fake_file_system_add_file(&rootSys, pci, "devices", 0, S_IFDIR | S_IRUSR | S_IWUSR,
-                    &fake_file_systemRootHandlers);
+      fakefsAddFile(&rootSys, pci, "devices", 0, S_IFDIR | S_IRUSR | S_IWUSR,
+                    &fakefsRootHandlers);
 
   sys_setup_pci(devices);
 }
 
 bool sys_mount(MountPoint *mount) {
   // install handlers
-  mount->handlers = &fake_file_systemHandlers;
-  mount->stat = fake_file_system_stat;
-  mount->lstat = fake_file_system_lstat;
+  mount->handlers = &fakefsHandlers;
+  mount->stat = fakefsStat;
+  mount->lstat = fakefsLstat;
 
   mount->fsInfo = malloc(sizeof(FakefsOverlay));
   memset(mount->fsInfo, 0, sizeof(FakefsOverlay));
   FakefsOverlay *sys = (FakefsOverlay *)mount->fsInfo;
 
-  sys->fake_file_system = &rootSys;
+  sys->fakefs = &rootSys;
   if (!rootSys.rootFile) {
-    fake_file_system_setup_root(&rootSys.rootFile);
+    fakefsSetupRoot(&rootSys.rootFile);
     sys_setup();
   }
 

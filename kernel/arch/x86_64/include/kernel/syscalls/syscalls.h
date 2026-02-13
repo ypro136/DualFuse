@@ -47,6 +47,16 @@ void syscallsRegEnv();
 void syscallsRegProc();
 void syscallsRegClock();
 
+/* Signal stuff */
+typedef enum SignalInternal {
+  SIGNAL_INTERNAL_CORE = 0,
+  SIGNAL_INTERNAL_TERM,
+  SIGNAL_INTERNAL_IGN,
+  SIGNAL_INTERNAL_STOP,
+  SIGNAL_INTERNAL_CONT
+} SignalInternal;
+
+extern SignalInternal signalInternalDecisions[65];
 void   initiateSignalDefs();
 void   signalsPendingHandleSys(void *taskPtr, uint64_t *rsp,
                                AsmPassedInterrupt *registers);
@@ -56,7 +66,6 @@ bool   signalsPendingQuick(void *taskPtr);
 bool   signalsRevivableState(int state);
 
 void registerSyscall(uint32_t id, void *handler); // <- the master
-
 
 char *atResolvePathname(int dirfd, char *pathname);
 void  atResolvePathnameCleanup(char *pathname, char *resolved);

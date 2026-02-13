@@ -13,7 +13,9 @@ struct acpi_madt *madt;
 
 void initiateACPI();
 
+/* TODO: uncomment this and make it work
+/*
 size_t acpiPoweroff();
 size_t acpiReboot();
-
+*/
 #endif

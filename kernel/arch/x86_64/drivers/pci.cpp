@@ -16,22 +16,27 @@
 __attribute__((used))
 PCI *firstPCI;
 
+LLcontrol dsPCI;
+
 
 /* PCI abstraction */
-
-PCI *lookup_pci_device(pci_device *device) {
-  PCI *browse = firstPCI;
-  while (browse) {
-    if (browse->bus == device->bus && browse->slot == device->slot &&
-        browse->function == device->function)
-      break;
-    browse = (PCI *)browse->_ll.next;
-  }
-  return browse;
+bool lookupPCIdeviceCb(void *data, void *ctx) {
+  PCI       *browse = data;
+  pci_device *device = ctx;
+  return browse->bus == device->bus && browse->slot == device->slot &&
+         browse->function == device->function;
 }
 
-void setup_pci_device_driver(PCI *pci, PCI_DRIVER driver,
-                          PCI_DRIVER_CATEGORY category) {
+PCI *lookup_pci_device(pci_device *device) {
+
+  return LinkedListSearch(&dsPCI, lookupPCIdeviceCb, device);
+
+}
+
+void setup_pci_device_driver(PCI *pci, PCI_DRIVER driver, PCI_DRIVER_CATEGORY category) 
+{
+
+  printf("[pci::ahci] setup_pci_device_driver: pci is at : %lx ,driver is at :%lx , category is at :%lx\n",pci, &driver , &category);
   pci->driver = driver;
   pci->category = category;
 }

@@ -200,7 +200,7 @@ struct OpenFile {
   void       *fake_file_system;
 };
 
-LLcontrol dsMountPoint; // struct MountPoint
+extern LLcontrol dsMountPoint; // struct MountPoint
 
 #define SEEK_SET 0  // start + offset
 #define SEEK_CURR 1 // current + offset

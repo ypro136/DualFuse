@@ -67,33 +67,33 @@ void inputGenerateEvent(DevInputEvent *item, uint16_t type, uint16_t code,
 
 /* dev_setup and mounting */
 void dev_setup() {
-  // fake_file_system_add_file(&rootDev, rootDev.rootFile, "stdin", 0,
+  // fakefsAddFile(&rootDev, rootDev.rootFile, "stdin", 0,
   //               S_IFCHR | S_IRUSR | S_IWUSR, &stdio);
-  // fake_file_system_add_file(&rootDev, rootDev.rootFile, "stdout", 0,
+  // fakefsAddFile(&rootDev, rootDev.rootFile, "stdout", 0,
   //               S_IFCHR | S_IRUSR | S_IWUSR, &stdio);
-  // fake_file_system_add_file(&rootDev, rootDev.rootFile, "stderr", 0,
+  // fakefsAddFile(&rootDev, rootDev.rootFile, "stderr", 0,
   //               S_IFCHR | S_IRUSR | S_IWUSR, &stdio);
-  // fake_file_system_add_file(&rootDev, rootDev.rootFile, "tty", 0,
+  // fakefsAddFile(&rootDev, rootDev.rootFile, "tty", 0,
   //               S_IFCHR | S_IRUSR | S_IWUSR, &stdio);
-  // fake_file_system_add_file(&rootDev, rootDev.rootFile, "fb0", 0,
+  // fakefsAddFile(&rootDev, rootDev.rootFile, "fb0", 0,
   //               S_IFCHR | S_IRUSR | S_IWUSR, &fb0);
-  // fake_file_system_add_file(&rootDev, rootDev.rootFile, "null", 0,
+  // fakefsAddFile(&rootDev, rootDev.rootFile, "null", 0,
   //               S_IFCHR | S_IRUSR | S_IWUSR, &handleNull);
 }
 
 bool dev_mount(MountPoint *mount) {
   // install handlers
-  mount->handlers = &fake_file_systemHandlers;
-  mount->stat = fake_file_system_stat;
-  mount->lstat = fake_file_system_lstat;
+  mount->handlers = &fakefsHandlers;
+  mount->stat = fakefsStat;
+  mount->lstat = fakefsLstat;
 
   mount->fsInfo = malloc(sizeof(FakefsOverlay));
   memset(mount->fsInfo, 0, sizeof(FakefsOverlay));
   FakefsOverlay *dev = (FakefsOverlay *)mount->fsInfo;
 
-  dev->fake_file_system = &rootDev;
-  if (!rootDev.rootFile) {
-    fake_file_system_setup_root(&rootDev.rootFile);
+  dev->fakefs = &rootDev;
+  if (!(rootDev.rootFile)) {
+    fakefsSetupRoot(&rootDev.rootFile);
     dev_setup();
   }
 

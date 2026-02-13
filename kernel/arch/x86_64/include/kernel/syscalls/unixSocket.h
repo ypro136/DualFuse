@@ -7,8 +7,8 @@
 #ifndef UNIX_SOCKET_H
 #define UNIX_SOCKET_H
 
-VfsHandlers unixSocketHandlers;
-VfsHandlers unixAcceptHandlers;
+extern VfsHandlers unixSocketHandlers;
+extern VfsHandlers unixAcceptHandlers;
 
 #define AF_UNIX 1
 #define UNIX_SOCK_BUFF_DEFAULT 262144
@@ -60,8 +60,8 @@ typedef struct UnixSocket {
   UnixSocketPair *pair;
 } UnixSocket;
 
-LLcontrol dsUnixSocket; // struct UnixSocket
-Spinlock  LOCK_LL_UNIX_SOCKET;
+extern LLcontrol dsUnixSocket; // struct UnixSocket
+extern Spinlock  LOCK_LL_UNIX_SOCKET;
 
 // (1): we're the last ones to have access to the spinlock and the
 // acceptClose() end might concurrently try to set our ->connected to a

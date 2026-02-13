@@ -12,6 +12,13 @@
 
 
 #define CEILING_DIVISION(a,b) (((a + b) - 1) / b)
+#define DivRoundUp(a,b) CEILING_DIVISION(a,b)
+
+#define panic(a) Halt(a)
+
+#define spinlockAcquire spinlock_acquire
+
+#define spinlockRelease spinlock_release
 
 #define COMBINE_64(higher, lower) (((uint64_t)(higher) << 32) | (uint64_t)(lower))
 #define SPLIT_64_HIGHER(value) ((value) >> 32)

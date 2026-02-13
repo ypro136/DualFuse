@@ -400,15 +400,16 @@ static size_t syscallWait4(int pid, int *wstatus, int options,
 }
 
 #define SYSCALL_REBOOT 169
+// this is a place holder its not working see "TODO:" in acpi.cpp and acpi.h
 static size_t syscallReboot(int magic1, int magic2, uint32_t cmd, void *arg) {
   if (magic1 != LINUX_REBOOT_MAGIC1 || magic2 != LINUX_REBOOT_MAGIC2)
     return ERR(EINVAL);
   switch (cmd) {
   case LINUX_REBOOT_CMD_POWER_OFF:
-    return acpiPoweroff();
+    return 0; //acpiPoweroff();
     break;
   case LINUX_REBOOT_CMD_RESTART:
-    return acpiReboot();
+    return 0; //acpiReboot();
     break;
   default:
     return ERR(EINVAL);
