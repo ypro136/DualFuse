@@ -47,10 +47,10 @@ void timer_irq_0(struct interrupt_registers *registers)
     //     example_simple_window();
     // }
 
-    if (console_initialized)
-    {
-        copy_buffer_to_screan();
-    }
+    // if (console_initialized)
+    // {
+    //     copy_buffer_to_screan();
+    // }
     if (frame_ready)
     {
         copy_buffer_to_screan();

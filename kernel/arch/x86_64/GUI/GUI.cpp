@@ -5,6 +5,8 @@
 #include <framebufferutil.h>
 #include <psf.h>
 #include <timer.h>
+#include <console.h>
+
 
 #include <GUI.h>
 
@@ -127,14 +129,17 @@ void draw_taskbar() {
     draw_text("12:34 PM", clock_x, clock_y, 0x000000);
     
 
-    int win_btn_x = start_btn_x + start_btn_width + 5;
-    int win_btn_y = TASKBAR_Y + 2;
+    int win_btn_x = start_btn_x + start_btn_width + 10;
+    int win_btn_y = TASKBAR_Y + 4;
     int win_btn_width = 150;
-    int win_btn_height = TASKBAR_HEIGHT - 4;
+    int win_btn_height = TASKBAR_HEIGHT - 8;
     
     fill_rectangle(win_btn_x, win_btn_y, win_btn_width, win_btn_height, XP_BUTTON_FACE);
     draw_rect_outline(win_btn_x, win_btn_y, win_btn_width, win_btn_height, XP_BUTTON_SHADOW, 1);
-    draw_text("My Computer", win_btn_x + 5, win_btn_y + 7, 0x000000);
+    draw_text("Example window", win_btn_x + 5, win_btn_y + 4, 0x000000);
+    win_btn_x = win_btn_x + win_btn_width + 5;
+    draw_rect_outline(win_btn_x, win_btn_y, win_btn_width, win_btn_height, XP_BUTTON_SHADOW, 1);
+    draw_text("Kernel Console", win_btn_x + 5, win_btn_y + 4, 0x000000);
 }
 
 
@@ -216,7 +221,7 @@ void render_xp_desktop()
     #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] Clearing screen %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     #endif
-        clear_screen(SCREEN_WIDTH, SCREEN_HEIGHT, 0x000000);
+        //clear_screen(SCREEN_WIDTH, SCREEN_HEIGHT, 0x000000);
         
     #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] Drawing desktop background\n");
@@ -231,7 +236,7 @@ void render_xp_desktop()
             .y = 100,
             .width = 400,
             .height = 300,
-            .title = "My Computer",
+            .title = "Example window",
             .active = true,
             .minimized = false,
             .bg_color = 0xECE9D8
@@ -267,7 +272,7 @@ void render_xp_desktop()
             .y = 150,
             .width = 350,
             .height = 250,
-            .title = "Notepad - untitled",
+            .title = "Kernel Console",
             .active = false,
             .minimized = false,
             .bg_color = 0xFFFFFF
@@ -276,23 +281,15 @@ void render_xp_desktop()
         printf("[DEBUG_GUI] Drawing window2\n");
     #endif
         draw_xp_window(window2);
-        
+
+    // Initialize the global console as a window at position (100,50)
+    console = Console(window2.width, window2.height, window2.x, window2.y + TITLE_BAR_HEIGHT);
+    console_initialize();
+    console.clear_screen();
+    //console.set_title("Kernel Console");        
     #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] Drawing window2 text line 1\n");
     #endif
-        draw_text("This is a simple XP desktop GUI system.", 
-                window2.x + 15, window2.y + 45, 0x000000);
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window2 text line 2\n");
-    #endif
-        draw_text("It demonstrates windows, buttons, and controls.", 
-                window2.x + 15, window2.y + 60, 0x000000);
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window2 text line 3\n");
-    #endif
-        draw_text("The taskbar is at the bottom.", 
-                window2.x + 15, window2.y + 75, 0x000000);
-        
     #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] Drawing window2 scrollbar at x=%d, y=%d, height=%d\n", 
             window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, 

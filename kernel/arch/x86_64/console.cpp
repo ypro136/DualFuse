@@ -20,7 +20,7 @@
 Console console;
 
 // Legacy globals for C compatibility
-int bg_color = 0x1B262C;
+int bg_color = 0xC0C0C0; //0x1B262C;
 int textcolor = 0xBBE1FA;
 bool console_initialized = false;
 
@@ -30,7 +30,7 @@ static Spinlock LOCK_CONSOLE = ATOMIC_FLAG_INIT;
 // Console Constructor
  
 Console::Console(uint32_t width, uint32_t height, uint32_t start_x, uint32_t start_y)
-    : bg_color(0x1B262C),
+    : bg_color(0xC0C0C0),
       textcolor(0xBBE1FA),
     border_color(0xBBBBBB),
     border_thickness(2),
@@ -397,7 +397,7 @@ void console_initialize()
 {
     console.initialize();
     console_initialized = console.is_ready();
-    bg_color = 0x1B262C;
+    bg_color = 0xC0C0C0;// 0x1B262C;
     textcolor = 0xBBE1FA;
 }
 

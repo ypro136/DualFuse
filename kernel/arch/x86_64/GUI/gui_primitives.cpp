@@ -4,6 +4,8 @@
 #include <psf.h>
 
 #include <gui_primitives.h>
+#include <console.h>
+
 
 
  
@@ -240,6 +242,10 @@ void draw_text(const char* text, int x, int y, uint32_t color) {
 #endif
         return;
     }
+    if (!console_initialized)
+    {
+        return;
+    }
     int char_x = x;
     const char* p = text;
     int char_count = 0;
@@ -249,7 +255,7 @@ void draw_text(const char* text, int x, int y, uint32_t color) {
 #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] drawing char %d: '%c' (0x%02X) at x=%d, y=%d\n", char_count, *p, (unsigned char)*p, char_x, y);
 #endif
-        //psfPutC(*p, (uint32_t)char_x, (uint32_t)y, color);
+        psfPutC(*p, (uint32_t)char_x, (uint32_t)y, color);
 #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] char %d drawn successfully\n", char_count);
 #endif
