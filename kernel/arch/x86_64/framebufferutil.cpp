@@ -179,7 +179,7 @@ void copy_buffer_to_screan()
     memcpy(fb_ptr, tfb_ptr, buffer_size);
 }
 
-void draw_pixel(int x,int y,int rgb) 
+void draw_pixel(int x, int y, uint32_t rgb)
 {                         
     volatile int *tfb_ptr = tempframebuffer->address;                                                                                      
     tfb_ptr[((x) + (y) * screen_width)] = (rgb);                     

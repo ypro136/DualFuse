@@ -12,9 +12,9 @@ for window manipulation resizing moving
 for other operations see window manager 
 */
 
-// ============================================================================
+ 
 // Constructor and Destructor
-// ============================================================================
+ 
 
 GraphicComposer::GraphicComposer(uint32_t width, uint32_t height)
     : buffer_width(width), buffer_height(height), buffer_size(width * height)
@@ -40,9 +40,9 @@ GraphicComposer::~GraphicComposer()
     }
 }
 
-// ============================================================================
+ 
 // Inline Helper Methods
-// ============================================================================
+ 
 
 inline RGBAPixel GraphicComposer::rgba_encode(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
@@ -81,9 +81,9 @@ inline bool GraphicComposer::is_within_bounds(uint32_t x, uint32_t y) const
     return (x < buffer_width) && (y < buffer_height);
 }
 
-// ============================================================================
+ 
 // RGBA Pixel Manipulation
-// ============================================================================
+ 
 
 void GraphicComposer::set_pixel(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
@@ -115,9 +115,9 @@ void GraphicComposer::set_pixel_encoded(uint32_t x, uint32_t y, RGBAPixel pixel)
     composition_buffer[index] = pixel;
 }
 
-// ============================================================================
+ 
 // Buffer Operations
-// ============================================================================
+ 
 
 void GraphicComposer::clear_buffer(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
@@ -267,9 +267,9 @@ void GraphicComposer::draw_circle(uint32_t cx, uint32_t cy, uint32_t radius,
     }
 }
 
-// ============================================================================
+ 
 // Frame Buffer Composition
-// ============================================================================
+ 
 
 FrameBuffer* GraphicComposer::create_framebuffer(uint32_t width, uint32_t height)
 {
@@ -397,9 +397,9 @@ void GraphicComposer::copy_framebuffer(const FrameBuffer* src, FrameBuffer* dst,
     }
 }
 
-// ============================================================================
+ 
 // System Framebuffer Conversion
-// ============================================================================
+ 
 
 void GraphicComposer::convert_to_system_format(uint32_t bg_color)
 {
@@ -452,9 +452,9 @@ void GraphicComposer::copy_to_framebuffer(void* framebuffer_ptr, uint64_t frameb
     memcpy(framebuffer_ptr, (void*)tempframebuffer->address, copy_size);
 }
 
-// ============================================================================
+ 
 // Buffer Access and Information
-// ============================================================================
+ 
 
 RGBAPixel* GraphicComposer::get_composition_buffer() const
 {

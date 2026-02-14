@@ -7,9 +7,9 @@
 #include <graphic_composer.h>
 #include <stdio.h>
 
-// ============================================================================
+ 
 // Example 1: Basic Pixel Drawing
-// ============================================================================
+ 
 
 void example_basic_pixel_drawing() {
     printf("[GraphicComposer] Example 1: Basic Pixel Drawing\n");
@@ -32,9 +32,9 @@ void example_basic_pixel_drawing() {
            rgba_get_b(pixel), rgba_get_a(pixel));
 }
 
-// ============================================================================
+ 
 // Example 2: Drawing Shapes
-// ============================================================================
+ 
 
 void example_drawing_shapes() {
     printf("[GraphicComposer] Example 2: Drawing Shapes\n");
@@ -63,9 +63,9 @@ void example_drawing_shapes() {
     printf("  Shapes drawn successfully\n");
 }
 
-// ============================================================================
+ 
 // Example 3: FrameBuffer Composition - Simple Window
-// ============================================================================
+ 
 
 void example_simple_window() {
     printf("[GraphicComposer] Example 3: Simple Window Composition\n");
@@ -99,9 +99,9 @@ void example_simple_window() {
     composer.destroy_framebuffer(window);
 }
 
-// ============================================================================
+ 
 // Example 4: Multiple Layered FrameBuffers
-// ============================================================================
+ 
 
 void example_multiple_layers() {
     printf("[GraphicComposer] Example 4: Multiple Layered FrameBuffers\n");
@@ -141,9 +141,9 @@ void example_multiple_layers() {
     composer.destroy_framebuffer(status);
 }
 
-// ============================================================================
+ 
 // Example 5: Semi-transparent Overlay
-// ============================================================================
+ 
 
 void example_semi_transparent_overlay() {
     printf("[GraphicComposer] Example 5: Semi-transparent Overlay\n");
@@ -171,9 +171,9 @@ void example_semi_transparent_overlay() {
     composer.destroy_framebuffer(overlay);
 }
 
-// ============================================================================
+ 
 // Example 6: System Format Conversion
-// ============================================================================
+ 
 
 void example_system_format_conversion() {
     printf("[GraphicComposer] Example 6: System Format Conversion\n");
@@ -206,9 +206,9 @@ void example_system_format_conversion() {
     printf("  Ready to copy to hardware framebuffer\n");
 }
 
-// ============================================================================
+ 
 // Example 7: Dynamic UI Building
-// ============================================================================
+ 
 
 void example_dynamic_ui_building() {
     printf("[GraphicComposer] Example 7: Dynamic UI Building\n");
@@ -265,9 +265,9 @@ void example_dynamic_ui_building() {
     printf("  Total %d UI elements created and composited\n", element_count);
 }
 
-// ============================================================================
+ 
 // Example 8: Color Conversion Utilities
-// ============================================================================
+ 
 
 void example_color_conversion() {
     printf("[GraphicComposer] Example 8: Color Conversion\n");
@@ -299,9 +299,9 @@ void example_color_conversion() {
            rgba_get_a(red_restored));
 }
 
-// ============================================================================
+ 
 // Main Examples Runner
-// ============================================================================
+ 
 
 extern "C" void graphic_composer_examples() {
     printf("\n========================================\n");

@@ -31,6 +31,9 @@
 #include <mouse.h>
 #include <apic.h>
 
+#include <GUI.h>
+#include <fram_loop.h>
+
 
 
 bool systemDiskInit;
@@ -69,21 +72,25 @@ extern "C" void kernel_main(void)
 
 	memory_initialize();
 	printf("memory initialized.\n");
+    // draw dualfuse GUI
+    // // Initialize the global console as a window at position (100,50)
+    // console = Console(800, 600, 10, 10);
+    // // Use the legacy initializer to set the global `console_initialized` flag
+    // console_initialize();
+    // console.clear_screen();
+    // // Set a visible title for the console window
+    // console.set_title("Kernel Console");
+    // printf("Console initialized.\n");
 
-    // Initialize the global console as a window at position (100,50)
-    console = Console(800, 600, 10, 10);
-    // Use the legacy initializer to set the global `console_initialized` flag
-    console_initialize();
-    console.clear_screen();
-    // Set a visible title for the console window
-    console.set_title("Kernel Console");
-    printf("Console initialized.\n");
+    // // Initialize the global StateMonitor window (updates driven by timer IRQ)
+    // stateMonitor = *(new StateMonitor(800, 170, 10, 620));
+    // stateMonitor.initialize();
+    // stateMonitor.clear_screen();
+    // printf("stateMonitor initialized.\n");
 
-    // Initialize the global StateMonitor window (updates driven by timer IRQ)
-    stateMonitor = *(new StateMonitor(800, 170, 10, 620));
-    stateMonitor.initialize();
-    stateMonitor.clear_screen();
-    printf("stateMonitor initialized.\n");
+    // draw win XP GUI
+
+
 
 	keyboard_initialize();
     printf("keyboard initialized.\n");
@@ -111,6 +118,11 @@ extern "C" void kernel_main(void)
 
     initiateMouse();
     printf("mouse initialized.\n");
+
+    while (true) {
+        frame_loop(render_xp_desktop);
+        // TODO: Handle input
+    }
 
     
     // breakpoint; tested and works

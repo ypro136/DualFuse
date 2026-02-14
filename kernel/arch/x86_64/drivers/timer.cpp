@@ -48,6 +48,7 @@ void timer_irq_0(struct interrupt_registers *registers)
     {
         copy_buffer_to_screan();
     }
+    copy_buffer_to_screan();
 
     
 
@@ -61,6 +62,10 @@ uint32_t sleep(uint32_t time)
     hand_control();
   }
   return 0;
+}
+
+uint64_t get_frame_time() {
+    return timerTicks;
 }
 
 void timer_initialize()

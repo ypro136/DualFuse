@@ -26,9 +26,9 @@ bool console_initialized = false;
 
 static Spinlock LOCK_CONSOLE = ATOMIC_FLAG_INIT;
 
-// ============================================================================
+ 
 // Console Constructor
-// ============================================================================
+ 
 Console::Console(uint32_t width, uint32_t height, uint32_t start_x, uint32_t start_y)
     : bg_color(0x1B262C),
       textcolor(0xBBE1FA),
@@ -49,9 +49,9 @@ Console::Console(uint32_t width, uint32_t height, uint32_t start_x, uint32_t sta
     title[0] = '\0';
 }
 
-// ============================================================================
+ 
 // Position Management Helper Methods
-// ============================================================================
+ 
 void Console::increment_cursor_x()
 {
     cursor_position_x += CHAR_WIDTH;
@@ -85,9 +85,9 @@ void Console::move_to_line_start()
     cursor_position_x = CHAR_WIDTH;
 }
 
-// ============================================================================
+ 
 // Internal Rendering Methods
-// ============================================================================
+ 
 void Console::draw_rect(int x, int y, int w, int h, int rgb)
 {
 #if defined(DEBUG_CONSOLE)
@@ -165,9 +165,9 @@ void Console::update_cursor()
     draw_rect(cursor_position_x, cursor_position_y, CHAR_WIDTH, CHAR_HEIGHT, textcolor);
 }
 
-// ============================================================================
+ 
 // Public Interface
-// ============================================================================
+ 
 void Console::initialize()
 {
     // place cursor inside the border (avoid overlapping)
@@ -390,9 +390,9 @@ void Console::set_window_position(uint32_t x, uint32_t y)
     window_y = y;
 }
 
-// ============================================================================
+ 
 // Legacy C API Wrappers for Compatibility
-// ============================================================================
+ 
 void console_initialize()
 {
     console.initialize();

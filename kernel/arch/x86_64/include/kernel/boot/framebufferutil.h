@@ -31,7 +31,7 @@ typedef struct vector2{
 
 int framebuffer_initialize();
 
-void draw_pixel(int x,int y,int rgb);
+void draw_pixel(int x, int y, uint32_t rgb);
 void copy_buffer_to_screan();
 
 

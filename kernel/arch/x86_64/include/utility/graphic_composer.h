@@ -218,9 +218,9 @@ public:
     uint64_t get_system_stride() const { return buffer_width * sizeof(uint32_t); }
 };
 
-// ============================================================================
+ 
 // Inline Helper Functions for RGBA Encoding
-// ============================================================================
+ 
 
 /**
  * Encode RGBA values into a 64-bit pixel
