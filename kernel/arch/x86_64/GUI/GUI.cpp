@@ -110,7 +110,40 @@ void draw_xp_button(int x, int y, int width, int height, const char* label, bool
     draw_text_centered(label, x, y + (height - 8) / 2, width, 0x000000);
 }
 
- 
+ static void reverse_string(char* str, int len) {
+    for (int i = 0; i < len / 2; i++) {
+        char temp = str[i];
+        str[i] = str[len - 1 - i];
+        str[len - 1 - i] = temp;
+    }
+}
+
+// Convert unsigned 64-bit integer to string
+char* u64toa(uint64_t value, char* str, int base) {
+    if (!str || base < 2 || base > 36) {
+        return str;
+    }
+    
+    char digits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+    
+    // Handle zero
+    if (value == 0) {
+        str[0] = '0';
+        str[1] = '\0';
+        return str;
+    }
+    
+    int i = 0;
+    while (value > 0) {
+        str[i++] = digits[value % base];
+        value /= base;
+    }
+    
+    str[i] = '\0';
+    reverse_string(str, i);
+    return str;
+}
+
 void draw_taskbar() {
     draw_gradient(0, TASKBAR_Y, SCREEN_WIDTH, TASKBAR_HEIGHT,
                   0xC0C0C0, 0xA0A0A0, false);
@@ -126,7 +159,19 @@ void draw_taskbar() {
     
     int clock_x = SCREEN_WIDTH - 80;
     int clock_y = TASKBAR_Y + 5;
-    draw_text("12:34 PM", clock_x, clock_y, 0x000000);
+
+    // Total seconds elapsed
+    uint64_t total_seconds = timerTicks / 60;
+    
+    // Calculate hours, minutes, seconds
+    uint64_t hours = total_seconds / 3600;
+    uint64_t minutes = (total_seconds % 3600) / 60;
+    uint64_t seconds = total_seconds % 60;
+    char string[64];
+    draw_text(u64toa(hours, string, 10), clock_x, clock_y, 0x000000);
+    draw_text(u64toa(minutes, string, 10), clock_x + 17, clock_y, 0x000000);
+    draw_text(u64toa(seconds, string, 10), clock_x + 34, clock_y, 0x000000);
+    draw_text("AM", clock_x + 51, clock_y, 0x000000);
     
 
     int win_btn_x = start_btn_x + start_btn_width + 10;
