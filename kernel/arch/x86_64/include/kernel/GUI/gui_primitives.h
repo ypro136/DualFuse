@@ -8,7 +8,7 @@
  
 // You must provide these functions:
 extern void draw_pixel(int x, int y, uint32_t rgb);
-extern void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb);
+extern void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color);
 
  
 // BASIC UTILITY FUNCTIONS
@@ -72,6 +72,7 @@ void clear_screen(int width, int height, uint32_t color);
  
 // XP COLOR PALETTE CONSTANTS
  
+extern uint32_t bg_color;
 
 static const uint32_t XP_BACKGROUND = 0xC0C0C0;      // Light gray
 static const uint32_t XP_BUTTON_FACE = 0xBFBFBF;     // Button face

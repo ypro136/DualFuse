@@ -163,7 +163,6 @@ void dbg_printf(char *fmt, ...)
 {
     char tmp[256], *s = (char*)&tmp;
     __builtin_va_list args;
-    __builtin_va_start(args, fmt);
     dbg_vsprintf(s,fmt,args);
     while(*s) {
         if(*s=='\n')

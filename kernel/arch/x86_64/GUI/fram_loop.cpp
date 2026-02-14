@@ -7,14 +7,17 @@
 
 extern uint64_t get_frame_time();
 
+uint64_t last_gui_frame = 0;
+
 void frame_loop(void (*render_callback)(void)) {
     static uint64_t last_frame_time = 0;
     uint64_t current_frame_time = get_frame_time();
     
     // Only render if frame time has changed
-    if (current_frame_time != last_frame_time) {
+    if ((current_frame_time != last_frame_time) && (last_gui_frame < gui_frame) ) {
         last_frame_time = current_frame_time;
         render_callback();
+        last_gui_frame = gui_frame;
     }
 }
 

@@ -8,9 +8,7 @@
 
 #include <gui_primitives.h>
 
- 
-// CONFIGURATION CONSTANTS
- 
+extern bool buffer_ready;
 
 #define SCREEN_WIDTH screen_width
 #define SCREEN_HEIGHT screen_height
@@ -32,6 +30,10 @@ struct XPWindow {
     uint32_t bg_color;
 };
 
+extern XPWindow window1;
+
+extern XPWindow window2;
+
  
 // RENDERING FUNCTIONS
  
@@ -52,5 +54,6 @@ void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll);
 void draw_desktop_background();
 void draw_desktop_icon(int x, int y, const char* label, uint32_t icon_color);
 void draw_taskbar();
+void GUI_initialize(XPWindow win);
 
 #endif

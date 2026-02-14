@@ -93,16 +93,13 @@ void handle_task_fault(AsmPassedInterrupt *regs) {
     uint64_t err_pos;
     asm volatile("movq %%cr2, %0" : "=r"(err_pos));
     console_initialized = false; // disable console
-    printf("[isr] Page fault occured at cr2{%lx} rip{%lx}\n", err_pos,
-           regs->rip);
+    printf("[isr] Page fault occured at cr2{%lx} rip{%lx}\n", err_pos, regs->rip);
   }
   bool last_console_state = console_initialized;
   console_initialized = false; // disable console
-  printf("[isr::task] [%c] Killing task{%d} because of %s!\n",
-         currentTask->kernel_task ? '-' : 'u', currentTask->id,
-         exceptions[regs->interrupt]);
+  printf("[isr::task] [%c] Killing task{%d} because of %s!\n",currentTask->kernel_task ? '-' : 'u', currentTask->id,exceptions[regs->interrupt]);
+  printf("at %lx\n", regs->rip);
   console_initialized = last_console_state; // restore console state
-  // printf("at %lx\n", regs->rip);
   // Halt();
   task_kill(currentTask->id, 139);
   //schedule((uint64_t)regs);
@@ -227,8 +224,7 @@ extern "C" void handle_interrupt(uint64_t rsp)
       asm volatile("movq %%cr2, %0" : "=r"(err_pos));
       bool last_console_state = console_initialized;
       console_initialized = false; // disable console
-      printf("[isr] Page fault occured at cr2{%lx} rip{%lx}\n", err_pos,
-             cpu->rip);
+      printf("[isr] Page fault occured at cr2{%lx} rip{%lx}\n", err_pos,cpu->rip);
       console_initialized = last_console_state; // restore console state
     }
     printf(format, exceptions[cpu->interrupt]);

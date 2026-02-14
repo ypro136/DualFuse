@@ -75,11 +75,8 @@ extern "C" void kernel_main(void)
     // draw dualfuse GUI
     // // Initialize the global console as a window at position (100,50)
     // console = Console(800, 600, 10, 10);
-    // // Use the legacy initializer to set the global `console_initialized` flag
-    // console_initialize();
     // console.clear_screen();
     // // Set a visible title for the console window
-    // console.set_title("Kernel Console");
     // printf("Console initialized.\n");
 
     // // Initialize the global StateMonitor window (updates driven by timer IRQ)
@@ -89,8 +86,6 @@ extern "C" void kernel_main(void)
     // printf("stateMonitor initialized.\n");
 
     // draw win XP GUI
-
-
 
 	keyboard_initialize();
     printf("keyboard initialized.\n");

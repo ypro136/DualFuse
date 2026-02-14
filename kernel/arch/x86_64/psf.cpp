@@ -5,13 +5,10 @@
 #include <console.h>
 
 
-
 // ONLY include this here!
 #include <gohufont.h>
 
 PSF1Header *psf;
-
-
 
 
 bool psfLoad(void *buffer) {
@@ -33,7 +30,7 @@ bool psfLoad(void *buffer) {
   psf = buffer;
 
   #if defined(DEBUG_CONSOLE)
-  printf("[console] Initiated with font: dim(xy){%dx%d}\n", 8, psf->height);
+  printf("[psf] Initiated with font: dim(xy){%dx%d}\n", 8, psf->height);
   #endif
 
   return true;
@@ -62,10 +59,9 @@ bool psfLoadDefaults()
 //   return res;
 // }
 
-void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb) {
-  #if defined(DEBUG_CONSOLE)
+void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color) {
   if (!psf) return;
-  #endif
+
   uint8_t *targ = (uint8_t *)((size_t)psf + sizeof(PSF1Header) + c * psf->height);
   for (int i = 0; i < psf->height; i++) {
     for (int j = 0; j < 8; j++) {

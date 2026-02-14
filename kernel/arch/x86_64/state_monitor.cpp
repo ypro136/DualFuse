@@ -32,7 +32,6 @@ void StateMonitor::initialize()
     wnd.draw_box(0, window_h - 2, window_w, 2, border_color);
     wnd.draw_box(0, 0, 2, window_h, border_color);
     wnd.draw_box(window_w - 2, 0, 2, window_h, border_color);
-    wnd.set_title("State Monitor");
     render();
 }
 
@@ -73,7 +72,6 @@ void StateMonitor::render()
     for (int i = 0; i < 3; i++) {
         draw_bar(i, bar[i]);
     }
-    wnd.draw_title();
 }
 
 void StateMonitor::set_window_size(uint32_t width, uint32_t height)

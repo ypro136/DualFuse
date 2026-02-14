@@ -9,6 +9,13 @@
 #define TTY_CHARACTER_WIDTH 8
 #define TTY_CHARACTER_HEIGHT 16
 
+// Add this before the Console class definition
+inline int clamp(int val, int min_val, int max_val) {
+    if (val < min_val) return min_val;
+    if (val > max_val) return max_val;
+    return val;
+}
+
 class Console
 {
 private:
@@ -16,8 +23,6 @@ private:
     int textcolor;
     int border_color;
     int border_thickness;
-    char title[64];
-    bool is_initialized;
     bool cursorHidden;
     
     uint32_t cursor_position_x;
@@ -56,8 +61,6 @@ public:
     
     void initialize();
     void clear_screen();
-    void set_title(const char* t);
-    void draw_title();
     
     void draw_character(int charnum);
     void print_char(char character);
@@ -87,16 +90,15 @@ public:
     // Framebuffer management (prepared for multi-framebuffer)
     void set_framebuffer(void* fb) { framebuffer = fb; }
     void* get_framebuffer() const { return framebuffer; }
-    
-    bool is_ready() const { return is_initialized; }
 };
 
 // Global instance
 extern Console console;
 
 // Legacy C API wrappers for compatibility
-extern int bg_color;
+//extern int bg_color;
 extern int textcolor;
+__attribute__((used))
 extern bool console_initialized;
 
 void console_initialize();

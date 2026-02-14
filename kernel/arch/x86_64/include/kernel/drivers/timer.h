@@ -8,6 +8,8 @@
 extern uint64_t timerTicks;
 extern uint64_t timerBootUnix;
 
+extern uint64_t gui_frame;
+
 
 void timer_initialize();
 uint32_t sleep(uint32_t time);

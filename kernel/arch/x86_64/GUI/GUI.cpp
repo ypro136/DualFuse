@@ -3,7 +3,9 @@
 #include <cstring>
 
 #include <framebufferutil.h>
+#include <console.h>
 #include <psf.h>
+#include <timer.h>
 
 #include <GUI.h>
 
@@ -57,8 +59,6 @@ void draw_window_button(int x, int y, int size, const char* label, bool active) 
     }
 }
 
-  
-
 void draw_xp_window(const XPWindow& win) {
     fill_rectangle(win.x, win.y, win.width, win.height, XP_BACKGROUND);
     
@@ -81,7 +81,6 @@ void draw_xp_window(const XPWindow& win) {
     draw_window_button(win.x + win.width - (btn_size + 4) * 2, btn_y, btn_size, "[", true);
     draw_window_button(win.x + win.width - (btn_size + 4) * 3, btn_y, btn_size, "_", true);
 }
-
 
 void draw_xp_button(int x, int y, int width, int height, const char* label, bool pressed) {
     uint32_t button_color = XP_BUTTON_FACE;
@@ -106,7 +105,57 @@ void draw_xp_button(int x, int y, int width, int height, const char* label, bool
     draw_text_centered(label, x, y + (height - 8) / 2, width, 0x000000);
 }
 
- 
+ // A utility function to reverse a string
+void reverse(char* str, int length)
+{
+    int start = 0;
+    int end = length - 1;
+    while (start < end) {
+        char temp = str[start];
+        str[start] = str[end];
+        str[end] = temp;
+        end--;
+        start++;
+    }
+}
+
+char* citoa(int num, char* str, int base)
+{
+    int i = 0;
+    bool isNegative = false;
+
+    /* Handle 0 explicitly, otherwise empty string is
+     * printed for 0 */
+    if (num == 0) {
+        str[i++] = '0';
+        str[i] = '\0';
+        return str;
+    }
+
+    if (num < 0 && base == 10) {
+        isNegative = true;
+        num = -num;
+    }
+
+    // Process individual digits
+    while (num != 0) {
+        int rem = num % base;
+        str[i++] = (rem > 9) ? (rem - 10) + 'a' : rem + '0';
+        num = num / base;
+    }
+
+    // If number is negative, append '-'
+    if (isNegative)
+        str[i++] = '-';
+
+    str[i] = '\0'; // Append string terminator
+
+    // Reverse the string
+    reverse(str, i);
+
+    return str;
+}
+
 void draw_taskbar() {
     draw_gradient(0, TASKBAR_Y, SCREEN_WIDTH, TASKBAR_HEIGHT,
                   0xC0C0C0, 0xA0A0A0, false);
@@ -122,7 +171,17 @@ void draw_taskbar() {
     
     int clock_x = SCREEN_WIDTH - 80;
     int clock_y = TASKBAR_Y + 5;
-    draw_text("12:34 PM", clock_x, clock_y, 0x000000);
+    char clock_strring[20];
+
+    uint64_t total_seconds = timerTicks / 60;
+    
+    // Calculate hours, minutes, seconds
+    uint64_t hours = total_seconds / 3600;
+    uint64_t minutes = (total_seconds % 3600) / 60;
+    uint64_t seconds = total_seconds % 60;
+    draw_text(citoa(seconds, clock_strring, 10) , clock_x + 10, clock_y , 0x000000);
+    draw_text(citoa(minutes, clock_strring, 10) , clock_x - 10, clock_y, 0x000000);
+    draw_text(citoa(hours, clock_strring, 10) , clock_x - 30, clock_y, 0x000000);
     
 
     int win_btn_x = start_btn_x + start_btn_width + 5;
@@ -135,19 +194,18 @@ void draw_taskbar() {
     draw_text("My Computer", win_btn_x + 5, win_btn_y + 7, 0x000000);
 }
 
-
 void draw_desktop_icon(int x, int y, const char* label, uint32_t icon_color) {
     int icon_size = 32;
     
     // Icon background (light square)
     fill_rectangle(x, y, icon_size, icon_size, 0xDFDFDF);
     #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] draw_desktop_icon fill_rectangle done\n");
+        printf("[GUI] draw_desktop_icon fill_rectangle done\n");
     #endif 
     // Icon border
     draw_rect_outline(x, y, icon_size, icon_size, XP_BUTTON_SHADOW, 1);
     #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] draw_desktop_icon draw_rect_outline done\n");
+        printf("[GUI] draw_desktop_icon draw_rect_outline done\n");
     #endif 
     // Icon content (simple colored square)
     fill_rectangle(x + 6, y + 6, icon_size - 12, icon_size - 12, icon_color);
@@ -155,29 +213,21 @@ void draw_desktop_icon(int x, int y, const char* label, uint32_t icon_color) {
     // Icon label (below icon)
     draw_text_centered(label, x - 20, y + icon_size + 5, icon_size + 40, 0xFFFFFF);
     #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] draw_desktop_icon draw_text_centered done\n");
+        printf("[GUI] draw_desktop_icon draw_text_centered done\n");
     #endif 
 }
-
- 
-// DRAW DESKTOP BACKGROUND
- 
 
 void draw_desktop_background() {
 
     draw_gradient(0, 0, SCREEN_WIDTH, TASKBAR_Y,0x008DD5, 0x0078D7, true); 
     #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] desktop background done\n");
+        printf("[GUI] desktop background done\n");
     #endif 
     
     draw_desktop_icon(10, 10, "Computer", 0x808080);
     draw_desktop_icon(10, 60, "Documents", 0x808080);
     draw_desktop_icon(10, 110, "Network", 0x808080);
 }
-
- 
-// DRAW SCROLLBAR
- 
 
 void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll) {
     int track_height = height - 32;  // Account for buttons
@@ -203,27 +253,75 @@ void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll) {
     int down_y = y + height - 16;
     fill_rectangle(x, down_y, 16, 16, XP_BUTTON_FACE);
     draw_beveled_border_thick(x, down_y, 16, 16, XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE, XP_BUTTON_SHADOW, true);
-    draw_line(x + 6, y + down_y + 4, x + 10, down_y + 8, 0x000000);
-    draw_line(x + 10, down_y + 8, x + 10, down_y + 4, 0x000000);
+    //draw_line(x + 6, y + down_y + 4, x + 10, down_y + 8, 0x000000);
+    //draw_line(x + 10, down_y + 8, x + 10, down_y + 4, 0x000000);
 }
-
- 
+__attribute__((used))
+bool buffer_ready = false;
 void render_xp_desktop() 
     {
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Clearing screen %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
-    #endif
-        clear_screen(SCREEN_WIDTH, SCREEN_HEIGHT, 0x000000);
+        buffer_ready = false;
         
     #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing desktop background\n");
+        printf("[GUI] Drawing desktop background\n");
     #endif
         draw_desktop_background();
         
     #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Creating window1 at (%d,%d) size %dx%d\n", 100, 100, 400, 300);
+        printf("[GUI] Drawing window1\n");
     #endif
-        XPWindow window1 = {
+        draw_xp_window(window1);
+        
+    #if defined(DEBUG_GUI)
+        printf("[GUI] Drawing window1 client area rectangle\n");
+    #endif
+        fill_rectangle(window1.x + 10, window1.y + 40, window1.width - 20, window1.height - 60, 0xECE9D8);
+        
+    #if defined(DEBUG_GUI)
+        printf("[GUI] Drawing window1 button: Open\n");
+    #endif
+        draw_xp_button(window1.x + 20, window1.y + 50, 100, 25, "Open", false);
+    #if defined(DEBUG_GUI)
+        printf("[GUI] Drawing window1 button: Delete\n");
+    #endif
+        draw_xp_button(window1.x + 130, window1.y + 50, 100, 25, "Delete", false);
+    #if defined(DEBUG_GUI)
+        printf("[GUI] Drawing window1 button: Cancel\n");
+    #endif
+        draw_xp_button(window1.x + 240, window1.y + 50, 100, 25, "Cancel", false);
+        
+    #if defined(DEBUG_GUI)
+        printf("[GUI] Drawing window2\n");
+    #endif
+        draw_xp_window(window2);
+
+        if (console_initialized == false)
+        {
+            #if defined(DEBUG_GUI)
+            printf("[GUI] console_initialized == false calling GUI_initialize(window2);\n");
+            #endif
+            GUI_initialize(window2);
+            #if defined(DEBUG_GUI)
+            printf("[GUI] GUI_initialize done console_initialized == %d\n", console_initialized);
+            #endif
+
+            
+        }
+    #if defined(DEBUG_GUI)
+        printf("[GUI] Drawing window2 scrollbar at x=%d, y=%d, height=%d\n", window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, window2.height - TITLE_BAR_HEIGHT - 10);
+    #endif
+        draw_scrollbar(window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, window2.height - TITLE_BAR_HEIGHT - 10, 0, window2.height);
+        #if defined(DEBUG_GUI)
+        printf("[GUI] Drawing taskbar\n");
+    #endif
+        draw_taskbar();
+    #if defined(DEBUG_GUI)
+        printf("[GUI] Render complete\n");
+    #endif
+    buffer_ready = true;
+}
+
+XPWindow window1 = {
             .x = 100,
             .y = 100,
             .width = 400,
@@ -233,79 +331,33 @@ void render_xp_desktop()
             .minimized = false,
             .bg_color = 0xECE9D8
         };
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window1\n");
-    #endif
-        draw_xp_window(window1);
-        
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window1 client area rectangle\n");
-    #endif
-        fill_rectangle(window1.x + 10, window1.y + 40, window1.width - 20, window1.height - 60, 0xECE9D8);
-        
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window1 button: Open\n");
-    #endif
-        draw_xp_button(window1.x + 20, window1.y + 50, 100, 25, "Open", false);
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window1 button: Delete\n");
-    #endif
-        draw_xp_button(window1.x + 130, window1.y + 50, 100, 25, "Delete", false);
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window1 button: Cancel\n");
-    #endif
-        draw_xp_button(window1.x + 240, window1.y + 50, 100, 25, "Cancel", false);
-        
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Creating window2 at (%d,%d) size %dx%d\n", 550, 150, 350, 250);
-    #endif
-        XPWindow window2 = {
-            .x = 550,
-            .y = 150,
-            .width = 350,
-            .height = 250,
-            .title = "Notepad - untitled",
+
+XPWindow window2 = {
+            .x = 350,
+            .y = 175,
+            .width = 800,
+            .height = 500,
+            .title = "Kernel Console",
             .active = false,
             .minimized = false,
             .bg_color = 0xFFFFFF
         };
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window2\n");
+    
+
+void GUI_initialize(XPWindow win)
+{
+    console = Console(win.width, win.height, win.x, win.y + TITLE_BAR_HEIGHT);
+    console.initialize();
+    console_initialized = true;
+    #if defined(DEBUG_CONSOLE)
+        printf("[console] initialize set console_initialized to :%d should be 1\n", console_initialized);
     #endif
-        draw_xp_window(window2);
-        
+    console.clear_screen();
     #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window2 text line 1\n");
-    #endif
-        draw_text("This is a simple XP desktop GUI system.", 
-                window2.x + 15, window2.y + 45, 0x000000);
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window2 text line 2\n");
-    #endif
-        draw_text("It demonstrates windows, buttons, and controls.", 
-                window2.x + 15, window2.y + 60, 0x000000);
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window2 text line 3\n");
-    #endif
-        draw_text("The taskbar is at the bottom.", 
-                window2.x + 15, window2.y + 75, 0x000000);
-        
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window2 scrollbar at x=%d, y=%d, height=%d\n", 
-            window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, 
-            window2.height - TITLE_BAR_HEIGHT - 10);
-    #endif
-        draw_scrollbar(window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, 
-                    window2.height - TITLE_BAR_HEIGHT - 10, 0, 100);
-        
-        // Draw taskbar (always last, on top)
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing taskbar\n");
-    #endif
-        draw_taskbar();
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Render complete\n");
-    #endif
+        printf("[GUI] console.clear_screen() done\n");
+    #endif 
+    printf("kernel console.\n");
+    
 }
 
  

@@ -34,8 +34,6 @@ public:
     void set_window_size(uint32_t width, uint32_t height);
     void set_window_position(uint32_t x, uint32_t y);
 
-    // Whether the monitor has been initialized and is ready for updates
-    bool is_ready() const { return wnd.is_ready(); }
 private:
     Console wnd; // console window used for rendering
     uint32_t window_w;
