@@ -259,7 +259,8 @@ void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll) {
     // draw_line(x + 10, down_y + 8, x + 10, down_y + 4, 0x000000);
 }
 
- 
+int animation = 105;
+int step = 0;
 void render_xp_desktop() 
     {
         frame_ready = false;
@@ -276,8 +277,15 @@ void render_xp_desktop()
     #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] Creating window1 at (%d,%d) size %dx%d\n", 100, 100, 400, 300);
     #endif
+    if(animation > 200 || animation < 100)
+    {
+        step = (-1 * step);
+        animation += step;
+    }else{
+        animation += step;
+    }
         XPWindow window1 = {
-            .x = 100,
+            .x = animation,
             .y = 100,
             .width = 400,
             .height = 300,
