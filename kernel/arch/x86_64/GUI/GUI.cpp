@@ -4,6 +4,7 @@
 
 #include <framebufferutil.h>
 #include <psf.h>
+#include <timer.h>
 
 #include <GUI.h>
 
@@ -59,7 +60,8 @@ void draw_window_button(int x, int y, int size, const char* label, bool active) 
 
   
 
-void draw_xp_window(const XPWindow& win) {
+void draw_xp_window(const XPWindow& win) 
+{
     fill_rectangle(win.x, win.y, win.width, win.height, XP_BACKGROUND);
     
     draw_window_title_bar(win);
@@ -203,13 +205,14 @@ void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll) {
     int down_y = y + height - 16;
     fill_rectangle(x, down_y, 16, 16, XP_BUTTON_FACE);
     draw_beveled_border_thick(x, down_y, 16, 16, XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE, XP_BUTTON_SHADOW, true);
-    draw_line(x + 6, y + down_y + 4, x + 10, down_y + 8, 0x000000);
-    draw_line(x + 10, down_y + 8, x + 10, down_y + 4, 0x000000);
+    // draw_line(x + 6, y + down_y + 4, x + 10, down_y + 8, 0x000000);
+    // draw_line(x + 10, down_y + 8, x + 10, down_y + 4, 0x000000);
 }
 
  
 void render_xp_desktop() 
     {
+        frame_ready = false;
     #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] Clearing screen %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     #endif
@@ -295,8 +298,7 @@ void render_xp_desktop()
             window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, 
             window2.height - TITLE_BAR_HEIGHT - 10);
     #endif
-        draw_scrollbar(window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, 
-                    window2.height - TITLE_BAR_HEIGHT - 10, 0, 100);
+        draw_scrollbar(window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, window2.height - TITLE_BAR_HEIGHT - 10, 0, window2.height);
         
         // Draw taskbar (always last, on top)
     #if defined(DEBUG_GUI)
@@ -306,6 +308,7 @@ void render_xp_desktop()
     #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] Render complete\n");
     #endif
+    frame_ready = true;
 }
 
  

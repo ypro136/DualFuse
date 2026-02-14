@@ -21,6 +21,9 @@ uint64_t timerBootUnix;
 
 const uint32_t frequency = 60;
 
+bool frame_ready = false;
+uint64_t GUI_frame = 1;
+
 
 void timer_irq_0(struct interrupt_registers *registers)
 {
@@ -48,7 +51,11 @@ void timer_irq_0(struct interrupt_registers *registers)
     {
         copy_buffer_to_screan();
     }
-    copy_buffer_to_screan();
+    if (frame_ready)
+    {
+        copy_buffer_to_screan();
+        GUI_frame++;
+    }
 
     
 
@@ -65,7 +72,7 @@ uint32_t sleep(uint32_t time)
 }
 
 uint64_t get_frame_time() {
-    return timerTicks;
+    return GUI_frame;
 }
 
 void timer_initialize()
