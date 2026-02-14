@@ -21,7 +21,7 @@ Console console;
 
 // Legacy globals for C compatibility
 int bg_color = 0xC0C0C0; //0x1B262C;
-int textcolor = 0xBBE1FA;
+int textcolor = 0x000000;//0xBBE1FA;
 bool console_initialized = false;
 
 static Spinlock LOCK_CONSOLE = ATOMIC_FLAG_INIT;
@@ -31,7 +31,7 @@ static Spinlock LOCK_CONSOLE = ATOMIC_FLAG_INIT;
  
 Console::Console(uint32_t width, uint32_t height, uint32_t start_x, uint32_t start_y)
     : bg_color(0xC0C0C0),
-      textcolor(0xBBE1FA),
+      textcolor(0x000000),
     border_color(0xBBBBBB),
     border_thickness(2),
       is_initialized(false),
@@ -398,7 +398,7 @@ void console_initialize()
     console.initialize();
     console_initialized = console.is_ready();
     bg_color = 0xC0C0C0;// 0x1B262C;
-    textcolor = 0xBBE1FA;
+    textcolor = 0x000000;//0xBBE1FA;
 }
 
 void drawCharacter(int charnum)

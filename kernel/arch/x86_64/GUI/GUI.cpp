@@ -313,10 +313,10 @@ void render_xp_desktop()
         printf("[DEBUG_GUI] Creating window2 at (%d,%d) size %dx%d\n", 550, 150, 350, 250);
     #endif
         XPWindow window2 = {
-            .x = 550,
-            .y = 150,
-            .width = 350,
-            .height = 250,
+            .x = 350,
+            .y = 175,
+            .width = 800,
+            .height = 500,
             .title = "Kernel Console",
             .active = false,
             .minimized = false,

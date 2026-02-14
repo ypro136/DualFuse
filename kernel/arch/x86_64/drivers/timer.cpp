@@ -57,7 +57,9 @@ void timer_irq_0(struct interrupt_registers *registers)
         GUI_frame++;
     }
 
-    
+    #if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI::timer] GUI_frame : %d\n", GUI_frame);
+    #endif
 
 }
 
