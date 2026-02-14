@@ -174,10 +174,14 @@ int  irqLast = 0; // starting point
 static uint8_t staticIrqBuffer[1] = {0};
 
 void initiateIrqPerCore() {
+  #if defined(DEBUG_APIC)
   printf("[apic] Setting up IRQ per-core buffer\n");
+  #endif
   // For single-core, just point to our static buffer
   irqPerCpu = staticIrqBuffer;
+  #if defined(DEBUG_APIC)
   printf("[apic] IRQ per-core buffer ready at %lx\n", (uint64_t)irqPerCpu);
+  #endif
 }
 
 uint8_t irqPerCoreAllocate(uint8_t gsi, uint32_t *lapicId) {
@@ -227,7 +231,6 @@ uint8_t irqPerCoreAllocate(uint8_t gsi, uint32_t *lapicId) {
 
 void apicPrintCb(void *data, void *ctx) {
   IOAPIC *apic = data;
-  printf("ioapic{%lx} ", apic->ioapicPhys);
 }
 
 void initiateAPIC() {
@@ -235,18 +238,23 @@ void initiateAPIC() {
     printf("[apic] Warning: APIC is not supported!\n");
     Halt();
   }
-
+  #if defined(DEBUG_APIC)
   printf("[apic] APIC is supported, beginning initialization...\n");
 
   printf("[apic] Initializing IRQ per core...\n");
+  #endif
   initiateIrqPerCore();
+  #if defined(DEBUG_APIC)
   printf("[apic] IRQ per core initialized\n");
   
   printf("[apic] Reading APIC base from MSR...\n");
+  #endif
   apicPhys = apicGetBase();
+  #if defined(DEBUG_APIC)
   printf("[apic] Successfully read MSR\n");
   
   printf("[apic] APIC physical address from MSR: %lx\n", apicPhys);
+  #endif
   
   // Validate APIC physical address
   if (!apicPhys || apicPhys > 0xFFFFFFFF) {
@@ -256,34 +264,54 @@ void initiateAPIC() {
   
   // Set virtual address
   apicVirt = bootloader.hhdmOffset + apicPhys;
+  #if defined(DEBUG_APIC)
   printf("[apic] APIC virtual address: %lx (phys: %lx, hhdm: %lx)\n", 
          apicVirt, apicPhys, bootloader.hhdmOffset);
+  #endif
 
+  #if defined(DEBUG_APIC)
   // Initialize minimal ACPI parser and get MADT
   printf("[apic] Initializing ACPI...\n");
-  acpiInit();
+  #endif
+  //acpiInit();
+  #if defined(DEBUG_APIC)
   printf("[apic] geting madt from acpiGetMadt\n");
+  #endif
   AcpiMadt* madt = acpiGetMadt();
+  #if defined(DEBUG_APIC)
   printf("[apic] madt at %lx\n", madt);
+  #endif
   
   if (!madt) {
     printf("[apic] MADT not available - initializing basic LAPIC only\n");
+    #if defined(DEBUG_APIC)
     printf("[apic] Setting APIC base at %lx...\n", apicPhys);
+  #endif
     
     // Very basic LAPIC initialization
     // Set the APIC enable bit in MSR
+    #if defined(DEBUG_APIC)
     printf("[apic] Enabling APIC via MSR...\n");
+  #endif
     apicSetBase(apicPhys);
     
-    // Try to enable the LAPIC (software enable bit in SVR register at offset 0xF0)
+    #if defined(DEBUG_APIC)
     printf("[apic] Reading SVR register at offset 0xF0...\n");
+    #endif
+    // Try to enable the LAPIC (software enable bit in SVR register at offset 0xF0)
     uint32_t svr = apicRead(0xF0);
+    #if defined(DEBUG_APIC)
     printf("[apic] SVR value: %lx\n", svr);
+  #endif
     
-    printf("[apic] Setting software enable bit...\n");
+  #if defined(DEBUG_APIC)
+  printf("[apic] Setting software enable bit...\n");
+  #endif
     apicWrite(0xF0, svr | 0x1FF);
     
+    #if defined(DEBUG_APIC)
     printf("[apic] Basic LAPIC initialization complete\n");
+  #endif
     return;
   }
 
@@ -305,11 +333,15 @@ void initiateAPIC() {
   while (curr < end) {
     AcpiEntryHdr *browse = (AcpiEntryHdr *)curr;
     
+    #if defined(DEBUG_APIC)
     printf("[apic] MADT browse type is: %u\n",browse->type);
+  #endif
 
     if (browse->type == ACPI_MADT_ENTRY_TYPE_IOAPIC) {
       AcpiMadtIoapic *specialized = (AcpiMadtIoapic *)browse;
+      #if defined(DEBUG_APIC)
       printf("[apic] MADT &dsIoapic is: %lx , sizeof(IOAPIC) is: %u\n",&dsIoapic, sizeof(IOAPIC));
+  #endif
       IOAPIC *ioapic = (IOAPIC *)LinkedListAllocate(&dsIoapic, sizeof(IOAPIC));
       ioapic->id = specialized->id;
     
@@ -331,14 +363,17 @@ void initiateAPIC() {
     curr += browse->length;
   }
 
-  printf("[apic] MADT if\n");
+  #if defined(DEBUG_APIC)
   printf("[apic] ioapics is :%d\n", ioapics);
+  #endif
   if (ioapics == 0) 
   {
     printf("[apic] No I/O APICs found - skipping I/O APIC setup\n");
   }
 
+  #if defined(DEBUG_APIC)
   printf("[apic] Detection completed: lapic{%lx} ", apicPhys);
+  #endif
   if (ioapics) LinkedListTraverse(&dsIoapic, apicPrintCb, 0);
   printf("\n");
 

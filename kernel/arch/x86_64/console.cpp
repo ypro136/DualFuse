@@ -131,6 +131,15 @@ bool Console::scroll_console()
         memcpy(dest, src, (size_t)window_width * (size_t)bpp);
     }
     draw_rect(0, window_height - CHAR_HEIGHT, window_width, CHAR_HEIGHT, bg_color);
+    
+    // Redraw all borders after scrolling
+    draw_box(0, 0, window_width, border_thickness, border_color);                              // Top
+    //draw_box(0, window_height - border_thickness, window_width, border_thickness, border_color); // Bottom
+    draw_box(0, 0, border_thickness, window_height, border_color);                             // Left
+    draw_box(window_width - border_thickness, 0, border_thickness, window_height, border_color); // Right
+
+    draw_title();
+    
     decrement_cursor_y();
     return true;
 }
@@ -215,7 +224,7 @@ void Console::clear_screen()
     // Redraw frame and border
     draw_box(0, 0, window_width, window_height, bg_color);
     draw_box(0, 0, window_width, border_thickness, border_color);
-    draw_box(0, window_height - border_thickness, window_width, border_thickness, border_color);
+    //draw_box(0, window_height - border_thickness, window_width, border_thickness, border_color);//bottom
     draw_box(0, 0, border_thickness, window_height, border_color);
     draw_box(window_width - border_thickness, 0, border_thickness, window_height, border_color);
 

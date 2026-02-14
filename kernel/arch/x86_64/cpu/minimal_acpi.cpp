@@ -25,13 +25,10 @@ static AcpiRsdp* acpiFindRsdp() {
   if (bootloader.rsdp) {
     uint64_t rsdpVirt = bootloader.hhdmOffset + bootloader.rsdp;
     rsdp = (AcpiRsdp*)rsdpVirt;
-    
-    printf("[acpi] Trying RSDP from bootloader at physical %lx (virtual %lx)\n", 
-           bootloader.rsdp, rsdpVirt);
-
-    printf("[acpi] RSDP from bootloader at physical %lx (virtual %lx) is: signature = %c, %c, %c, %c\n", 
-           bootloader.rsdp, rsdpVirt, rsdp->signature[0], rsdp->signature[1], rsdp->signature[2], rsdp->signature[3]);
-    
+    #if defined(DEBUG_ACPI)
+    printf("[acpi] Trying RSDP from bootloader at physical %lx (virtual %lx)\n", bootloader.rsdp, rsdpVirt);
+    printf("[acpi] RSDP from bootloader at physical %lx (virtual %lx) is: signature = %c, %c, %c, %c\n",bootloader.rsdp, rsdpVirt, rsdp->signature[0], rsdp->signature[1], rsdp->signature[2], rsdp->signature[3]);
+    #endif
     // Verify signature
     if (rsdp->signature[0] == 'R' && rsdp->signature[1] == 'S' &&
         rsdp->signature[2] == 'D') {
@@ -39,15 +36,20 @@ static AcpiRsdp* acpiFindRsdp() {
       // Validate checksum
       if (rsdp->revision >= 2) {
         if (acpiValidateChecksum(rsdp, rsdp->length)) {
+          #if defined(DEBUG_ACPI)
           printf("[acpi] Found valid RSDP 2.0+ from bootloader at %lx\n", bootloader.rsdp);
+          #endif
           return rsdp;
         }
       } else {
         if (acpiValidateChecksum(rsdp, 20)) {
+          #if defined(DEBUG_ACPI)
           printf("[acpi] Found valid RSDP 1.0 from bootloader at %lx\n", bootloader.rsdp);
+          #endif
           return rsdp;
         }
       }
+      
       printf("[acpi] Bootloader RSDP signature valid but checksum invalid\n");
     } else {
       printf("[acpi] Bootloader RSDP signature mismatch\n");
@@ -72,13 +74,16 @@ static AcpiRsdp* acpiFindRsdp() {
     }
     
     sigCount++;
-    printf("[acpi] Found RSDP signature at physical %lx (attempt %d, revision %d)\n", 
-           addr - bootloader.hhdmOffset, sigCount, rsdp->revision);
+    #if defined(DEBUG_ACPI)
+    printf("[acpi] Found RSDP signature at physical %lx (attempt %d, revision %d)\n",addr - bootloader.hhdmOffset, sigCount, rsdp->revision);
+      #endif
     
     // For ACPI 2.0+, validate extended checksum
     if (rsdp->revision >= 2) {
       if (acpiValidateChecksum(rsdp, rsdp->length)) {
+        #if defined(DEBUG_ACPI)
         printf("[acpi] Found valid RSDP 2.0+ at %lx\n", addr - bootloader.hhdmOffset);
+          #endif
         return rsdp;
       } else {
         printf("[acpi] RSDP 2.0+ checksum invalid (length: %d)\n", rsdp->length);
@@ -86,7 +91,9 @@ static AcpiRsdp* acpiFindRsdp() {
     } else {
       // For ACPI 1.0, validate first 20 bytes
       if (acpiValidateChecksum(rsdp, 20)) {
+        #if defined(DEBUG_ACPI)
         printf("[acpi] Found valid RSDP 1.0 at %lx\n", addr - bootloader.hhdmOffset);
+          #endif
         return rsdp;
       } else {
         printf("[acpi] RSDP 1.0 checksum invalid\n");
@@ -116,7 +123,9 @@ static void* acpiFindRootTable() {
     if (xsdtHdr->length >= sizeof(AcpiTableHeader) && 
         xsdtHdr->length < 0x100000 &&  // Sanity check: table shouldn't be > 1MB
         acpiValidateChecksum(xsdt, xsdtHdr->length)) {
-      printf("[acpi] Using XSDT at %lx\n", rsdp->xsdt_address);
+          #if defined(DEBUG_ACPI)
+          printf("[acpi] Using XSDT at %lx\n", rsdp->xsdt_address);
+          #endif
       return xsdt;
     }
   }
@@ -130,7 +139,9 @@ static void* acpiFindRootTable() {
     if (rsdtHdr->length >= sizeof(AcpiTableHeader) && 
         rsdtHdr->length < 0x100000 &&  // Sanity check
         acpiValidateChecksum(rsdt, rsdtHdr->length)) {
-      printf("[acpi] Using RSDT at %lx\n", rsdp->rsdt_address);
+          #if defined(DEBUG_ACPI)
+          printf("[acpi] Using RSDT at %lx\n", rsdp->rsdt_address);
+          #endif
       return rsdt;
     }
   }
@@ -192,9 +203,9 @@ void* acpiGetTableBySignature(const char* signature) {
       
       // Validate checksum
       if (acpiValidateChecksum(table, table->length)) {
-        printf("[acpi] Found table %c%c%c%c at %lx\n",
-               signature[0], signature[1], signature[2], signature[3],
-               tableAddr);
+        #if defined(DEBUG_ACPI)
+        printf("[acpi] Found table %c%c%c%c at %lx\n",signature[0], signature[1], signature[2], signature[3],tableAddr);
+          #endif
         return tablePtr;
       }
     }
@@ -211,8 +222,9 @@ void acpiInit() {
     printf("[acpi] Warning: MADT table not found\n");
     return;
   }
-  
+  #if defined(DEBUG_ACPI)
   printf("[acpi] MADT found: lapic_address=%lx\n", cachedMadt->lapic_address);
+          #endif
 }
 
 AcpiMadt* acpiGetMadt() {

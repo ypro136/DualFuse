@@ -79,10 +79,20 @@ static inline int getexp( unsigned int size )
 
 static void* 	liballoc_memset(void* s, int c, size_t n)
 {
+	#if defined(DEBUG_MEMORY)
+    printf("[memory] enter liballoc_memset\n");
+    #endif
+
+	#if defined(DEBUG_MEMORY)
+    printf("[memory] liballoc_memset: address:%lx, val:%d, size:%d\n", s, c, n);
+    #endif
 	int i;
-	for ( i = 0; i < n ; i++)
+	for ( i = 0; i < n ; i++){
 		((char*)s)[i] = c;
-	
+	}
+	#if defined(DEBUG_MEMORY)
+    printf("[memory] exit liballoc_memset\n");
+    #endif
 	return s;
 }
 
@@ -499,14 +509,29 @@ void free(void *ptr)
 
 void* calloc(size_t nobj, size_t size)
 {
+	#if defined(DEBUG_MEMORY)
+    printf("[memory] enter calloc.\n");
+    #endif
+	#if defined(DEBUG_MEMORY)
+    printf("[memory] nobj is : %d, size is : %d \n", nobj, size);
+    #endif
        int real_size;
        void *p;
 
        real_size = nobj * size;
+	   #if defined(DEBUG_MEMORY)
+    printf("[memory] real_size is : %d\n", real_size);
+    #endif
        
        p = malloc( real_size );
+	   #if defined(DEBUG_MEMORY)
+    printf("[memory] calloc allocation done at: %lx\n", p);
+    #endif
 
        liballoc_memset( p  + bootloader.hhdmOffset, 0, real_size );
+	   #if defined(DEBUG_MEMORY)
+    printf("[memory] memset to 0\n");
+    #endif
 
        return p  + bootloader.hhdmOffset;
 }

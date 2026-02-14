@@ -76,8 +76,14 @@ UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN
 
 void keyboard_handler(struct interrupt_registers *registers)
 {
+    #if defined(DEBUG_MEMORY)
+    printf("[keybourd] keyboard_handler called \n");
+    #endif
     char scan_code = in_port_byte(0x60) & 0x7F; // key pressed
     char press = in_port_byte(0x60) & 0x80; // key down or up
+    #if defined(DEBUG_MEMORY)
+    printf("[keybourd] keyboard_handler scan_code:%d ,press:%d \n");
+    #endif
 
     switch(scan_code){
         case 1:
@@ -150,8 +156,13 @@ void keyboard_initialize()
     shift_down = false;
     capsLock = false;
 
-
+    #if defined(DEBUG_MEMORY)
+    printf("[keybourd] keyboard_initialize\n");
+    #endif
     irq_install_handler(1, &keyboard_handler);
+    #if defined(DEBUG_MEMORY)
+    printf("[keybourd] keyboard_initialize: irq_install_handler\n");
+    #endif
 
 
     

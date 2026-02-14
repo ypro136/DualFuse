@@ -363,7 +363,11 @@ void taskInfoPdDiscard(TaskInfoPagedir *target) {
 }
 
 // CLONE_FILES
-TaskInfoFiles *taskInfoFilesAllocate() {
+TaskInfoFiles *taskInfoFilesAllocate() 
+{
+  #if defined(DEBUG_TASK)
+    printf("[tasks] enter taskInfoFilesAllocate\n");
+    #endif
   TaskInfoFiles *target = calloc(sizeof(TaskInfoFiles), 1);
   target->utilizedBy = 1;
   target->rlimitFdsHard = 1024;
@@ -414,15 +418,31 @@ void taskInfoSignalDiscard(TaskInfoSignal *target) {
 
 // CLONE_VM
 TaskInfoPagedir *taskInfoPdAllocate(bool pagedir) {
+  #if defined(DEBUG_TASK)
+    printf("[tasks] enter taskInfoPdAllocate \n");
+    #endif
+
+    #if defined(DEBUG_TASK)
+    printf("[tasks] pagedir is : %d \n", pagedir);
+    #endif
   TaskInfoPagedir *target = calloc(sizeof(TaskInfoPagedir), 1);
+  #if defined(DEBUG_TASK)
+    printf("[tasks] target is at : %lx \n", target);
+    #endif
   target->utilizedBy = 1;
   if (pagedir)
+  {
     target->pagedir = page_directory_allocate();
+  }
+  
   target->heap_start = USER_HEAP_START;
   target->heap_end = USER_HEAP_START;
 
   target->mmap_start = USER_MMAP_START;
   target->mmap_end = USER_MMAP_START;
+  #if defined(DEBUG_TASK)
+    printf("[tasks] end taskInfoPdAllocate \n");
+    #endif
   return target;
 }
 
@@ -634,10 +654,19 @@ void kernel_dummy_entry() {
     asm volatile("pause");
 }
 
-void tasks_initialize() {
+void tasks_initialize() 
+{
+  #if defined(DEBUG_TASK)
+    printf("[tasks] enter tasks_initialize\n");
+    #endif
   firstTask = (Task *)malloc(sizeof(Task));
   memset(firstTask, 0, sizeof(Task));
 
+  #if defined(DEBUG_TASK)
+    printf("[tasks] allocated firstTask in memory \n");
+    #endif
+
+    
   currentTask = firstTask;
   currentTask->id = KERNEL_TASK_ID;
   currentTask->state = TASK_STATE_READY;
@@ -651,12 +680,19 @@ void tasks_initialize() {
   LinkedListInit(&currentTask->dsChildTerminated, sizeof(KilledInfo));
   LinkedListInit(&currentTask->dsSysIntr, sizeof(TaskSysInterrupted));
   task_name_kernel(currentTask, entryCmdline, sizeof(entryCmdline));
+  #if defined(DEBUG_TASK)
+    printf("[tasks] initialized firstTask \n");
+    #endif
 
   void  *tssRsp = virtual_allocate(USER_STACK_PAGES);
   size_t tssRspSize = USER_STACK_PAGES * BLOCK_SIZE;
   memset(tssRsp, 0, tssRspSize);
   currentTask->whileTssRsp = (uint64_t)tssRsp + tssRspSize;
   task_attach_def_termios(currentTask);
+
+  #if defined(DEBUG_TASK)
+    printf("[tasks] initialized tssRsp and termios \n");
+    #endif
 
   printf("[tasks] Current execution ready for multitasking\n");
   tasksInitiated = true;

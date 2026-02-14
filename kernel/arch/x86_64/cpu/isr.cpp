@@ -168,6 +168,9 @@ void irq_handler(int irq, AsmPassedInterrupt *cpu)
 // pass stack ptr
 extern "C" void handle_interrupt(uint64_t rsp) 
 {
+  #if defined(DEBUG_INTERRUPT)
+    printf("[isr] handle_interrupt\n");
+    #endif
   AsmPassedInterrupt *cpu = (AsmPassedInterrupt *)rsp;
   if (cpu->interrupt >= 32 && cpu->interrupt <= 47) 
   { // IRQ
@@ -175,6 +178,10 @@ extern "C" void handle_interrupt(uint64_t rsp)
       out_port_byte(0xA0, 0x20);
     }
     out_port_byte(0x20, 0x20);
+
+    #if defined(DEBUG_INTERRUPT)
+    printf("[isr] handle_interrupt: interrupt:%d\n", 32 - cpu->interrupt);
+    #endif
     switch (cpu->interrupt) {
     case 32 + 0: // irq0 timer
       irq_handler(0, cpu);
@@ -237,7 +244,7 @@ extern "C" void handle_interrupt(uint64_t rsp)
 
     // if (framebuffer == KERNEL_GFX)
     //   printf(format, exceptions[cpu->interrupt]);
-    //Halt();
+    Halt();
   } else if (cpu->interrupt == 0x80) {
     syscall_handler(cpu);
   }

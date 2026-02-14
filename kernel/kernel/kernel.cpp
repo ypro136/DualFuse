@@ -76,7 +76,7 @@ extern "C" void kernel_main(void)
     console_initialize();
     console.clear_screen();
     // Set a visible title for the console window
-    console.set_title("Kernel Console\n");
+    console.set_title("Kernel Console");
     printf("Console initialized.\n");
 
     // Initialize the global StateMonitor window (updates driven by timer IRQ)
@@ -91,8 +91,11 @@ extern "C" void kernel_main(void)
     pci_initialize();
     printf("pci initialized.\n");
 
-    tasks_initialize();
-    printf("tasks initialized.\n");
+    acpiInit();// TODO: this is very minimal
+    printf("acpi initialized.\n");
+
+    // tasks_initialize(); TODO: fix this
+    // printf("tasks initialized.\n");
     
     syscall_inst_initialize();
     
@@ -102,19 +105,13 @@ extern "C" void kernel_main(void)
     initiateSSE();
     printf("SSE initialized.\n");
 
-    acpiInit();// TODO: this is very minimal
-    printf("acpi initialized.\n");
 
     initiateAPIC();
-    printf("[kernel] APIC initialization complete\n");
+    printf("APIC initialized.\n");
 
-    printf("[kernel] About to call initiateMouse...\n");
     initiateMouse();
-    printf("[kernel] Mouse initialization complete\n");
+    printf("mouse initialized.\n");
 
-    //syscall test
-    printf("[kernel] Getting PID...\n");
-    printf("task id is :%d \n",syscallGetPid());
     
     // breakpoint; tested and works
 	

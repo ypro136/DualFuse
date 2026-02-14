@@ -75,9 +75,9 @@ override CFLAGS:=$(CFLAGS) \
 
 override LDFLAGS := -static -z text -Wl,--no-relax,-Y,$(SYSROOT)/usr/lib,--gc-sections
 
-# debuging options -DDEBUG_MEMORY -DDEBUG_CONSOLE -DDEBUG_TIMER -DDEBUG_PCI
+# debuging options -DDEBUG_MEMORY -DDEBUG_CONSOLE -DDEBUG_TIMER -DDEBUG_PCI -DDEBUG_TASK -DDEBUG_KEYBOURD -DDEBUG_INTERRUPT -DDEBUG_ACPI -DDEBUG_APIC
 
-CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -D__is_x86_64 -DLIMINE_API_REVISION=1 -Iinclude	-Iinclude/ -I./include/ -DDEBUG_PCI
+CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -D__is_x86_64 -DLIMINE_API_REVISION=1 -Iinclude	-Iinclude/ -I./include/ 
 LIBS:=$(LIBS) -lc -lgcc
 
 ARCHDIR=arch/$(ARCH)

@@ -97,7 +97,13 @@ void change_page_directory(uint64_t *pd)
 }
 
 
-uint64_t *get_page_directory() { return (uint64_t *)globalPagedir; }
+uint64_t *get_page_directory() 
+{ 
+  #if defined(DEBUG_TASK)
+    printf("[tasks] enter get_page_directory \n");
+    #endif
+  return (uint64_t *)globalPagedir; 
+}
 
 void invalidate(uint64_t vaddr) { asm volatile("invlpg %0" ::"m"(vaddr)); }
 
