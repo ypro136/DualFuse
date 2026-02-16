@@ -34,6 +34,8 @@
 #include <GUI.h>
 #include <fram_loop.h>
 
+#include <ramdisk.h>
+
 
 
 bool systemDiskInit;
@@ -72,6 +74,7 @@ extern "C" void kernel_main(void)
 
 	memory_initialize();
 	printf("memory initialized.\n");
+    
     // draw dualfuse GUI
     // // Initialize the global console as a window at position (100,50)
     // console = Console(800, 600, 10, 10);
@@ -88,16 +91,13 @@ extern "C" void kernel_main(void)
     // stateMonitor.clear_screen();
     // printf("stateMonitor initialized.\n");
 
-    // draw win XP GUI
-
-
 
 	keyboard_initialize();
     printf("keyboard initialized.\n");
 
     pci_initialize();
     printf("pci initialized.\n");
-
+    
     acpiInit();// TODO: this is very minimal
     printf("acpi initialized.\n");
 
@@ -112,17 +112,19 @@ extern "C" void kernel_main(void)
     initiateSSE();
     printf("SSE initialized.\n");
 
+    block_init();
 
+    while (true) {
+        frame_loop(render_xp_desktop);
+        // TODO: Handle input
+    }
+    
     initiateAPIC();
     printf("APIC initialized.\n");
 
     initiateMouse();
     printf("mouse initialized.\n");
 
-    while (true) {
-        frame_loop(render_xp_desktop);
-        // TODO: Handle input
-    }
 
     
     // breakpoint; tested and works

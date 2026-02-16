@@ -29,17 +29,17 @@ void timer_irq_0(struct interrupt_registers *registers)
 {
     timerTicks += 1;
 
-    if (console_initialized)
-    {
-        // update the StateMonitor bars based on timerTicks
-        uint8_t a = (uint8_t)(timerTicks % 101);
-        uint8_t b = (uint8_t)((timerTicks * 2) % 101);
-        uint8_t c = (uint8_t)(100 - a);
-        stateMonitor.set_progress(0, a);
-        stateMonitor.set_progress(1, b);
-        stateMonitor.set_progress(2, c);
-        stateMonitor.render();
-    }
+    // if (console_initialized)
+    // {
+    //     // update the StateMonitor bars based on timerTicks
+    //     uint8_t a = (uint8_t)(timerTicks % 101);
+    //     uint8_t b = (uint8_t)((timerTicks * 2) % 101);
+    //     uint8_t c = (uint8_t)(100 - a);
+    //     stateMonitor.set_progress(0, a);
+    //     stateMonitor.set_progress(1, b);
+    //     stateMonitor.set_progress(2, c);
+    //     stateMonitor.render();
+    // }
 
     // TODO: Uncomment when graphic_composer_initialized is properly defined
     // if (graphic_composer_initialized)

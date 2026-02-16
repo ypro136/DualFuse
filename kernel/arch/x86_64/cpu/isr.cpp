@@ -150,12 +150,18 @@ void irq_uninstall_handler(int irq)
 
 void irq_handler(int irq, AsmPassedInterrupt *cpu)
 {
+      #if defined(DEBUG_ISR)
+      printf("[isr] irq_handler(%d)\n", irq);
+      #endif
   void (*handler)(struct interrupt_registers *registers);
 
       handler = irq_routines[irq];
 
       if(handler)
       {
+        #if defined(DEBUG_ISR)
+        printf("[isr] irq_handler: handler for %d exists. calling....\n", irq);
+        #endif
         handler((uint64_t)cpu);
         return;
       }
@@ -188,8 +194,13 @@ extern "C" void handle_interrupt(uint64_t rsp)
       break;
 
     case 32 + 1: // irq1 keyboard
+    {
+      #if defined(DEBUG_KEYBOARD)
+      printf("[keyboard::isr] irq 33 called calling irq_handler to call keyboard\n");
+      #endif
       irq_handler(1, cpu);
       break;
+    }
     case 32 + 11: // irq11 achi
       irq_handler(11, cpu);
       break;

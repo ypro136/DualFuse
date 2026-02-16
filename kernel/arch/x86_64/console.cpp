@@ -15,12 +15,26 @@
 
 #define CHAR_HEIGHT (psf->height)
 #define CHAR_WIDTH (8)
+#define CONSOLE_BUFFER_SIZE (2048)
 
 // Global instance
 Console console;
 
+// Character buffer for frame-based rendering
+struct ConsoleBuffer {
+    char characters[CONSOLE_BUFFER_SIZE];
+    uint32_t write_index;
+    Spinlock lock;
+};
+
+static ConsoleBuffer console_buffer = {
+    .characters = {},
+    .write_index = 0,
+    .lock = ATOMIC_FLAG_INIT
+};
+
 // Legacy globals for C compatibility
-int bg_color = 0xC0C0C0; //0x1B262C;
+int _bg_color = 0xC0C0C0; //0x1B262C;
 int textcolor = 0x000000;//0xBBE1FA;
 bool console_initialized = false;
 
@@ -30,7 +44,7 @@ static Spinlock LOCK_CONSOLE = ATOMIC_FLAG_INIT;
 // Console Constructor
  
 Console::Console(uint32_t width, uint32_t height, uint32_t start_x, uint32_t start_y)
-    : bg_color(0xC0C0C0),
+    : _bg_color(0xC0C0C0),
       textcolor(0x000000),
     border_color(0xBBBBBB),
     border_thickness(2),
@@ -85,7 +99,50 @@ void Console::move_to_line_start()
     cursor_position_x = CHAR_WIDTH;
 }
 
- 
+void Console::buffer_character(char c)
+{
+    spinlock_acquire(&console_buffer.lock);
+    
+    if (console_buffer.write_index < CONSOLE_BUFFER_SIZE - 1)
+    {
+        console_buffer.characters[console_buffer.write_index] = c;
+        console_buffer.write_index++;
+    }
+    
+    spinlock_release(&console_buffer.lock);
+}
+
+void Console::flush_buffer()
+{
+    spinlock_acquire(&console_buffer.lock);
+    cursor_position_x = CHAR_WIDTH; // start with one char margin from left
+    cursor_position_y = border_thickness + 2; // just below the border
+    // Process all buffered characters
+    for (uint32_t i = 0; i < console_buffer.write_index; i++)
+    {
+        draw_character(console_buffer.characters[i]);
+    }
+    
+    
+    
+    spinlock_release(&console_buffer.lock);
+}
+
+void Console::draw_frame()
+{
+    if (!is_initialized)
+        return;
+    
+    spinlock_acquire(&LOCK_CONSOLE);
+    
+    // Process all buffered characters this frame
+    flush_buffer();
+    
+    // Ensure cursor is visible/updated
+    update_cursor();
+    
+    spinlock_release(&LOCK_CONSOLE);
+}
 // Internal Rendering Methods
  
 void Console::draw_rect(int x, int y, int w, int h, int rgb)
@@ -130,7 +187,7 @@ bool Console::scroll_console()
         uint8_t *dest = base + (size_t)(window_y + y - CHAR_HEIGHT) * (size_t)pitch + (size_t)window_x * (size_t)bpp;
         memcpy(dest, src, (size_t)window_width * (size_t)bpp);
     }
-    draw_rect(0, window_height - CHAR_HEIGHT, window_width, CHAR_HEIGHT, bg_color);
+    draw_rect(0, window_height - CHAR_HEIGHT, window_width, CHAR_HEIGHT, _bg_color);
     
     // Redraw all borders after scrolling
     draw_box(0, 0, window_width, border_thickness, border_color);                              // Top
@@ -148,7 +205,7 @@ void Console::erase_cursor()
 {
     if (cursorHidden)
         return;
-    draw_rect(cursor_position_x, cursor_position_y, CHAR_WIDTH, CHAR_HEIGHT, bg_color);
+    draw_rect(cursor_position_x, cursor_position_y, CHAR_WIDTH, CHAR_HEIGHT, _bg_color);
 }
 
 void Console::update_cursor()
@@ -217,12 +274,15 @@ void Console::clear_screen()
 #if defined(DEBUG_CONSOLE)
     printf("[console] clearing screen\n");
 #endif
+    // Reset buffer
+    console_buffer.write_index = 0;
+    memset(console_buffer.characters, 0, CONSOLE_BUFFER_SIZE);
     // place cursor inside the border to avoid overlapping
     cursor_position_x = CHAR_WIDTH;
     cursor_position_y = border_thickness + 2;
-    draw_rect(0, 0, window_width, window_height, bg_color);
+    draw_rect(0, 0, window_width, window_height, _bg_color);
     // Redraw frame and border
-    draw_box(0, 0, window_width, window_height, bg_color);
+    draw_box(0, 0, window_width, window_height, _bg_color);
     draw_box(0, 0, window_width, border_thickness, border_color);
     //draw_box(0, window_height - border_thickness, window_width, border_thickness, border_color);//bottom
     draw_box(0, 0, border_thickness, window_height, border_color);
@@ -241,7 +301,7 @@ void Console::clear_screen()
 
 void Console::set_bg_color(int rgb)
 {
-    bg_color = rgb;
+    _bg_color = rgb;
 }
 
 void Console::set_text_color(int rgb)
@@ -288,7 +348,7 @@ void Console::draw_title()
     uint32_t tx = border_thickness + 4;
     uint32_t ty = 0; // draw at the top so text overlays border
     for (size_t i = 0; title[i] != '\0'; ++i) {
-        psfPutC(title[i], window_x + tx + (i * CHAR_WIDTH), window_y + ty - 8, textcolor);
+        psfPutC(title[i], window_x + tx + (i * CHAR_WIDTH), window_y + ty - 8, textcolor, _bg_color);
     }
 }
 
@@ -308,7 +368,7 @@ void Console::draw_character(int charnum)
     switch (charnum)
     {
     case -1:
-        draw_rect(cursor_position_x, cursor_position_y, CHAR_WIDTH, CHAR_HEIGHT, bg_color);
+        draw_rect(cursor_position_x, cursor_position_y, CHAR_WIDTH, CHAR_HEIGHT, _bg_color);
         increment_cursor_x();
         break;
     case '\n':
@@ -340,7 +400,7 @@ void Console::draw_character(int charnum)
                 decrement_cursor_x();
             }
         } while (is_char[cursor_position_x / CHAR_WIDTH][cursor_position_y / CHAR_HEIGHT] == 0);
-        draw_rect(cursor_position_x, cursor_position_y, CHAR_WIDTH, CHAR_HEIGHT, bg_color);
+        draw_rect(cursor_position_x, cursor_position_y, CHAR_WIDTH, CHAR_HEIGHT, _bg_color);
         break;
     case '\t':
         for (int i = 0; i < 4; i++)
@@ -348,13 +408,13 @@ void Console::draw_character(int charnum)
         break;
     case ' ':
         erase_cursor();
-        psfPutC(charnum, window_x + cursor_position_x, window_y + cursor_position_y, textcolor);
+        psfPutC(charnum, window_x + cursor_position_x, window_y + cursor_position_y, textcolor, _bg_color);
         is_char[cursor_position_x / CHAR_WIDTH][cursor_position_y / CHAR_HEIGHT] = 0;
         increment_cursor_x();
         break;
     default:
         erase_cursor();
-        psfPutC(charnum, window_x + cursor_position_x, window_y + cursor_position_y, textcolor);
+        psfPutC(charnum, window_x + cursor_position_x, window_y + cursor_position_y, textcolor, _bg_color);
         is_char[cursor_position_x / CHAR_WIDTH][cursor_position_y / CHAR_HEIGHT] = 1;
         increment_cursor_x();
         break;
@@ -363,7 +423,7 @@ void Console::draw_character(int charnum)
 }void Console::print_char(char character)
 {
     spinlock_acquire(&LOCK_CONSOLE);
-    draw_character(character);
+    buffer_character(character);
     spinlock_release(&LOCK_CONSOLE);
 }
 
@@ -397,7 +457,7 @@ void console_initialize()
 {
     console.initialize();
     console_initialized = console.is_ready();
-    bg_color = 0xC0C0C0;// 0x1B262C;
+    _bg_color = 0xC0C0C0;// 0x1B262C;
     textcolor = 0x000000;//0xBBE1FA;
 }
 
@@ -409,7 +469,7 @@ void drawCharacter(int charnum)
 void changeBg(int rgb)
 {
     console.set_bg_color(rgb);
-    bg_color = rgb;
+    _bg_color = rgb;
 }
 
 void changeTextColor(int rgb)
@@ -458,6 +518,19 @@ void clear_screen()
 void printfch(char character)
 {
     console.print_char(character);
+}
+
+extern "C" void console_draw_frame()
+{
+    if (console_initialized && tempframebuffer && psf && tempframebuffer->address && screen_width != 0)
+    {
+        console.draw_frame();
+    }
+}
+
+extern "C" void console_buffer_char(char c)
+{
+    console.buffer_character(c);
 }
 
 extern "C" void putchar_(char c)

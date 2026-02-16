@@ -8,7 +8,7 @@
  
 // You must provide these functions:
 extern void draw_pixel(int x, int y, uint32_t rgb);
-extern void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb);
+extern void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color);
 
  
 // BASIC UTILITY FUNCTIONS
@@ -59,8 +59,8 @@ void draw_checkerboard(int x, int y, int width, int height, uint32_t color1, uin
 // TEXT RENDERING
  
 
-void draw_text(const char* text, int x, int y, uint32_t color);
-void draw_text_centered(const char* text, int x, int y, int width, uint32_t color);
+void draw_text(const char* text, int x, int y, uint32_t color, uint32_t bg_color);
+void draw_text_centered(const char* text, int x, int y, int width, uint32_t color, uint32_t bg_color);
 
  
 // ADVANCED

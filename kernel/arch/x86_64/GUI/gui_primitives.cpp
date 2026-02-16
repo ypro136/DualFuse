@@ -232,7 +232,7 @@ void draw_beveled_border_thick(int x, int y, int width, int height,
     }
 }
 
-void draw_text(const char* text, int x, int y, uint32_t color) {
+void draw_text(const char* text, int x, int y, uint32_t color, uint32_t bg_color) {
 #if defined(DEBUG_GUI)
     printf("[DEBUG_GUI] draw_text at (%d,%d) color=0x%06X\n", x, y, color);
 #endif
@@ -255,7 +255,7 @@ void draw_text(const char* text, int x, int y, uint32_t color) {
 #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] drawing char %d: '%c' (0x%02X) at x=%d, y=%d\n", char_count, *p, (unsigned char)*p, char_x, y);
 #endif
-        psfPutC(*p, (uint32_t)char_x, (uint32_t)y, color);
+        psfPutC(*p, (uint32_t)char_x, (uint32_t)y, color, bg_color);
 #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] char %d drawn successfully\n", char_count);
 #endif
@@ -269,7 +269,7 @@ void draw_text(const char* text, int x, int y, uint32_t color) {
 }
 
 
-void draw_text_centered(const char* text, int x, int y, int width, uint32_t color) {
+void draw_text_centered(const char* text, int x, int y, int width, uint32_t color, uint32_t bg_color) {
     int text_len = 0;
     const char* p = text;
     while (*p) {
@@ -282,7 +282,7 @@ void draw_text_centered(const char* text, int x, int y, int width, uint32_t colo
     #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] draw_text_centered ready to draw text\n");
     #endif 
-    draw_text(text,  clamp(start_x, 0, screen_width), clamp(y, 0, screen_height), color);
+    draw_text(text,  clamp(start_x, 0, screen_width), clamp(y, 0, screen_height), color, bg_color);
 }
 
  

@@ -3,6 +3,7 @@
 #include <framebufferutil.h>
 #include <memory.h>
 #include <console.h>
+#include <vfs.h>
 
 
 
@@ -62,7 +63,7 @@ bool psfLoadDefaults()
 //   return res;
 // }
 
-void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb) {
+void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color) {
   #if defined(DEBUG_CONSOLE)
   if (!psf) return;
   #endif

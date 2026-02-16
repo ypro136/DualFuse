@@ -2,9 +2,16 @@
 
 #include <task.h>
 #include <types.h>
+#include <ramdisk.h>
+
 
 #include <utility.h>
 #include <isr.h>
+#include <vfs.h>
+#include <console.h>
+#include <liballoc.h>
+#include <linux.h>
+
 
 #include <stdint.h>
 #include <stdio.h>
@@ -49,6 +56,11 @@ const uint32_t CAPS = 0xFFFFFFFF - 29;
 const uint32_t NONE = 0xFFFFFFFF - 30;
 const uint32_t ALTGR = 0xFFFFFFFF - 31;
 const uint32_t NUMLCK = 0xFFFFFFFF - 32;
+#define ENTER 0x1C
+#define BACKSPACE 0X0E
+
+
+static char key_buffer[256] = {0};
 
 
 const uint32_t lowercase[128] = {
@@ -74,16 +86,46 @@ UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,
 UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN
 };
 
+const char sc_ascii[] = { '?', '?', '1', '2', '3', '4', '5', '6',     
+    '7', '8', '9', '0', '-', '=', '?', '?', 'Q', 'W', 'E', 'R', 'T', 'Y', 
+        'U', 'I', 'O', 'P', '[', ']', '?', '?', 'A', 'S', 'D', 'F', 'G', 
+        'H', 'J', 'K', 'L', ';', '\'', '`', '?', '\\', 'Z', 'X', 'C', 'V', 
+        'B', 'N', 'M', ',', '.', '/', '?', '?', '?', ' '};
+
+
+void keyboard_initialize()
+{
+    #if defined(DEBUG_KEYBOARD)
+    printf("[keyboard] init\n");
+    #endif
+    shift_down = false;
+    capsLock = false;
+
+    #if defined(DEBUG_KEYBOARD)
+    printf("[keyboard] keyboard_initialize: irq_install_handler.....\n");
+    #endif
+    irq_install_handler(1, &keyboard_handler);
+    #if defined(DEBUG_KEYBOARD)
+    printf("[keyboard] keyboard_initialize: irq_install_handler done\n");
+    #endif
+}
+
+
 void keyboard_handler(struct interrupt_registers *registers)
 {
-    #if defined(DEBUG_MEMORY)
-    printf("[keybourd] keyboard_handler called \n");
+    #if defined(DEBUG_KEYBOARD)
+    printf("[keyboard] keyboard_handler called \n");
     #endif
-    char scan_code = in_port_byte(0x60) & 0x7F; // key pressed
-    char press = in_port_byte(0x60) & 0x80; // key down or up
-    #if defined(DEBUG_MEMORY)
-    printf("[keybourd] keyboard_handler scan_code:%d ,press:%d \n");
+    // char scan_code = in_port_byte(0x60) & 0x7F; // key pressed
+    // char press = in_port_byte(0x60) & 0x80; // key down or up
+    char byte = in_port_byte(0x60);
+    char scan_code = byte & 0x7F;   // Lower 7 bits: which key
+    char press = byte & 0x80;       // Bit 7: 0x80 = released, 0x00 = pressed
+    #if defined(DEBUG_KEYBOARD)
+    printf("[keyboard] keyboard_handler scan_code:%d ,press:%d \n");
     #endif
+    
+    
 
     switch(scan_code){
         case 1:
@@ -129,6 +171,23 @@ void keyboard_handler(struct interrupt_registers *registers)
             
     }
 
+    if (press == 0)
+    {
+	if (scan_code == BACKSPACE)
+    {
+		backspace(key_buffer);
+	}else if (scan_code == ENTER)
+    {
+		user_input(key_buffer);
+		key_buffer[0] = '\0';
+	}else{  
+		char letter = sc_ascii[(int)scan_code];
+		/*Remeber that printf only accepts char[] */
+		char str[2]={letter, '\0'};
+		append(key_buffer,letter,sizeof(key_buffer));
+	}
+    }
+
 }
 
 bool keyboard_is_occupied() { return !!kbBuff; }
@@ -150,21 +209,224 @@ bool keyboard_task_read(uint32_t taskId, char *buff, uint32_t limit, bool change
   return true;
 }
 
-
-void keyboard_initialize()
+int tokenize(char *input, char *argv[], int max_args)
 {
-    shift_down = false;
-    capsLock = false;
+    int argc = 0;
+    char *p = input;
 
-    #if defined(DEBUG_MEMORY)
-    printf("[keybourd] keyboard_initialize\n");
-    #endif
-    irq_install_handler(1, &keyboard_handler);
-    #if defined(DEBUG_MEMORY)
-    printf("[keybourd] keyboard_initialize: irq_install_handler\n");
-    #endif
+    while (*p && argc < max_args)
+    {
+        while (*p == ' ')
+            p++; // skip spaces
+        if (*p == '\0')
+            break;
 
+        argv[argc++] = p; // start of token
 
-    
+        while (*p != ' ' && *p != '\0')
+            p++; // go to end of token
+        if (*p == ' ')
+            *p++ = '\0'; // null-terminate token
+    }
+
+    return argc;
 }
+
+
+/* Safe backspace */
+void backspace(char s[]){
+    int len = strlen(s);
+    if (len > 0){
+        s[len-1] = '\0';
+    }
+}
+
+/* Safe append */
+void append(char s[], char n, int max_len){
+    int len = strlen(s);
+
+    if (len < max_len - 1){
+        s[len] = n;
+        s[len+1] = '\0';
+    }
+}
+
+/* Convert integer to hexadecimal ASCII */
+void hex_to_ascii(int n, char str[]){
+    str[0] = '\0';   // IMPORTANT: initialize string
+
+    append(str, '0', 32);
+    append(str, 'x', 32);
+
+    char zeros = 0;
+    int32_t tmp;
+    int i;
+
+    for(i = 28; i > 0; i -= 4){
+        tmp = (n >> i) & 0xF;
+
+        if(tmp == 0 && zeros == 0)
+            continue;
+
+        zeros = 1;
+
+        if(tmp >= 0xA)
+            append(str, tmp - 0xA + 'a', 32);
+        else
+            append(str, tmp + '0', 32);
+    }
+
+    tmp = n & 0xF;
+
+    if(tmp >= 0xA)
+        append(str, tmp - 0xA + 'a', 32);
+    else
+        append(str, tmp + '0', 32);
+}
+// For directory listing
+#define O_DIRECTORY 00200000
+#define O_RDONLY    00000000
+
+// Minimal linux_dirent64 structure
+// typedef struct {
+//     uint64_t d_ino;
+//     int64_t  d_off;
+//     uint16_t d_reclen;
+//     uint8_t  d_type;
+//     char     d_name[256];
+// } linux_dirent64;
+
+
+void user_input(char *input)
+{
+    char *argv[10];
+    int argc = tokenize(input, argv, 10);
+    if (argc == 0)
+        return;
+
+    if (strcmp(argv[0], "END") == 0)
+    {
+        printf("Stopping CPU\n");
+        Halt();
+    }
+    else if (strcmp(argv[0], "CLEAR") == 0)
+    {
+        clear_screen();
+    }
+    else if (strcmp(argv[0], "PAGE") == 0)
+    {
+        uint32_t page = malloc(1000);
+        char tmp[16];
+        hex_to_ascii(page, tmp);
+        printf("Allocated page at: %lx\n",tmp);
+
+    }
+    else if (strcmp(argv[0], "MK") == 0)
+    {
+        if (argc < 3)
+        {
+            printf("Usage: MK filename content\n");
+        }
+        else
+        {
+            char content[512];
+            content[0] = '\0';
+            for (int i = 2; i < argc; i++)
+            {
+                strcat(content, argv[i]);
+                if (i != argc - 1)
+                    strcat(content, " ");
+            }
+
+            
+            if (fs_create(argv[1]) == 0)
+            {
+                
+                fs_write(argv[1], content);
+            }
+            else
+            {
+                printf("Error creating file.\n");
+            }
+        }
+    }
+    else if (strcmp(argv[0], "CAT") == 0)
+    {
+        if (argc < 2)
+        {
+            printf("Usage: CAT filename\n");
+        }
+        else
+        {
+            char buf[512] = {0};
+            if (fs_read(argv[1], buf) == 0)
+            {
+                printf(buf);
+                printf("\n");
+            }
+            else
+            {
+                printf("Error reading file.\n");
+            }
+            
+        }
+    }
+        else if (strcmp(argv[0], "LS") == 0)
+    {
+        fs_list();
+    }
+    else if (strcmp(argv[0], "RM") == 0)
+    {
+        if (argc < 2)
+        {
+            printf("Usage: RM filename\n");
+        }
+        else
+        {
+            if (fs_delete(argv[1]) == 0)
+            {
+                printf("File deleted!\n");
+            }
+            else
+            {
+                printf("Error deleting file.\n");
+            }
+        }
+    }
+    else if (strcmp(argv[0], "HELP") == 0)
+    {
+        printf("Available commands:\n");
+        printf("  END    - Halt the CPU\n");
+        printf("  CLEAR  - Clear the screen\n");
+        printf("  PAGE   - Allocate memory\n");
+        printf("  MK     - Create file\n");
+        printf("  CAT    - Show file content\n");
+        printf("  LS     - List files\n");
+        printf("  RM     - Delete file\n");
+        printf("  ECHO   - Print text\n");
+        printf("  INFO   - System info\n");
+    }
+    else if (strcmp(argv[0], "ECHO") == 0)
+    {
+        for (int i = 1; i < argc; i++)
+        {
+            printf(argv[i]);
+            if (i != argc - 1)
+                printf(" ");
+        }
+        printf("\n");
+    }
+    else if (strcmp(argv[0], "INFO") == 0)
+    {
+        printf("Nachtlauf v0.1\n");
+        printf("64-bit long mode\n");
+    }
+    else
+    {
+        printf("Unknown command: ");
+        printf(argv[0]);
+        printf("\n");
+    }
+}
+
 

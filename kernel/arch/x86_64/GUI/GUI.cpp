@@ -23,7 +23,7 @@
 void draw_window_title_bar(const XPWindow& win) {
     draw_gradient(win.x, win.y, win.width, TITLE_BAR_HEIGHT, 0x000080, 0x1084D7, true);
     draw_line(win.x + 1, win.y + 1, win.x + win.width - 2, win.y + 1, 0x2E5C8A);
-    draw_text(win.title, win.x + 8, win.y + 6, 0xFFFFFF);
+    draw_text(win.title, win.x + 8, win.y + 6, XP_WINDOW_TEXT, 0x000080);
 }
 
 void draw_window_button(int x, int y, int size, const char* label, bool active) {
@@ -107,7 +107,7 @@ void draw_xp_button(int x, int y, int width, int height, const char* label, bool
     }
     
     // Button text (centered)
-    draw_text_centered(label, x, y + (height - 8) / 2, width, 0x000000);
+    draw_text_centered(label, x, y + (height - 8) / 2, width, XP_WINDOW_TEXT, XP_BACKGROUND);
 }
 
  static void reverse_string(char* str, int len) {
@@ -145,10 +145,9 @@ char* u64toa(uint64_t value, char* str, int base) {
 }
 
 void draw_taskbar() {
-    draw_gradient(0, TASKBAR_Y, SCREEN_WIDTH, TASKBAR_HEIGHT,
-                  0xC0C0C0, 0xA0A0A0, false);
+    draw_gradient(0, TASKBAR_Y, SCREEN_WIDTH, TASKBAR_HEIGHT, 0xC0C0C0, 0xA0A0A0, false);
     
-    draw_hline(0, TASKBAR_Y, SCREEN_WIDTH, 0xDFDFDF);
+    draw_hline(0, TASKBAR_Y, SCREEN_WIDTH, XP_BUTTON_HIGHLIGHT);
     
     int start_btn_x = 2;
     int start_btn_y = TASKBAR_Y + 2;
@@ -168,10 +167,10 @@ void draw_taskbar() {
     uint64_t minutes = (total_seconds % 3600) / 60;
     uint64_t seconds = total_seconds % 60;
     char string[64];
-    draw_text(u64toa(hours, string, 10), clock_x, clock_y, 0x000000);
-    draw_text(u64toa(minutes, string, 10), clock_x + 17, clock_y, 0x000000);
-    draw_text(u64toa(seconds, string, 10), clock_x + 34, clock_y, 0x000000);
-    draw_text("AM", clock_x + 51, clock_y, 0x000000);
+    draw_text(u64toa(hours, string, 10), clock_x, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(u64toa(minutes, string, 10), clock_x + 17, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(u64toa(seconds, string, 10), clock_x + 34, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text("AM", clock_x + 51, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
     
 
     int win_btn_x = start_btn_x + start_btn_width + 10;
@@ -181,10 +180,10 @@ void draw_taskbar() {
     
     fill_rectangle(win_btn_x, win_btn_y, win_btn_width, win_btn_height, XP_BUTTON_FACE);
     draw_rect_outline(win_btn_x, win_btn_y, win_btn_width, win_btn_height, XP_BUTTON_SHADOW, 1);
-    draw_text("Example window", win_btn_x + 5, win_btn_y + 4, 0x000000);
+    draw_text("Example window", win_btn_x + 5, win_btn_y + 4, XP_WINDOW_TEXT, 0xC0C0C0);
     win_btn_x = win_btn_x + win_btn_width + 5;
     draw_rect_outline(win_btn_x, win_btn_y, win_btn_width, win_btn_height, XP_BUTTON_SHADOW, 1);
-    draw_text("Kernel Console", win_btn_x + 5, win_btn_y + 4, 0x000000);
+    draw_text("Kernel Console", win_btn_x + 5, win_btn_y + 4, XP_WINDOW_TEXT, 0xC0C0C0);
 }
 
 
@@ -192,7 +191,7 @@ void draw_desktop_icon(int x, int y, const char* label, uint32_t icon_color) {
     int icon_size = 32;
     
     // Icon background (light square)
-    fill_rectangle(x, y, icon_size, icon_size, 0xDFDFDF);
+    fill_rectangle(x, y, icon_size, icon_size, XP_BUTTON_HIGHLIGHT);
     #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] draw_desktop_icon fill_rectangle done\n");
     #endif 
@@ -205,7 +204,7 @@ void draw_desktop_icon(int x, int y, const char* label, uint32_t icon_color) {
     fill_rectangle(x + 6, y + 6, icon_size - 12, icon_size - 12, icon_color);
     
     // Icon label (below icon)
-    draw_text_centered(label, x - 20, y + icon_size + 5, icon_size + 40, 0xFFFFFF);
+    draw_text_centered(label, x - 20, y + icon_size + 5, icon_size + 40, XP_WINDOW_TEXT, 0x008DD5);
     #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] draw_desktop_icon draw_text_centered done\n");
     #endif 
@@ -328,7 +327,7 @@ void render_xp_desktop()
             .title = "Kernel Console",
             .active = false,
             .minimized = false,
-            .bg_color = 0xFFFFFF
+            .bg_color = XP_BACKGROUND
         };
     #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] Drawing window2\n");
@@ -336,9 +335,15 @@ void render_xp_desktop()
         draw_xp_window(window2);
 
     // Initialize the global console as a window at position (100,50)
-    console = Console(window2.width, window2.height, window2.x, window2.y + TITLE_BAR_HEIGHT);
+    if(!console_initialized)
+    {    
+    console = Console(window2.width, window2.height - TITLE_BAR_HEIGHT, window2.x, window2.y + TITLE_BAR_HEIGHT);
     console_initialize();
     console.clear_screen();
+    console.set_bg_color(XP_BACKGROUND);
+    console.set_text_color(XP_WINDOW_TEXT);
+    }
+    console.draw_frame();
     //console.set_title("Kernel Console");        
     #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] Drawing window2 text line 1\n");

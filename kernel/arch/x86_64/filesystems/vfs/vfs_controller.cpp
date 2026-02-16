@@ -47,7 +47,7 @@ size_t fsIdFind(TaskInfoFiles *infoFiles) {
   }
   spinlock_cnt_write_release(&infoFiles->WLOCK_FILES);
 
-  assert(ret != -1); // todo: RLIMIT errors
+  assert(ret != -1); // todo: RLIMIT errs
   return ret;
 }
 

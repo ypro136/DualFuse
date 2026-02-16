@@ -12,7 +12,6 @@
 #include <vfs.h>
 
 // VFS-sided implementation of generic *poll() functions
-// Copyright (C) 2025 Panagiotis
 
 // todo: think this through as pairs span across more than one fd (think of
 // pipes with read/write ends, etc)
