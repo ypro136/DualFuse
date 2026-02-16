@@ -60,7 +60,7 @@ const uint32_t NUMLCK = 0xFFFFFFFF - 32;
 #define BACKSPACE 0X0E
 
 
-static char key_buffer[256] = {0};
+static char key_buffer[1024] = {0};
 
 
 const uint32_t lowercase[128] = {
@@ -299,8 +299,8 @@ void hex_to_ascii(int n, char str[]){
 
 void user_input(char *input)
 {
-    char *argv[10];
-    int argc = tokenize(input, argv, 10);
+    char *argv[100];
+    int argc = tokenize(input, argv, 100);
     if (argc == 0)
         return;
 
@@ -343,6 +343,7 @@ void user_input(char *input)
             {
                 
                 fs_write(argv[1], content);
+                printf("File created!\n");
             }
             else
             {

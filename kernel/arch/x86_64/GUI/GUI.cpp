@@ -182,8 +182,11 @@ void draw_taskbar() {
     draw_rect_outline(win_btn_x, win_btn_y, win_btn_width, win_btn_height, XP_BUTTON_SHADOW, 1);
     draw_text("Example window", win_btn_x + 5, win_btn_y + 4, XP_WINDOW_TEXT, 0xC0C0C0);
     win_btn_x = win_btn_x + win_btn_width + 5;
+    draw_line(win_btn_x + 16, win_btn_y + 9,win_btn_x + 10, win_btn_y + 4, XP_WINDOW_TEXT);
+    draw_line(win_btn_x + 16, win_btn_y + 9,win_btn_x + 9, win_btn_y + 14, XP_WINDOW_TEXT);
+    draw_line(win_btn_x + 14, win_btn_y + 14,win_btn_x + 24, win_btn_y + 14, XP_WINDOW_TEXT);
     draw_rect_outline(win_btn_x, win_btn_y, win_btn_width, win_btn_height, XP_BUTTON_SHADOW, 1);
-    draw_text("Kernel Console", win_btn_x + 5, win_btn_y + 4, XP_WINDOW_TEXT, 0xC0C0C0);
+    draw_text("Kernel Console", win_btn_x + 26, win_btn_y + 4, XP_WINDOW_TEXT, 0xC0C0C0);
 }
 
 
