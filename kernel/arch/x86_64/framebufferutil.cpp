@@ -26,7 +26,20 @@ uint32_t SCREEN_HEIGHT;
 int framebuffer_initialize()
 {
 
+#if defined(DEBUG_FRAMEBUFFER)
+    printf("[framebuffer_initialize] begin\n");
+#endif
+
     framebuffer = bootloader.framebuffer;
+
+#if defined(DEBUG_FRAMEBUFFER)
+    printf("[framebuffer_initialize] bootloader.framebuffer=%p\n", framebuffer);
+#endif
+
+    if (framebuffer == nullptr) {
+        printf("[framebuffer] FATAL: bootloader.framebuffer is null!\n");
+        return -1;
+    }
     screen_width = framebuffer->width;
     screen_height = framebuffer->height;
 
@@ -50,6 +63,12 @@ int framebuffer_initialize()
 
     printf("limine framebuffer initialized.\n");
 
+#if defined(DEBUG_FRAMEBUFFER)
+    printf("[framebuffer_initialize] success buffer_size=%llu buffer=%p\n", (unsigned long long)buffer_size, (void*)buffer);
+    printf("[framebuffer_initialize] end\n");
+#endif
+
+    return 0;
 }
 
 uint64_t screen_width_cap(uint64_t number)

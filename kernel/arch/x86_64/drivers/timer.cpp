@@ -60,6 +60,11 @@ void timer_initialize()
     #if defined(DEBUG_TIMER)
     printf("[timer] timer_initialize....\n");
     #endif
+    
+    #if defined(DEBUG_TIMER)
+    printf("[timer] About to call read_from_CMOS\n");
+    #endif
+    
     RTC rtc = {0};
     read_from_CMOS(&rtc);
 
