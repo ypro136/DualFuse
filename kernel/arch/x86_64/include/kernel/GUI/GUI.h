@@ -12,8 +12,6 @@
 // CONFIGURATION CONSTANTS
  
 
-#define SCREEN_WIDTH screen_width
-#define SCREEN_HEIGHT screen_height
 #define TASKBAR_HEIGHT 28
 #define TASKBAR_Y (SCREEN_HEIGHT - TASKBAR_HEIGHT)
 #define TITLE_BAR_HEIGHT 24
@@ -34,7 +32,10 @@ struct XPWindow {
 
  
 // RENDERING FUNCTIONS
- 
+#if defined(DEBUG_GUI)
+void direct_clear_screen_dbg ();
+#endif
+
 
 // Main render function - draws complete XP desktop
 void render_xp_desktop();

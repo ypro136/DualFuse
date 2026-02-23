@@ -23,4 +23,7 @@ void initiateSSE()
                  :
                  :
                  : "rax");
+
+       printf("SSE initialized.\n");
+
   }

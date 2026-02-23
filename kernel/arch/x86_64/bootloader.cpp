@@ -44,6 +44,7 @@ __attribute__((used, section(".limine_requests")))
 static volatile struct limine_memmap_request limineMMreq = {
     .id = LIMINE_MEMMAP_REQUEST, .revision = 0};
 
+__attribute__((used, section(".limine_requests"))) 
 static volatile struct limine_rsdp_request limineRsdpReq = {
     .id = LIMINE_RSDP_REQUEST, .revision = 0};
 
@@ -152,6 +153,16 @@ void initialiseBootloaderParser() {
 
     // RSDP
   // todo: revision >= 3 and it's not virtual!
+
   struct limine_rsdp_response *rsdp_response = limineRsdpReq.response;
-  bootloader.rsdp = (size_t)rsdp_response->address - bootloader.hhdmOffset;
+
+  if (rsdp_response == NULL) 
+  {
+    printf("[bootloderparser] FATAL: No RSDP halt!\n");
+    Halt();
+    }else 
+    {
+        bootloader.rsdp = (size_t)rsdp_response->address - bootloader.hhdmOffset;
+    }
+  printf("Bootloader Parser initialized.\n");
 }

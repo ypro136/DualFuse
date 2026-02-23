@@ -6,6 +6,8 @@
 #include <psf.h>
 #include <timer.h>
 #include <console.h>
+#include <bootloader.h>
+
 
 
 #include <GUI.h>
@@ -64,6 +66,9 @@ void draw_window_button(int x, int y, int size, const char* label, bool active) 
 
 void draw_xp_window(const XPWindow& win) 
 {
+    #if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] draw_xp_window\n");
+        #endif
     fill_rectangle(win.x, win.y, win.width, win.height, XP_BACKGROUND);
     
     draw_window_title_bar(win);
@@ -87,7 +92,12 @@ void draw_xp_window(const XPWindow& win)
 }
 
 
-void draw_xp_button(int x, int y, int width, int height, const char* label, bool pressed) {
+void draw_xp_button(int x, int y, int width, int height, const char* label, bool pressed) 
+{
+    #if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] draw_xp_button\n");
+    #endif
+
     uint32_t button_color = XP_BUTTON_FACE;
     uint32_t highlight = XP_BUTTON_HIGHLIGHT;
     uint32_t shadow = XP_BUTTON_SHADOW;
@@ -144,7 +154,14 @@ char* u64toa(uint64_t value, char* str, int base) {
     return str;
 }
 
-void draw_taskbar() {
+void draw_taskbar() 
+{   
+    #if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] draw_taskbar\n");
+    #endif
+    #if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] TASKBAR_Y:%d SCREEN_WIDTH:%d TASKBAR_HEIGHT:%d\n", TASKBAR_Y, SCREEN_WIDTH, TASKBAR_HEIGHT);
+    #endif
     draw_gradient(0, TASKBAR_Y, SCREEN_WIDTH, TASKBAR_HEIGHT, 0xC0C0C0, 0xA0A0A0, false);
     
     draw_hline(0, TASKBAR_Y, SCREEN_WIDTH, XP_BUTTON_HIGHLIGHT);
@@ -261,64 +278,51 @@ void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll) {
     // draw_line(x + 10, down_y + 8, x + 10, down_y + 4, 0x000000);
 }
 
-int animation = 105;
-int step = 0;
-void render_xp_desktop() 
+#if defined(DEBUG_GUI)
+int l = 0;
+void direct_clear_screen_dbg ()
+{
+    // Fill entire screen red so you know the kernel started
+    //tempframebuffer->address  bootloader.framebuffer;
+    struct limine_framebuffer *fb = bootloader.framebuffer;
+    uint32_t *addr = (uint32_t*)fb->address;
+    size_t pixel_count = fb->pitch / 4 * fb->height;
+    
+    l++;
+    int mod = l % 3;
+    switch (mod)
     {
-        frame_ready = false;
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Clearing screen %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
-    #endif
-        //clear_screen(SCREEN_WIDTH, SCREEN_HEIGHT, 0x000000);
+        case 0:
+        for (size_t i = 0; i < pixel_count; i++)
+        addr[i] = 0x0F0F00;
+        break;
+        case 1:
+        for (size_t i = 0; i < pixel_count; i++)
+        addr[i] = 0x0F000F;
+        break;
+        case 2:
+        for (size_t i = 0; i < pixel_count; i++)
+        addr[i] = 0x00F0F;
+        break;
         
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing desktop background\n");
-    #endif
-        draw_desktop_background();
-        
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Creating window1 at (%d,%d) size %dx%d\n", 100, 100, 400, 300);
-    #endif
-    if(animation > 200 || animation < 100)
-    {
-        step = (-1 * step);
-        animation += step;
-    }else{
-        animation += step;
+        default:
+        break;
     }
-        XPWindow window1 = {
-            .x = animation,
-            .y = 100,
-            .width = 400,
-            .height = 300,
-            .title = "Example window",
-            .active = true,
-            .minimized = false,
-            .bg_color = 0xECE9D8
-        };
+}
+#endif
+
+void render_xp_desktop() 
+{
+    frame_ready = false;
+    
     #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window1\n");
+    printf("[DEBUG_GUI] Drawing desktop background\n");
     #endif
-        draw_xp_window(window1);
-        
+    
     #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window1 client area rectangle\n");
+    printf("[DEBUG_GUI] Creating window1 at (%d,%d) size %dx%d\n", 100, 100, 400, 300);
     #endif
-        fill_rectangle(window1.x + 10, window1.y + 40, window1.width - 20, window1.height - 60, 0xECE9D8);
-        
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window1 button: Open\n");
-    #endif
-        draw_xp_button(window1.x + 20, window1.y + 50, 100, 25, "Open", false);
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window1 button: Delete\n");
-    #endif
-        draw_xp_button(window1.x + 130, window1.y + 50, 100, 25, "Delete", false);
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window1 button: Cancel\n");
-    #endif
-        draw_xp_button(window1.x + 240, window1.y + 50, 100, 25, "Cancel", false);
-        
+
     #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] Creating window2 at (%d,%d) size %dx%d\n", 550, 150, 350, 250);
     #endif
@@ -332,39 +336,37 @@ void render_xp_desktop()
             .minimized = false,
             .bg_color = XP_BACKGROUND
         };
-    #if defined(DEBUG_GUI)
+        #if defined(DEBUG_GUI)
         printf("[DEBUG_GUI] Drawing window2\n");
-    #endif
+        #endif
+        draw_desktop_background();
         draw_xp_window(window2);
-
-    // Initialize the global console as a window at position (100,50)
-    if(!console_initialized)
-    {    
-    console = Console(window2.width, window2.height - TITLE_BAR_HEIGHT, window2.x, window2.y + TITLE_BAR_HEIGHT);
-    console_initialize();
-    console.clear_screen();
-    console.set_bg_color(XP_BACKGROUND);
-    console.set_text_color(XP_WINDOW_TEXT);
-    }
-    console.draw_frame();
-    //console.set_title("Kernel Console");        
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window2 text line 1\n");
-    #endif
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window2 scrollbar at x=%d, y=%d, height=%d\n", 
-            window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, 
-            window2.height - TITLE_BAR_HEIGHT - 10);
-    #endif
-        draw_scrollbar(window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, window2.height - TITLE_BAR_HEIGHT - 10, 0, window2.height);
         
-        // Draw taskbar (always last, on top)
+        #if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] Drawing console\n");
+        #endif
+        // Initialize the global console as a window at window position 
+        if(!console_initialized)
+        {    
+            console = Console(window2.width, window2.height - TITLE_BAR_HEIGHT, window2.x, window2.y + TITLE_BAR_HEIGHT);
+            console_initialize();
+            console.clear_screen();
+            console.set_bg_color(XP_BACKGROUND);
+            console.set_text_color(XP_WINDOW_TEXT);
+        }
+        console.draw_frame();
+        
+        #if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] Drawing window2 text line 1\n");
+        #endif
+        #if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] Drawing window2 scrollbar at x=%d, y=%d, height=%d\n", window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, window2.height - TITLE_BAR_HEIGHT - 10);
+        #endif
+            draw_scrollbar(window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, window2.height - TITLE_BAR_HEIGHT - 10, 0, window2.height);
+            
+            draw_taskbar();
     #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing taskbar\n");
-    #endif
-        draw_taskbar();
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Render complete\n");
+        printf("[DEBUG_GUI] render_xp_desktop done\n");
     #endif
     frame_ready = true;
 }

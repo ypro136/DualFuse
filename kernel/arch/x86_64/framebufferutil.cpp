@@ -1,6 +1,7 @@
 #include <framebufferutil.h>
 
 #include <bootloader.h>
+#include <liballoc.h>
 
 volatile struct limine_framebuffer tempframebuffer_data;
 
@@ -10,18 +11,16 @@ volatile struct limine_framebuffer *tempframebuffer = &tempframebuffer_data;
 uint64_t screen_width;
 uint64_t screen_height;
 
-uint64_t pitch;
-
 
 volatile uint64_t buffer_size;
 
 
-volatile uint32_t buffer[2000 * 2000];
+volatile uint32_t *buffer = nullptr;
 
 uint32_t color = 0xffffff;
 
-
-
+uint32_t SCREEN_WIDTH;
+uint32_t SCREEN_HEIGHT;
 
 
 int framebuffer_initialize()
@@ -30,18 +29,27 @@ int framebuffer_initialize()
     framebuffer = bootloader.framebuffer;
     screen_width = framebuffer->width;
     screen_height = framebuffer->height;
-    pitch = framebuffer->pitch;
 
-    buffer_size = (screen_width * screen_height * 4);
-
+    
     tempframebuffer->width = framebuffer->width;
     tempframebuffer->height = framebuffer->height;
     tempframebuffer->pitch = framebuffer->pitch;
+    
+    buffer_size = (tempframebuffer->height * tempframebuffer->pitch);
+    // Dynamically allocate the back buffer
+    buffer = (volatile uint32_t*)malloc(buffer_size);
+    if (buffer == nullptr) {
+        printf("[framebuffer] FATAL: failed to allocate back buffer!\n");
+        return -1;
+    }
 
-    memset(buffer, 0, buffer_size);
     tempframebuffer->address = buffer;
 
-    return 0;
+    SCREEN_WIDTH  = framebuffer->width;
+    SCREEN_HEIGHT = framebuffer->height;
+
+    printf("limine framebuffer initialized.\n");
+
 }
 
 uint64_t screen_width_cap(uint64_t number)
@@ -106,11 +114,7 @@ void draw_rectangle(vector2 start, vector2 end)
 
 void clear()
 {
-        for (size_t i = 0; i < ((screen_width - 1) * (screen_height - 1)); i++) 
-        {
-            volatile uint32_t *fb_ptr = tempframebuffer->address;
-            fb_ptr[i] = 0x000000;
-        }
+    memset((void*)tempframebuffer->address, 0, buffer_size);
 }
 
 
@@ -122,12 +126,12 @@ void test_framebuffer(uint32_t test_color)
     color = test_color;
 
      // framebuffer model is assumed to be RGB with 32-bit pixels
-    for (size_t j = 0; j < 10; j++) {
-        for (size_t i = 0; i < 100; i++) {
-            volatile uint32_t *fb_ptr = tempframebuffer->address;
-            fb_ptr[i * (tempframebuffer->pitch / 4) + i] = color;
-        }
-    }
+    // for (size_t j = 0; j < 10; j++) {
+    //     for (size_t i = 0; i < 100; i++) {
+    //         volatile uint32_t *fb_ptr = tempframebuffer->address;
+    //         fb_ptr[i * (tempframebuffer->pitch / 4) + i] = color;
+    //     }
+    // }
 
     struct vector2 line_start = {0,0};
     struct vector2 line_end = {0,0};
@@ -168,7 +172,7 @@ void test_framebuffer(uint32_t test_color)
 
         copy_buffer_to_screan();
 
-        clear();
+        //clear();
     }
 }
 
@@ -181,7 +185,10 @@ void copy_buffer_to_screan()
 
 void draw_pixel(int x, int y, uint32_t rgb)
 {                         
-    volatile int *tfb_ptr = tempframebuffer->address;                                                                                      
-    tfb_ptr[((x) + (y) * screen_width)] = (rgb);                     
+    // Bounds check - critical to prevent buffer overflow
+    if (x < 0 || y < 0) return;
+    if ((uint64_t)x >= screen_width || (uint64_t)y >= screen_height) return;
 
+    volatile uint32_t *tfb_ptr = tempframebuffer->address;
+    tfb_ptr[x + y * (tempframebuffer->pitch / 4)] = rgb;
 }

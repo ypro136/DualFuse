@@ -7,6 +7,7 @@
 
 uint16_t port = 0x3f8;
 
+bool serial_initialized = false;
 
 bool serial_initialize(uint16_t _port = port) {
     port = _port;
@@ -23,12 +24,16 @@ bool serial_initialize(uint16_t _port = port) {
 
     // Check if serial is faulty (i.e: not same byte as sent)
     if (inb(port + 0) != 0xAE) {
+        serial_initialized = false;
         return false;
     }
 
     // If serial is not faulty set it in normal operation mode
     // (not-loopback with IRQs enabled and OUT#1 and OUT#2 bits enabled)
     outb(port + 4, 0x0F);
+
+    serial_initialized = true;
+    printf("serial initialization :%d.\n", serial_initialized);
 
     return true;
 }
@@ -39,17 +44,26 @@ bool received() {
 }
 
 char read() {
-    while (!received());
-    return inb(port);
+    if(serial_initialized)
+    {
+        while (!received());
+        return inb(port);
+    }
 }
 
 bool transmit_empty() {
-    return inb(port + 5) & 0x20;
+    if(serial_initialized)
+    {
+        return inb(port + 5) & 0x20;
+    }
 }
 
 void serial_write(char a) {
-    while (!transmit_empty());
-    outb(port, a);
+    if(serial_initialized)
+    {
+        while (!transmit_empty());
+        outb(port, a);
+    }
 }
 
 #endif

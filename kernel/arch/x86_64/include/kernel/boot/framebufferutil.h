@@ -21,6 +21,13 @@ extern uint64_t screen_height;
 
 extern uint64_t pitch;
 
+extern uint32_t SCREEN_WIDTH;
+extern uint32_t SCREEN_HEIGHT;
+
+extern volatile uint32_t *buffer;
+
+extern volatile uint64_t buffer_size;
+
 
 
 

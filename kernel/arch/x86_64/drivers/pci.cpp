@@ -207,7 +207,11 @@ void pci_initialize()
             #if defined(DEBUG_PCI)
             printf("[PCI] Found AHCI controller, initializing...\n");
             #endif
-            AHCI_initialize(device);
+            if(!AHCI_initialize(device))
+            {
+              printf("[PCI] warning: AHCI initialization failed MASS_STORAGE_CONTROLLER device:%d\n", device->device_id);
+              break;
+            }
             #if defined(DEBUG_PCI)
             printf("[PCI] AHCI initialization complete\n");
             #endif
@@ -224,4 +228,6 @@ void pci_initialize()
   }
 
   free(device);
+
+  printf("pci initialized.\n");
 }

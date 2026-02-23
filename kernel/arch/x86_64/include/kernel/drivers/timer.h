@@ -9,6 +9,7 @@ extern uint64_t timerTicks;
 extern uint64_t timerBootUnix;
 extern uint64_t GUI_frame;
 extern bool frame_ready;
+extern const uint32_t frequency;
 
 
 void timer_initialize();

@@ -11,7 +11,7 @@
 #include <utility.h>
 #include <hcf.hpp>
 
-
+bool isr_initialized = false;
 
 char *format = "[isr] Kernel Halt: %s!\n";
 
@@ -74,6 +74,7 @@ void isr_initialize() {
 
   remap_pic();
 
+
   // ISR exceptions 0 - 31
   for (int i = 0; i < 48; i++) {
     set_idt_gate(i, (uint64_t)asm_isr_redirect_table[i], 0x8E);
@@ -85,6 +86,10 @@ void isr_initialize() {
   // Finalize
   set_idt();
   asm volatile("sti");
+
+  isr_initialized = true;
+
+   printf("idt and isr initialized.\n");
 }
 
 

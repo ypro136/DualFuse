@@ -111,5 +111,7 @@ int gdt_initialize() {
   memset(&tss, 0, sizeof(TSSPtr));
   gdt_load_tss(&tss);
 
+  printf("gdt initialized.\n");
+
   return 0;
 }

@@ -7,6 +7,8 @@
 using std::atomic;
 using std::memory_order_relaxed;
 
+bool systemDiskInit = false;
+
 void atomicBitmapSet(volatile uint64_t *bitmap, unsigned int bit) {
   atomic<uint64_t> *atomic_bitmap = (atomic<uint64_t> *)bitmap;
   atomic_bitmap->fetch_or((1UL << bit), memory_order_relaxed);

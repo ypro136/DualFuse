@@ -21,18 +21,19 @@
 void memory_initialize()
 {
     #if defined(DEBUG_MEMORY)
-    printf("memory_initialize ran\n");
+    printf("memory_initialize\n");
     #endif
 
     physical_memory_manager_initialize(bootloader.mmTotal, bootloader.mmEntryCnt, bootloader.mmEntries , bootloader.hhdmOffset);
     #if defined(DEBUG_MEMORY)
-    printf("physical_memory_manager_initialize ran\n");
+    printf("physical_memory_manager_initialize done\n");
     #endif
 
     virtual_memory_manager_initialize(bootloader.mmTotal, bootloader.mmEntryCnt, bootloader.mmEntries , bootloader.hhdmOffset);
     #if defined(DEBUG_MEMORY)
-    printf("virtual_memory_manager_initialize ran\n");
+    printf("virtual_memory_manager_initialize done\n");
     #endif
+    printf("memory initialized.\n");
 }
 
 

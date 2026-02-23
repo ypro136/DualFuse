@@ -44,7 +44,11 @@ uint32_t blend_colors(uint32_t color1, uint32_t color2, int alpha_256) {
     return (r << 16) | (g << 8) | b;
 }
 
-void fill_rectangle(int x, int y, int width, int height, uint32_t color) {
+void fill_rectangle(int x, int y, int width, int height, uint32_t color) 
+{
+    #if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] fill_rectangle\n");
+    #endif
     for (int j = 0; j < height; j++) {
         for (int i = 0; i < width; i++) {
             draw_pixel(x + i, y + j, color);
@@ -53,7 +57,12 @@ void fill_rectangle(int x, int y, int width, int height, uint32_t color) {
 }
 
  
-void draw_rect_outline(int x, int y, int width, int height, uint32_t color, int thickness) {
+void draw_rect_outline(int x, int y, int width, int height, uint32_t color, int thickness) 
+{
+
+    #if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] draw_rect_outline\n");
+    #endif
     // Top edge
     for (int t = 0; t < thickness; t++) {
         for (int i = 0; i < width; i++) {
@@ -295,7 +304,11 @@ void draw_rectangle_with_shadow(int x, int y, int width, int height, uint32_t co
 }
 
  
-void draw_hline(int x, int y, int length, uint32_t color) {
+void draw_hline(int x, int y, int length, uint32_t color) 
+{
+    #if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] draw_hline\n");
+    #endif
     for (int i = 0; i < length; i++) {
         draw_pixel(x + i, y, color);
     }

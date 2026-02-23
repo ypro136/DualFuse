@@ -12,6 +12,11 @@
 #include <liballoc.h>
 #include <linux.h>
 
+// for info command
+#include <framebufferutil.h>
+#include <timer.h>
+#include <bootloader.h>
+
 
 #include <stdint.h>
 #include <stdio.h>
@@ -104,10 +109,19 @@ void keyboard_initialize()
     #if defined(DEBUG_KEYBOARD)
     printf("[keyboard] keyboard_initialize: irq_install_handler.....\n");
     #endif
-    irq_install_handler(1, &keyboard_handler);
+    if (isr_initialized)
+    {
+        irq_install_handler(1, &keyboard_handler);
+    }
+    else 
+    {
+        printf("[keyboard] warning: isr not initialized. keyboard initialization omitted");
+        return;
+    }
     #if defined(DEBUG_KEYBOARD)
     printf("[keyboard] keyboard_initialize: irq_install_handler done\n");
     #endif
+    printf("keyboard initialized.\n");
 }
 
 
@@ -116,8 +130,6 @@ void keyboard_handler(struct interrupt_registers *registers)
     #if defined(DEBUG_KEYBOARD)
     printf("[keyboard] keyboard_handler called \n");
     #endif
-    // char scan_code = in_port_byte(0x60) & 0x7F; // key pressed
-    // char press = in_port_byte(0x60) & 0x80; // key down or up
     char byte = in_port_byte(0x60);
     char scan_code = byte & 0x7F;   // Lower 7 bits: which key
     char press = byte & 0x80;       // Bit 7: 0x80 = released, 0x00 = pressed
@@ -287,15 +299,6 @@ void hex_to_ascii(int n, char str[]){
 #define O_DIRECTORY 00200000
 #define O_RDONLY    00000000
 
-// Minimal linux_dirent64 structure
-// typedef struct {
-//     uint64_t d_ino;
-//     int64_t  d_off;
-//     uint16_t d_reclen;
-//     uint8_t  d_type;
-//     char     d_name[256];
-// } linux_dirent64;
-
 
 void user_input(char *input)
 {
@@ -421,6 +424,12 @@ void user_input(char *input)
     {
         printf("Nachtlauf v0.1\n");
         printf("64-bit long mode\n");
+        printf("DISPLAY INFO\nframebuffer is at :%lx, tempframebuffer is at:%lx, \nwidth:%d, hight:%d, pitch:%d address:%lx\nframerate:%d\n", 
+            bootloader.framebuffer, tempframebuffer, 
+            tempframebuffer->width, tempframebuffer->height, 
+            tempframebuffer->pitch, tempframebuffer->address,
+            frequency);
+
     }
     else
     {

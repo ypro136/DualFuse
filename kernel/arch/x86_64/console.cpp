@@ -160,11 +160,11 @@ void Console::draw_rect(int x, int y, int w, int h, int rgb)
         return;
     
     // Use pitch (bytes per line) and bytes-per-pixel to compute addresses
-    uint32_t bpp = (screen_width != 0) ? (pitch / screen_width) : 4;
+    uint32_t bpp = (screen_width != 0) ? (tempframebuffer->pitch / screen_width) : 4;
     uint8_t *base = (uint8_t*)tempframebuffer->address;
     for (int i = 0; i < h; i++)
     {
-        uint8_t *row = base + (size_t)(y + i) * (size_t)pitch;
+        uint8_t *row = base + (size_t)(y + i) * (size_t)tempframebuffer->pitch;
         uint32_t *pixel = (uint32_t*)(row + (size_t)x * (size_t)bpp);
         for (int j = 0; j < w; j++)
         {
@@ -179,12 +179,12 @@ bool Console::scroll_console()
     {
         return false;
     }
-    uint32_t bpp = (screen_width != 0) ? (pitch / screen_width) : 4;
+    uint32_t bpp = (screen_width != 0) ? (tempframebuffer->pitch / screen_width) : 4;
     uint8_t *base = (uint8_t*)tempframebuffer->address;
     for (int y = CHAR_HEIGHT; y < window_height; y++)
     {
-        uint8_t *src = base + (size_t)(window_y + y) * (size_t)pitch + (size_t)window_x * (size_t)bpp;
-        uint8_t *dest = base + (size_t)(window_y + y - CHAR_HEIGHT) * (size_t)pitch + (size_t)window_x * (size_t)bpp;
+        uint8_t *src = base + (size_t)(window_y + y) * (size_t)tempframebuffer->pitch + (size_t)window_x * (size_t)bpp;
+        uint8_t *dest = base + (size_t)(window_y + y - CHAR_HEIGHT) * (size_t)tempframebuffer->pitch + (size_t)window_x * (size_t)bpp;
         memcpy(dest, src, (size_t)window_width * (size_t)bpp);
     }
     draw_rect(0, window_height - CHAR_HEIGHT, window_width, CHAR_HEIGHT, _bg_color);
@@ -254,12 +254,12 @@ void Console::initialize()
            // One-time debug: print console window position and framebuffer info
            printf("[console:debug] Window position: (%u, %u), Size: %u x %u pixels\n", window_x, window_y, window_width, window_height);
            printf("[console:debug] Framebuffer address: %p, screen_width: %u, screen_height: %u, pitch: %u\n", 
-            tempframebuffer->address, screen_width, screen_height, pitch);
+            tempframebuffer->address, screen_width, screen_height, tempframebuffer->pitch);
             
             // Compute the byte-per-pixel (guard against zero) and the framebuffer memory
             // address for the first character (window_x, window_y).
-            uint32_t bpp = (screen_width != 0) ? (pitch / screen_width) : 4;
-            void* first_char_addr = (void*)((uintptr_t)tempframebuffer->address + (uintptr_t)window_y * (uintptr_t)pitch + (uintptr_t)window_x * (uintptr_t)bpp);
+            uint32_t bpp = (screen_width != 0) ? (tempframebuffer->pitch / screen_width) : 4;
+            void* first_char_addr = (void*)((uintptr_t)tempframebuffer->address + (uintptr_t)window_y * (uintptr_t)tempframebuffer->pitch + (uintptr_t)window_x * (uintptr_t)bpp);
             printf("[console:debug] First character will render at addr: %p (pixel: (%u, %u))\n", first_char_addr, window_x, window_y);
             
 #endif

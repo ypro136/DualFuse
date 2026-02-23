@@ -63,10 +63,10 @@ bool psfLoadDefaults()
 //   return res;
 // }
 
-void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color) {
-  #if defined(DEBUG_CONSOLE)
+void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color) 
+{
   if (!psf) return;
-  #endif
+
   uint8_t *targ = (uint8_t *)((size_t)psf + sizeof(PSF1Header) + c * psf->height);
   for (int i = 0; i < psf->height; i++) {
     for (int j = 0; j < 8; j++) {
