@@ -1,9 +1,87 @@
 #include "fakefs.h"
 #include <types.h>
 #include <vfs.h>
+#include <linked_list.h>
+#include <linux.h>
+#include <spinlock.h>
+#include <circular.h>
+
 
 #ifndef DEV_H
 #define DEV_H
+
+
+// dev_controller.c
+extern FakefsFile *inputFakedir;
+extern Fakefs      rootDev;
+
+bool devMount(MountPoint *mount);
+
+// dev_event.c
+#define MAX_EVENTS 8
+#define EVENT_BUFFER_SIZE 16384
+typedef size_t (*EventBit)(OpenFile *fd, uint64_t request, void *arg);
+
+
+typedef struct DevInputEvent {
+  Spinlock LOCK_USERSPACE;
+
+  char *devname;
+  char *physloc;
+
+  size_t          timesOpened;
+  CircularInt     deviceEvents;
+  struct input_id inputid;
+
+  size_t properties;
+
+  EventBit eventBit;
+} DevInputEvent;
+
+extern DevInputEvent devInputEvents[MAX_EVENTS];
+extern int           lastInputEvent;
+
+DevInputEvent *devInputEventSetup(char *devname);
+void inputGenerateEvent(DevInputEvent *item, uint16_t type, uint16_t code,
+                        int32_t value);
+
+// dev_pty.c
+#define PTY_MAX 1024
+#define PTY_BUFF_SIZE 4096
+
+typedef struct PtyPair {
+  LLheader _ll;
+
+  Spinlock LOCK_PTY;
+
+  int masterFds;
+  int slaveFds;
+
+  termios  term;
+  winsize  win;
+  uint8_t *bufferMaster;
+  uint8_t *bufferSlave;
+
+  int ptrMaster;
+  int ptrSlave;
+
+  // controlling stuff
+  int ctrlSession;
+  int ctrlPgid;
+  // above not used by ptyIsAssigned() since they aren't cleared
+
+  int  id;
+  bool locked; // by default unlocked (hence 0)
+} PtyPair;
+
+extern VfsHandlers handlePtmx;
+extern VfsHandlers handlePts;
+
+void initiatePtyInterface();
+
+size_t ptsOpen(char *filename, int flags, int mode, OpenFile *fd,
+               char **symlinkResolve);
+size_t ptsWriteInner(PtyPair *pair, uint8_t *in, size_t limit);
 
 bool dev_mount(MountPoint *mount);
 

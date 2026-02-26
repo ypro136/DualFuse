@@ -22,6 +22,13 @@ typedef struct SpinlockCnt {
   int64_t cnt;
 } SpinlockCnt;
 
+typedef struct Semaphore {
+  Spinlock LOCK;
+  uint32_t cnt;
+  uint8_t  invalid;
+} Semaphore;
+
+
 void spinlock_cnt_read_acquire(SpinlockCnt *lock);
 void spinlock_cnt_read_release(SpinlockCnt *lock);
 

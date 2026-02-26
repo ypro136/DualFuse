@@ -18,15 +18,24 @@
 #define SYSCALL_GET_HEAP_END 403
 #define SYSCALL_ADJUST_HEAP_END 404
 
+// Assert system
+void _assert(bool expression, char *file, int line);
+#define NO_ASSERT 0
+#if NO_ASSERT
+// #define assert(...)
+#define assert(expression) _assert(expression, 0, 0)
+#else
+#define assert(expression) _assert(expression, __FILE__, __LINE__)
+#endif
+
 extern bool systemDiskInit;
 
-void     syscallTest(char *msg);
-void     syscallExitTask(int return_code);
-uint32_t syscallFork();
-void     syscallRead(int file, char *str, uint32_t count);
-void     syscallWrite(int file, char *str, uint32_t count);
+//void     syscallTest(char *msg);
+//void     syscallExitTask(int return_code);
+//uint32_t syscallFork();
+//void     syscallRead(int file, char *str, uint32_t count);
+//void     syscallWrite(int file, char *str, uint32_t count);
 
-uint32_t syscallGetPid();
 
 int      syscallGetArgc();
 char    *syscallGetArgv(int curr);

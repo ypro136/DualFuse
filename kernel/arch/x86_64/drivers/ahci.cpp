@@ -376,8 +376,12 @@ bool ahci_write(ahci *ahciPtr, uint32_t portId, HBA_PORT *port, uint32_t startl,
   return ahci_cmd_issue(ahciPtr, port, slot);
 }
 
-void ahci_interrupt_handler(AsmPassedInterrupt *regs) {
+void ahci_interrupt_handler(AsmPassedInterrupt *regs) 
+{
   PCI *browse = firstPCI;
+  #if defined(DEBUG_PCI)
+    //printf("[pci::ahci] ahci_interrupt_handler called\n");
+    #endif
   while (browse) {
     if (browse->driver == PCI_DRIVER_AHCI) {
       ahci *ahciPtr = browse->extra;
@@ -389,7 +393,7 @@ void ahci_interrupt_handler(AsmPassedInterrupt *regs) {
         HBA_PORT *port = &ahciPtr->mem->ports[portNum];
         if (port->is & HBA_PxIS_TFES) {
           // Task file error
-          printf("[pci::ahci] FATAL! Task file error!\n");
+          printf("[pci::ahci] Warning: Task file error!\n");
           Halt();
         }
         ahciPtr->mem->is = ahciPtr->mem->is;
@@ -397,7 +401,7 @@ void ahci_interrupt_handler(AsmPassedInterrupt *regs) {
       }
     }
 
-    browse = browse->next;
+    browse = (PCI *)browse->_ll.next;
   }
 }
 
@@ -430,14 +434,32 @@ bool AHCI_initialize(pci_device *device)
   config_write_dword(device->bus, device->slot, device->function, PCI_COMMAND,
                    command_status);
 
+  #if defined(DEBUG_PCI)
+      printf("[pci::ahci] Enabled PCI Bus Mastering, memory access and interrupts\n");
+    #endif
+
   PCI *pci = lookup_pci_device(device);
+  #if defined(DEBUG_PCI)
+      printf("[pci::ahci] lookup_pci_device pci is at :%lx\n", pci);
+    #endif
   setup_pci_device_driver(pci, PCI_DRIVER_AHCI, PCI_DRIVER_CATEGORY_STORAGE);
+  #if defined(DEBUG_PCI)
+      printf("[pci::ahci] setup_pci_device_driver\n");
+    #endif
+
 
   ahci *ahciPtr = (ahci *)malloc(sizeof(ahci));
   memset(ahciPtr, 0, sizeof(ahci));
   pci->extra = ahciPtr;
+  #if defined(DEBUG_PCI)
+      printf("[pci::ahci] memset ahciPtr\n");
+    #endif
 
   HBA_MEM *mem = (HBA_MEM *)(bootloader.hhdmOffset + base); //!
+
+  #if defined(DEBUG_PCI)
+      printf("[pci::ahci] 45234 mem is at : %lx\n" ,mem);
+    #endif
 
   ahciPtr->bsdInfo = ahciDevice;
   ahciPtr->mem = mem;
@@ -445,11 +467,17 @@ bool AHCI_initialize(pci_device *device)
   pci->name = (char *)malloc(size);
   memcpy(pci->name, ahciDevice->name, size);
 
+  #if defined(DEBUG_PCI)
+      printf("[pci::ahci] pci->name\n");
+    #endif
+
   // do a full HBA reset (as per 10.4.3)
   mem->ghc |= (1 << 0);
-  while (mem->ghc & (1 << 0))
-    ;
-  // printf("[pci::ahci] Reset successfully!\n");
+  while (mem->ghc & (1 << 0)){}
+  #if defined(DEBUG_PCI)
+    printf("[pci::ahci] Reset successfully!\n");
+    #endif
+  
 
   if (!(mem->bohc & 2) || mem->cap2 & AHCI_BIOS_OWNED) 
   {
@@ -475,11 +503,32 @@ bool AHCI_initialize(pci_device *device)
     mem->ghc |= (1 << 31);
 
   ahci_port_probe(ahciPtr, mem);
+  #if defined(DEBUG_PCI)
+    printf("[pci::ahci] ahci_port_probe successfully!\n");
+    #endif
 
-  // enable interrupts
-  pci->irqHandler = irq_install_handler(details->interruptLine, &ahci_interrupt_handler);
-  if (!(mem->ghc & (1 << 1)))
+    if(isr_initialized)
+    {
+      // enable interrupts
+      pci->irqHandler = irq_install_handler(details->interruptLine, &ahci_interrupt_handler);
+    }
+    else 
+    {
+      printf("[pci::ahci] FATAL: interrupts not initialized !\n");
+      return false;
+    }
+  #if defined(DEBUG_PCI)
+    printf("[pci::ahci] enabled interrupts successfully on interupt line :%d!\n",details->interruptLine);
+    #endif
+  if (!(mem->ghc & (1 << 1))){
     mem->ghc |= 1 << 1;
+    #if defined(DEBUG_PCI)
+    printf("[pci::ahci] if (!(mem->ghc & (1 << 1)))!\n");
+    #endif
+  }
 
+  #if defined(DEBUG_PCI)
+    printf("[pci::ahci] return from AHCI_initialize!\n");
+    #endif
   return true;
 }

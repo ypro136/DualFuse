@@ -17,7 +17,7 @@
 #include <vfs.h>
 
 // ELF (for now only 64) parser
-// Copyright (C) 2024 Panagiotis
+ 
 
 #define ELF_DEBUG 0
 
@@ -73,18 +73,18 @@ void elfProcessLoad(Elf64_Phdr *elf_phdr, uint8_t *out, size_t base) {
 
 Task *elfExecute(char *filepath, uint32_t argc, char **argv, uint32_t envc, char **envv, bool startup) {
   // Open & read executable file
-  OpenFile *dir = file_system_kernel_open(filepath, O_RDONLY, 0);
+  OpenFile *dir = fsKernelOpen(filepath, O_RDONLY, 0);
   if (!dir) {
     printf("[elf] Could not open %s\n", filepath);
     return 0;
   }
-  size_t filesize = file_system_get_filesize(dir);
+  size_t filesize = fsGetFilesize(dir);
 #if ELF_DEBUG
   printf("[elf] Executing %s: filesize{%d}\n", filepath, filesize);
 #endif
   uint8_t *out = (uint8_t *)malloc(filesize);
-  file_system_read_full_file(dir, out);
-  file_system_kernel_close(dir);
+  fsRead(dir, out,fsGetFilesize(dir));
+  fsKernelClose(dir);
 
   // Cast ELF32 header
   Elf64_Ehdr *elf_ehdr = (Elf64_Ehdr *)(out);
@@ -124,17 +124,17 @@ Task *elfExecute(char *filepath, uint32_t argc, char **argv, uint32_t envc, char
                                           i * elf_ehdr->e_phentsize);
     if (elf_phdr->p_type == 3) {
       char     *interpreterFilename = (char *)(out + elf_phdr->p_offset);
-      OpenFile *interpreter = file_system_kernel_open(interpreterFilename, O_RDONLY, 0);
+      OpenFile *interpreter = fsKernelOpen(interpreterFilename, O_RDONLY, 0);
       if (!interpreter) {
         printf("[elf] Interpreter path{%s} could not be found!\n",
                interpreterFilename);
         Halt();
       }
-      size_t size = file_system_get_filesize(interpreter);
+      size_t size = fsGetFilesize(interpreter);
 
       uint8_t *interpreterContents = (uint8_t *)malloc(size);
-      file_system_read_full_file(interpreter, interpreterContents);
-      file_system_kernel_close(interpreter);
+      fsRead(interpreter, interpreterContents, fsGetFilesize(interpreter));
+      fsKernelClose(interpreter);
 
       Elf64_Ehdr *interpreterEhdr = (Elf64_Ehdr *)(interpreterContents);
       if (interpreterEhdr->e_type != 3) { // ET_DYN
@@ -216,12 +216,13 @@ Task *elfExecute(char *filepath, uint32_t argc, char **argv, uint32_t envc, char
   }*/
 
   // Current working directory init
-  target->cwd = (char *)malloc(2);
-  target->cwd[0] = '/';
-  target->cwd[1] = '\0';
+  target->cmdline = (char *)malloc(2);
+  target->cmdline[0] = '/';
+  target->cmdline[1] = '\0';
 
+  size_t executableBase = 0;
   // User stack generation: the stack itself, AUXs, etc...
-  stack_generate_user(target, argc, argv, envc, envv, out, filesize, elf_ehdr);
+  stackGenerateUser(target, argc, argv, envc, envv, out, filesize, elf_ehdr, interpreterEntry ? 0x100000000000 : 0, executableBase);
   free(out);
 
   // void **a = (void **)(&target->firstSpecialFile);
@@ -232,18 +233,18 @@ Task *elfExecute(char *filepath, uint32_t argc, char **argv, uint32_t envc, char
   // fsUserOpenSpecial(a, "/dev/fb0", target, -1, &fb0);
   // fsUserOpenSpecial(a, "/dev/tty", target, -1, &stdio);
 
-  int stdin = file_system_user_open(target, "/dev/stdin", O_RDWR, 0);
-  int stdout = file_system_user_open(target, "/dev/stdout", O_RDWR, 0);
-  int stderr = file_system_user_open(target, "/dev/stderr", O_RDWR, 0);
+  int stdin = fsUserOpen(target, "/dev/stdin", O_RDWR, 0);
+  int stdout = fsUserOpen(target, "/dev/stdout", O_RDWR, 0);
+  int stderr = fsUserOpen(target, "/dev/stderr", O_RDWR, 0);
 
   if (stdin < 0 || stdout < 0 || stderr < 0) {
     printf("[elf] Couldn't establish basic IO!\n");
     Halt();
   }
 
-  OpenFile *fdStdin = file_system_user_get_node(target, stdin);
-  OpenFile *fdStdout = file_system_user_get_node(target, stdout);
-  OpenFile *fdStderr = file_system_user_get_node(target, stderr);
+  OpenFile *fdStdin = fsUserGetNode(target, stdin);
+  OpenFile *fdStdout = fsUserGetNode(target, stdout);
+  OpenFile *fdStderr = fsUserGetNode(target, stderr);
 
   fdStdin->id = 0;
   fdStdout->id = 1;
@@ -251,8 +252,8 @@ Task *elfExecute(char *filepath, uint32_t argc, char **argv, uint32_t envc, char
   // todo fixup all of the ^
 
   // Align it, just in case...
-  task_adjust_heap(target, CEILING_DIVISION(target->heap_end, 0x1000) * 0x1000,
-                 &target->heap_start, &target->heap_end);
+  task_adjust_heap(target, DivRoundUp(target->infoPd->heap_end, 0x1000) * 0x1000,
+                 &target->infoPd->heap_start, &target->infoPd->heap_end);
 
   // Just a sane default
   target->parent = currentTask;

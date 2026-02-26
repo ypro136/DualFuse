@@ -11,7 +11,7 @@
 #include <utility.h>
 #include <hcf.hpp>
 
-
+bool isr_initialized = false;
 
 char *format = "[isr] Kernel Halt: %s!\n";
 
@@ -74,6 +74,7 @@ void isr_initialize() {
 
   remap_pic();
 
+
   // ISR exceptions 0 - 31
   for (int i = 0; i < 48; i++) {
     set_idt_gate(i, (uint64_t)asm_isr_redirect_table[i], 0x8E);
@@ -85,6 +86,10 @@ void isr_initialize() {
   // Finalize
   set_idt();
   asm volatile("sti");
+
+  isr_initialized = true;
+
+   printf("idt and isr initialized.\n");
 }
 
 
@@ -150,12 +155,18 @@ void irq_uninstall_handler(int irq)
 
 void irq_handler(int irq, AsmPassedInterrupt *cpu)
 {
+      #if defined(DEBUG_ISR)
+      printf("[isr] irq_handler(%d)\n", irq);
+      #endif
   void (*handler)(struct interrupt_registers *registers);
 
       handler = irq_routines[irq];
 
       if(handler)
       {
+        #if defined(DEBUG_ISR)
+        printf("[isr] irq_handler: handler for %d exists. calling....\n", irq);
+        #endif
         handler((uint64_t)cpu);
         return;
       }
@@ -168,6 +179,9 @@ void irq_handler(int irq, AsmPassedInterrupt *cpu)
 // pass stack ptr
 extern "C" void handle_interrupt(uint64_t rsp) 
 {
+  #if defined(DEBUG_INTERRUPT)
+    printf("[isr] handle_interrupt\n");
+    #endif
   AsmPassedInterrupt *cpu = (AsmPassedInterrupt *)rsp;
   if (cpu->interrupt >= 32 && cpu->interrupt <= 47) 
   { // IRQ
@@ -175,14 +189,23 @@ extern "C" void handle_interrupt(uint64_t rsp)
       out_port_byte(0xA0, 0x20);
     }
     out_port_byte(0x20, 0x20);
+
+    #if defined(DEBUG_INTERRUPT)
+    printf("[isr] handle_interrupt: interrupt:%d\n", 32 - cpu->interrupt);
+    #endif
     switch (cpu->interrupt) {
     case 32 + 0: // irq0 timer
       irq_handler(0, cpu);
       break;
 
     case 32 + 1: // irq1 keyboard
+    {
+      #if defined(DEBUG_KEYBOARD)
+      printf("[keyboard::isr] irq 33 called calling irq_handler to call keyboard\n");
+      #endif
       irq_handler(1, cpu);
       break;
+    }
     case 32 + 11: // irq11 achi
       irq_handler(11, cpu);
       break;
@@ -237,7 +260,7 @@ extern "C" void handle_interrupt(uint64_t rsp)
 
     // if (framebuffer == KERNEL_GFX)
     //   printf(format, exceptions[cpu->interrupt]);
-    //Halt();
+    Halt();
   } else if (cpu->interrupt == 0x80) {
     syscall_handler(cpu);
   }

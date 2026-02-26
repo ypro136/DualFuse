@@ -18,6 +18,8 @@
 #define RFLAGS_IF (1 << 9)
 #define RFLAGS_DF (1 << 10)
 
+extern bool isr_initialized;
+
 typedef struct {
   uint64_t ds; // & es
 

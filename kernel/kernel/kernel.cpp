@@ -1,4 +1,4 @@
- #include <types.h>
+#include <types.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,15 +18,23 @@
 
 
 #include <framebufferutil.h>
+#include <graphic_composer.h>
 #include <console.h>
+#include <psf.h>
+#include <state_monitor.h>
 #include <paging.h>
 #include <task.h>
 #include <syscalls.h>
 #include <fastSyscall.h>
 #include <system.h>
+#include <minimal_acpi.h>
+#include <mouse.h>
+#include <apic.h>
 
-bool systemDiskInit;
+#include <GUI.h>
+#include <fram_loop.h>
 
+#include <ramdisk.h>
 
 
 extern "C" void _init(void);
@@ -35,64 +43,60 @@ extern "C" void kernel_main(void);
 
 extern "C" void kernel_main(void) 
 {
-
-    _init();
-
-    systemDiskInit = false;
-
-    serial_initialize(0x3f8);
-    printf("serial initialized.\n");
-
-    initialiseBootloaderParser();
-    printf("Bootloader Parser initialized.\n");
-
-	gdt_initialize();
-	printf("gdt initialized.\n");
-
-    paging_initialize();
-    printf("paging initialized.\n");
-
-    isr_initialize();
-    printf("idt and isr initialized.\n");
+    _init(); // lib c software dependent fatal to fail
     
-    framebuffer_initialize();
-    printf("limine framebuffer initialized.\n");
+    serial_initialize(0x3f8); // serial output(for debuging) non fatal to fail
     
-	timer_initialize();
-	printf("timer initialized.\n");
+    initialiseBootloaderParser(); // parser for limine bootloder fatal to fail
 
-	memory_initialize();
-	printf("memory initialized.\n");
+	gdt_initialize(); // global discriptor table fatal to fail
 
-    console_initialize();
-    printf("console initialized.\n");
-    clear_screen();
-    printf("Welcome to Nachtlauf kernel!\n");
-
-    pci_initialize();
-
-	keyboard_initialize();
-    printf("keyboard initialized.\n");
-
-    tasks_initialize();
+    paging_initialize(); // paging non fatal to fail
     
-    syscall_inst_initialize();
+    isr_initialize(); // Interrupt Service Routines fatal to fail
     
-    syscalls_initialize();
+	memory_initialize(); // memory managment fatal to fail
+
+    framebuffer_initialize(); // framebuffer non fatal to fail
     
-    initiateSSE();
-
-    // fsMount("/", CONNECTOR_AHCI, 0, 1);
-    // fsMount("/boot/", CONNECTOR_AHCI, 0, 0);
-    // fsMount("/sys/", CONNECTOR_SYS, 0, 0);
-    // fsMount("/proc/", CONNECTOR_PROC, 0, 0);
-
-    //syscall test
-    printf("task id is :%d \n",syscallGetPid());
+	timer_initialize(); // timer non fatal to fail
     
-    // test_framebuffer(0xffffff);
+	keyboard_initialize(); // keyboard non fatal to fail
+    
+    pci_initialize(); // Peripheral Component Interconnect non fatal to fail
+    
+    // tasks_initialize(); TODO: fix this non fatal to fail
+    // printf("tasks initialized.\n");
+    
+    syscall_inst_initialize(); // syscalls non fatal to fail TODO: thay should be
+    
+    syscalls_initialize(); // syscalls non fatal to fail TODO: thay should be
+    
+    initiateSSE(); // Streaming SIMD Extensions non fatal to fail
+    
+    block_init();
+    
+    while (true) {
+        frame_loop(render_xp_desktop);
+        // TODO: Handle input
+    }
 
+    test_framebuffer(0xFFFFFF);
+
+    
+    acpiInit();// TODO: this is very minimal
+    printf("acpi initialized.\n");
+    
+    initiateAPIC();
+    printf("APIC initialized.\n");
+    
+    initiateMouse();
+    printf("mouse initialized.\n");
+    
+
+    
     // breakpoint; tested and works
 	
     for (;;) {}
 }
+

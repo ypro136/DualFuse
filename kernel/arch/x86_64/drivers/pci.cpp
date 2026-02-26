@@ -16,22 +16,27 @@
 __attribute__((used))
 PCI *firstPCI;
 
+LLcontrol dsPCI;
+
 
 /* PCI abstraction */
-
-PCI *lookup_pci_device(pci_device *device) {
-  PCI *browse = firstPCI;
-  while (browse) {
-    if (browse->bus == device->bus && browse->slot == device->slot &&
-        browse->function == device->function)
-      break;
-    browse = browse->next;
-  }
-  return browse;
+bool lookupPCIdeviceCb(void *data, void *ctx) {
+  PCI       *browse = data;
+  pci_device *device = ctx;
+  return browse->bus == device->bus && browse->slot == device->slot &&
+         browse->function == device->function;
 }
 
-void setup_pci_device_driver(PCI *pci, PCI_DRIVER driver,
-                          PCI_DRIVER_CATEGORY category) {
+PCI *lookup_pci_device(pci_device *device) {
+
+  return LinkedListSearch(&dsPCI, lookupPCIdeviceCb, device);
+
+}
+
+void setup_pci_device_driver(PCI *pci, PCI_DRIVER driver, PCI_DRIVER_CATEGORY category) 
+{
+
+  printf("[pci::ahci] setup_pci_device_driver: pci is at : %lx ,driver is at :%lx , category is at :%lx\n",pci, &driver , &category);
   pci->driver = driver;
   pci->category = category;
 }
@@ -150,6 +155,7 @@ void pci_initialize()
   #if defined(DEBUG_PCI)
   printf("[PCI] Starting PCI initialization...\n");
   #endif
+  
 
   pci_device *device = (pci_device *)malloc(sizeof(pci_device));
   #if defined(DEBUG_PCI)
@@ -158,6 +164,8 @@ void pci_initialize()
     return;
   }
   #endif
+
+  LinkedListInit(&dsPCI, sizeof(PCI));
 
 
   for (uint16_t bus = 0; bus < PCI_MAX_BUSES; bus++) {
@@ -177,7 +185,7 @@ void pci_initialize()
         printf("[PCI] Device class: %02x, subclass: %02x\n", device->class_id, device->subclass_id);
         #endif
 
-        PCI *target = linked_list_allocate((void **)(&firstPCI), sizeof(PCI));
+        PCI *target = LinkedListAllocate(&dsPCI, sizeof(PCI));
         #if defined(DEBUG_PCI)
         if (!target) {
           printf("[PCI] Failed to allocate PCI list entry. target is NULL\n");
@@ -199,7 +207,11 @@ void pci_initialize()
             #if defined(DEBUG_PCI)
             printf("[PCI] Found AHCI controller, initializing...\n");
             #endif
-            AHCI_initialize(device);
+            if(!AHCI_initialize(device))
+            {
+              printf("[PCI] warning: AHCI initialization failed MASS_STORAGE_CONTROLLER device:%d\n", device->device_id);
+              break;
+            }
             #if defined(DEBUG_PCI)
             printf("[PCI] AHCI initialization complete\n");
             #endif
@@ -216,4 +228,6 @@ void pci_initialize()
   }
 
   free(device);
+
+  printf("pci initialized.\n");
 }

@@ -11,7 +11,7 @@ static int syscallRtSigaction(int sig, const struct sigaction *act,
 }
 
 #define SYSCALL_RT_SIGPROCMASK 14
-static int syscallRtSigprocmask(int how, __sigset_t *nset, __sigset_t *oset,
+static size_t syscallRtSigprocmask(int how, sigset_t *nset, sigset_t *oset,
                                 size_t sigsetsize) {
 #if DEBUG_SYSCALLS_STUB
   printf("[syscalls::sigprocmask] UNIMPLEMENTED!\n");

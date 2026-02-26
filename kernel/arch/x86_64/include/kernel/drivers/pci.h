@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <data_structures/linked_list.h>
+
 
 #ifndef PCI_H
 #define PCI_H
@@ -134,7 +136,7 @@ typedef enum PCI_DRIVER_CATEGORY {
 
 typedef struct PCI PCI;
 struct PCI {
-  PCI *next;
+  LLheader _ll;
 
   uint8_t  bus, slot, function;
   uint16_t vendor_id, device_id;
@@ -146,6 +148,7 @@ struct PCI {
   void       *extra;
   irqHandler *irqHandler;
 };
+extern LLcontrol dsPCI; // struct PCI
 
 
 #define EXPORT_BYTE(target, first)                                             \

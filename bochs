@@ -1,11 +1,10 @@
-romimage: file=/usr/share/bochs/BIOS-bochs-legacy
-vgaromimage: file=/usr/share/bochs/VGABIOS-lgpl-latest
-memory: guest=2048m, host=2048m
+romimage: file=/usr/local/share/bochs/BIOS-bochs-latest
+vgaromimage: file=/usr/local/share/bochs/VGABIOS-lgpl-latest
+memory: guest=1024m, host=1024m
 ata0-slave: type=cdrom, path=DualFuse.iso, status=inserted
-boot:cdrom
-display_library: x, options = "gui_debug"
+boot: cdrom
+display_library: x, options="gui_debug"
 cpu: reset_on_triple_fault=0
 log: logs/bochs.log
 logprefix: %t %e %d
-panic: action=ask
 error: action=report

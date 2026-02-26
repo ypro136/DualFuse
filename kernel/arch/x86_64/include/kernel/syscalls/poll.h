@@ -1,0 +1,93 @@
+#include <spinlock.h>
+#include <task.h>
+#include <types.h>
+#include <vfs.h>
+
+#ifndef POLL_H
+#define POLL_H
+
+// no lock for these two as they HAVE to pass by PollInstance's lock!
+typedef struct TaskListeners {
+  LLheader _ll;
+  Task    *task;
+} TaskListeners;
+
+// not used. item is the key and epollEvents is the value
+// of an AVL object (nvm)
+typedef struct PollItem {
+  LLheader _ll;
+
+  uint64_t key;
+  int      epollEvents;
+} PollItem;
+
+typedef struct PollInstance {
+  LLheader _ll;
+
+  // Spinlock LOCK_INSTANCE;
+
+  // Spinlock LOCK_POLL_INSTANCE;
+  bool listening;
+
+  LLcontrol listeners; // struct TaskListeners
+  LLcontrol items;     // struct PollItem
+
+  int fr;
+  int haha;
+} PollInstance;
+
+extern LLcontrol dsPollRoot; // struct PollInstance
+extern Spinlock  LOCK_POLL_ROOT;
+
+extern VfsHandlers socketHandlers;
+
+void pollInstanceRing(size_t key, int epollEvent);
+
+typedef struct EpollWatch {
+  LLheader _ll;
+
+  OpenFile *fd;
+  int       watchEvents;
+
+  uint64_t userlandData; // pass it directly
+} EpollWatch;
+
+typedef struct Epoll {
+  LLheader _ll;
+
+  Spinlock LOCK_EPOLL;
+  int      timesOpened;
+
+  bool legacyMode; // todo
+
+  PollInstance *instance;
+
+  LLcontrol firstEpollWatch; // struct EpollWatch
+} Epoll;
+
+extern Spinlock  LOCK_LL_EPOLL;
+extern LLcontrol dsEpoll; // struct Epoll
+
+size_t epollCreate1(int flags);
+size_t epollCtl(OpenFile *epollFd, int op, int fd, struct epoll_event *event);
+size_t epollWait(OpenFile *epollFd, struct epoll_event *events, int maxevents,
+                 int timeout);
+size_t epollPwait(OpenFile *epollFd, struct epoll_event *events, int maxevents,
+                  int timeout, sigset_t *sigmask, size_t sigsetsize);
+
+void epollCloseNotify(OpenFile *fd);
+
+extern VfsHandlers epollHandlers;
+
+uint32_t epollToPollComp(uint32_t epoll_events);
+uint32_t pollToEpollComp(uint32_t poll_events);
+
+size_t poll(struct pollfd *fds, int nfds, int timeout);
+size_t ppoll(struct pollfd *fds, int nfds, struct timespec *timeout,
+             sigset_t *sigmask, size_t sigsetsize);
+
+size_t select(int nfds, uint8_t *read, uint8_t *write, uint8_t *except,
+              struct timeval *timeout);
+void   pollIndependentAwait(OpenFile *fd, int epollEvents);
+
+#endif

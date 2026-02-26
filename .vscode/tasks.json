@@ -14,14 +14,20 @@
             "isBackground": true,
             "presentation": {
                 "reveal": "always",
-                "panel": "shared",
-                "clear": true,
-                "showReuseMessage": false,
                 "panel": "new",
                 "clear": true,
-                "close": true
+                "close": false
             },
-            "problemMatcher": []
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^([a-zA-Z0-9_./\\\\-]+):(\\d+):(\\d+):\\s+(warning|error|note):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            }
         },
         {
             "label": "bochs script",
@@ -36,15 +42,20 @@
             "isBackground": true,
             "presentation": {
                 "reveal": "always",
-                "panel": "shared",
-                "clear": true,
-                "showReuseMessage": false,
                 "panel": "new",
                 "clear": true,
-                "close": true
+                "close": false
             },
-            "problemMatcher": []
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^([a-zA-Z0-9_./\\\\-]+):(\\d+):(\\d+):\\s+(warning|error|note):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            }
         }
-
     ]
 }

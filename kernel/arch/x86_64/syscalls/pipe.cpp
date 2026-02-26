@@ -26,8 +26,8 @@ struct PipeSpecific {
 };
 
 int pipe_open(int *fds) {
-  int readFd = file_system_user_open(currentTask, "/dev/stdout", O_RDONLY, 0);
-  int writeFd = file_system_user_open(currentTask, "/dev/stdout", O_WRONLY, 0);
+  int readFd = fsUserOpen(currentTask, "/dev/stdout", O_RDONLY, 0);
+  int writeFd = fsUserOpen(currentTask, "/dev/stdout", O_WRONLY, 0);
 
   if (readFd < 0 || writeFd < 0)
     {
@@ -35,8 +35,8 @@ int pipe_open(int *fds) {
     return -1;
   }
 
-  OpenFile *read = file_system_user_get_node(currentTask, readFd);
-  OpenFile *write = file_system_user_get_node(currentTask, writeFd);
+  OpenFile *read = fsUserGetNode(currentTask, readFd);
+  OpenFile *write = fsUserGetNode(currentTask, writeFd);
 
   if (!read || !write)
   {

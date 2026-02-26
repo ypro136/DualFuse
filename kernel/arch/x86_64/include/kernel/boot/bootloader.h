@@ -1,4 +1,8 @@
 #include <limine.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <types.h>
 
 #ifndef BOOTLOADER_H
 #define BOOTLOADER_H
@@ -9,6 +13,8 @@ extern uint64_t kernel_rodata_start, kernel_rodata_end;
 extern uint64_t kernel_data_start, kernel_data_end;
 extern uint64_t kernel_start, kernel_end;
 
+
+
 typedef struct Bootloader {
   uint64_t hhdmOffset;
   uint64_t kernelVirtBase;
@@ -16,12 +22,16 @@ typedef struct Bootloader {
 
   struct limine_framebuffer *framebuffer;
 
+  size_t rsdp;
+  
   uint64_t first_entry_base;
 
   uint64_t   mmTotal;
   uint64_t mmEntryCnt;
   LIMINE_PTR(struct limine_memmap_entry **) mmEntries;
 };
+
+#define IS_INSIDE_HHDM(a)   ((size_t)a >= bootloader.hhdmOffset && (size_t)a <= (bootloader.hhdmOffset + bootloader.mmTotal))
 
 extern Bootloader bootloader;
 

@@ -1,29 +1,25 @@
-#include <syscalls.h>
-
 #include <linux.h>
 #include <string.h>
+#include <syscalls.h>
 #include <system.h>
 #include <task.h>
-
+#include <timer.h>
 #include <utility.h>
-#include <hcf.hpp>
 
 #define SYSCALL_GETPID 39
-static uint32_t syscallGetPid() { return currentTask->id; }
+static size_t syscallGetPid() { return currentTask->tgid; }
 
 #define SYSCALL_GETCWD 79
-static int syscallGetcwd(char *buff, size_t size) {
-  size_t realLength = strlen(currentTask->cwd) + 1;
+static size_t syscallGetcwd(char *buff, size_t size) {
+  spinlock_acquire(&currentTask->infoFs->LOCK_FS);
+  size_t realLength = strlen(currentTask->infoFs->cwd) + 1;
   if (size < realLength) {
-#if DEBUG_SYSCALLS_FAILS
-    printf("[syscalls::getcwd] FAIL! Not enough space on buffer! given{%ld} "
-           "required{%ld}\n",
-           size, realLength);
-#endif
-    return -ERANGE;
+    spinlock_release(&currentTask->infoFs->LOCK_FS);
+    return ERR(ERANGE);
   }
-  memcpy(buff, currentTask->cwd, realLength);
+  memcpy(buff, currentTask->infoFs->cwd, realLength);
 
+  spinlock_release(&currentTask->infoFs->LOCK_FS);
   return realLength;
 }
 
@@ -35,7 +31,7 @@ char version[] = "0.69.2";
 char machine[] = "x86_64";
 
 #define SYSCALL_UNAME 63
-static int syscallUname(struct old_utsname *utsname) {
+static size_t syscallUname(struct old_utsname *utsname) {
   memcpy(utsname->sysname, sysname, sizeof(sysname));
   memcpy(utsname->nodename, nodename, sizeof(nodename));
   memcpy(utsname->release, release, sizeof(release));
@@ -46,57 +42,86 @@ static int syscallUname(struct old_utsname *utsname) {
 }
 
 #define SYSCALL_CHDIR 80
-static int syscallChdir(char *newdir) {
-  int ret = task_change_cwd(newdir);
-#if DEBUG_SYSCALLS_FAILS
-  if (ret < 0)
-    printf("[syscalls::chdir] FAIL! Tried to change to %s!\n", newdir);
-#endif
-
-  return ret;
+static size_t syscallChdir(char *newdir) {
+  dbgSysExtraf("newdir{%s}", newdir);
+  return task_change_cwd(newdir);
 }
 
 #define SYSCALL_FCHDIR 81
-static int syscallFchdir(int fd) {
-  OpenFile *file = file_system_user_get_node(currentTask, fd);
+static size_t syscallFchdir(int fd) {
+  OpenFile *file = fsUserGetNode(currentTask, fd);
   if (!file)
-    return -EBADF;
+    return ERR(EBADF);
   if (!file->dirname)
-    return -ENOTDIR;
+    return ERR(ENOTDIR);
   return syscallChdir(file->dirname);
 }
 
+struct rlimit {
+  size_t rlim_cur; /* Soft limit */
+  size_t rlim_max; /* Hard limit (ceiling for rlim_cur) */
+};
+
+#define SYSCALL_GETRLIMIT 97
+static size_t syscallGetrlimit(int resource, struct rlimit *rlim) {
+  switch (resource) {
+  case 7: // max open fds
+    spinlock_cnt_read_acquire(&currentTask->infoFiles->WLOCK_FILES);
+    rlim->rlim_cur = currentTask->infoFiles->rlimitFdsSoft;
+    rlim->rlim_max = currentTask->infoFiles->rlimitFdsHard;
+    spinlock_cnt_read_release(&currentTask->infoFiles->WLOCK_FILES);
+    // todo: ENSURE hard limits are multiples of 8 (for later)
+    return 0;
+    break;
+  default:
+    return ERR(ENOSYS);
+    break;
+  }
+}
+
 #define SYSCALL_GETUID 102
-static int syscallGetuid() {
+static size_t syscallGetuid() {
   return 0; // root ;)
 }
 
 #define SYSCALL_GETGID 104
-static int syscallGetgid() {
+static size_t syscallGetgid() {
   return 0; // root ;)
 }
 
+#define SYSCALL_SETUID 105
+static size_t syscallSetuid(size_t uid) {
+  if (uid != 0) // no getting out of root for you :^)
+    return ERR(EPERM);
+  return 0;
+}
+
+#define SYSCALL_SETGID 106
+static size_t syscallSetgid(size_t gid) {
+  if (gid != 0) // no getting out of root for you :^)
+    return ERR(EPERM);
+  return 0;
+}
+
 #define SYSCALL_GETEUID 107
-static int syscallGeteuid() {
+static size_t syscallGeteuid() {
   return 0; // root ;)
 }
 
 #define SYSCALL_GETEGID 108
-static int syscallGetegid() {
+static size_t syscallGetegid() {
   return 0; // root ;)
 }
 
 #define SYSCALL_SETPGID 109
-static int syscallSetpgid(int pid, int pgid) {
+static size_t syscallSetpgid(int pid, int pgid) {
   if (!pid)
     pid = currentTask->id;
 
   Task *task = task_get(pid);
   if (!task) {
-#if DEBUG_SYSCALLS_FAILS
-    printf("[syscalls::setpgid] FAIL! Couldn't find task. pid{%d}\n", pid);
-#endif
-    return -EPERM;
+    dbgSysExtraf("no such task w/pid{%d}", pid);
+    return ERR(EPERM);
   }
 
   task->pgid = pgid;
@@ -104,15 +129,26 @@ static int syscallSetpgid(int pid, int pgid) {
 }
 
 #define SYSCALL_GETPPID 110
-static int syscallGetppid() {
+static size_t syscallGetppid() {
   if (currentTask->parent)
     return currentTask->parent->id;
   else
     return KERNEL_TASK_ID;
 }
 
+#define SYSCALL_SETSID 112
+static size_t syscallSetsid() {
+  if (currentTask->tgid == currentTask->pgid)
+    return ERR(EPERM);
+
+  currentTask->sid = currentTask->tgid;
+  currentTask->pgid = currentTask->tgid;
+  currentTask->ctrlPty = -1;
+  return 0;
+}
+
 #define SYSCALL_GETGROUPS 115
-static int syscallGetgroups(int gidsetsize, uint32_t *gids) {
+static size_t syscallGetgroups(int gidsetsize, uint32_t *gids) {
   if (!gidsetsize)
     return 1;
 
@@ -121,10 +157,10 @@ static int syscallGetgroups(int gidsetsize, uint32_t *gids) {
 }
 
 #define SYSCALL_GETPGID 121
-static int syscallGetpgid() { return currentTask->pgid; }
+static size_t syscallGetpgid() { return currentTask->pgid; }
 
 #define SYSCALL_PRCTL 158
-static int syscallPrctl(int code, size_t addr) {
+static size_t syscallPrctl(int code, size_t addr) {
   switch (code) {
   case 0x1002:
     currentTask->fsbase = addr;
@@ -134,35 +170,49 @@ static int syscallPrctl(int code, size_t addr) {
     break;
   }
 
-  printf("[syscalls::prctl] Unsupported code! code_10{%d} code_16{%x}!\n", code,
-         code);
-  return -ENOSYS;
+  dbgSysStubf("unsupported code{%d:0x%x}", code, code);
+  return ERR(ENOSYS);
 }
 
 #define SYSCALL_GET_TID 186
-static int syscallGetTid() { return currentTask->id; }
+static size_t syscallGetTid() { return currentTask->id; }
 
 #define SYSCALL_SET_TID_ADDR 218
-static int syscallSetTidAddr(int *tidptr) {
-  *tidptr = currentTask->id;
+static size_t syscallSetTidAddr(int *tidptr) {
+  // todo: futex() WAKEUP!
+  currentTask->tidptr = tidptr;
   return currentTask->id;
 }
 
+// todo.. actually random!
+#define SYSCALL_GETRANDOM 318
+static size_t syscallGetRandom(char *buff, size_t count, uint32_t flags) {
+  srand(timerTicks);
+  for (int i = 0; i < count; i++)
+    buff[i] = rand();
+  return count;
+}
+
 void syscallsRegEnv() {
-  register_syscall(SYSCALL_GETPID, syscallGetPid);
-  register_syscall(SYSCALL_GETCWD, syscallGetcwd);
-  register_syscall(SYSCALL_CHDIR, syscallChdir);
-  register_syscall(SYSCALL_GETUID, syscallGetuid);
-  register_syscall(SYSCALL_GETEUID, syscallGeteuid);
-  register_syscall(SYSCALL_GETGID, syscallGetgid);
-  register_syscall(SYSCALL_GETEGID, syscallGetegid);
-  register_syscall(SYSCALL_GETPPID, syscallGetppid);
-  register_syscall(SYSCALL_GETPGID, syscallGetpgid);
-  register_syscall(SYSCALL_SETPGID, syscallSetpgid);
-  register_syscall(SYSCALL_PRCTL, syscallPrctl);
-  register_syscall(SYSCALL_SET_TID_ADDR, syscallSetTidAddr);
-  register_syscall(SYSCALL_GET_TID, syscallGetTid);
-  register_syscall(SYSCALL_UNAME, syscallUname);
-  register_syscall(SYSCALL_FCHDIR, syscallFchdir);
-  register_syscall(SYSCALL_GETGROUPS, syscallGetgroups);
+  registerSyscall(SYSCALL_GETPID, syscallGetPid);
+  registerSyscall(SYSCALL_GETCWD, syscallGetcwd);
+  registerSyscall(SYSCALL_CHDIR, syscallChdir);
+  registerSyscall(SYSCALL_GETRLIMIT, syscallGetrlimit);
+  registerSyscall(SYSCALL_GETUID, syscallGetuid);
+  registerSyscall(SYSCALL_GETEUID, syscallGeteuid);
+  registerSyscall(SYSCALL_GETGID, syscallGetgid);
+  registerSyscall(SYSCALL_GETEGID, syscallGetegid);
+  registerSyscall(SYSCALL_GETPPID, syscallGetppid);
+  registerSyscall(SYSCALL_GETPGID, syscallGetpgid);
+  registerSyscall(SYSCALL_SETPGID, syscallSetpgid);
+  registerSyscall(SYSCALL_SETUID, syscallSetuid);
+  registerSyscall(SYSCALL_SETGID, syscallSetgid);
+  registerSyscall(SYSCALL_SETSID, syscallSetsid);
+  registerSyscall(SYSCALL_PRCTL, syscallPrctl);
+  registerSyscall(SYSCALL_SET_TID_ADDR, syscallSetTidAddr);
+  registerSyscall(SYSCALL_GET_TID, syscallGetTid);
+  registerSyscall(SYSCALL_UNAME, syscallUname);
+  registerSyscall(SYSCALL_FCHDIR, syscallFchdir);
+  registerSyscall(SYSCALL_GETGROUPS, syscallGetgroups);
+  registerSyscall(SYSCALL_GETRANDOM, syscallGetRandom);
 }

@@ -3,6 +3,7 @@
 #include <framebufferutil.h>
 #include <memory.h>
 #include <console.h>
+#include <vfs.h>
 
 
 
@@ -45,15 +46,15 @@ bool psfLoadDefaults()
 }
 
 // bool psfLoadFromFile(char *path) {
-//   OpenFile *dir = file_system_kernel_open(path, O_RDONLY, 0);
+//   OpenFile *dir = fsKernelOpen(path, O_RDONLY, 0);
 //   if (!dir)
 //     return false;
 
-//   uint32_t filesize = file_system_get_filesize(dir);
+//   uint32_t filesize = fsGetFilesize(dir);
 //   uint8_t *out = (uint8_t *)malloc(filesize);
 
-//   file_system_read_full_file(dir, out);
-//   file_system_kernel_close(dir);
+//   fsRead(dir, out, fsGetFilesize(dir));
+//   fsKernelClose(dir);
 
 //   bool res = psfLoad(out);
 //   if (!res)
@@ -62,10 +63,10 @@ bool psfLoadDefaults()
 //   return res;
 // }
 
-void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb) {
-  #if defined(DEBUG_CONSOLE)
+void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color) 
+{
   if (!psf) return;
-  #endif
+
   uint8_t *targ = (uint8_t *)((size_t)psf + sizeof(PSF1Header) + c * psf->height);
   for (int i = 0; i < psf->height; i++) {
     for (int j = 0; j < 8; j++) {

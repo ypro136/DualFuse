@@ -10,8 +10,8 @@ asm_finalize_sched:
 
   ; cleanup (WILL check task state, dw)
 ;   mov rdi, rdx
-;   extern taskKillCleanup
-;   call taskKillCleanup
+;   extern task_killCleanup
+;   call task_killCleanup
 
   pop rbp
   ; mov ds, ebp

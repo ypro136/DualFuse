@@ -32,5 +32,8 @@
     },
     "C_Cpp.errorSquiggles": "disabled",
     "search.useIgnoreFiles": true,
-    "search.useGlobalIgnoreFiles": false
+    "search.useGlobalIgnoreFiles": false,
+    "files.exclude": {
+        "sysroot/**": true
+    }
 }

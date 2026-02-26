@@ -76,6 +76,8 @@ void virtual_map(uint64_t virt_addr, uint64_t phys_addr, uint64_t flags);
 // uint32_t virtual_unmap(uint32_t virt_addr);
 size_t paging_virtual_to_physical(size_t virt_addr);
 
+
+uint64_t *GetTaskPageDirectory(void *taskPtr);
 uint64_t *get_page_directory();
 void      change_page_directory(uint64_t *pd);
 void      change_page_directory_unsafe(uint64_t *pd);

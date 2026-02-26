@@ -2,20 +2,20 @@
 #include <fakefs.h>
 #include <linked_list.h>
 #include <liballoc.h>
-
 #include <string.h>
 #include <task.h>
 
-FakefsFile *fake_file_system_add_file(Fakefs *fake_file_system, FakefsFile *under, char *filename,
+FakefsFile *fakefsAddFile(Fakefs *fakefs, FakefsFile *under, char *filename,
                           char *symlink, uint16_t filetype,
                           VfsHandlers *handlers) {
-  FakefsFile *file = (FakefsFile *)linked_list_allocate((void **)(&under->inner),
-                                                      sizeof(FakefsFile));
+  FakefsFile *file =
+      (FakefsFile *)LinkedListAllocate(&under->inner, sizeof(FakefsFile));
+  LinkedListInit(&file->inner, sizeof(FakefsFile));
 
   file->filename = filename;
   file->filenameLength = strlen(filename);
   file->filetype = filetype;
-  file->inode = ++fake_file_system->lastInode;
+  file->inode = ++fakefs->lastInode;
   file->handlers = handlers;
 
   if (symlink) {
@@ -26,12 +26,12 @@ FakefsFile *fake_file_system_add_file(Fakefs *fake_file_system, FakefsFile *unde
   return file;
 }
 
-void fake_file_system_attach_file(FakefsFile *file, void *ptr, int size) {
+void fakefsAttachFile(FakefsFile *file, void *ptr, int size) {
   file->extra = ptr;
   file->size = size;
 }
 
-FakefsFile *fake_file_systemTraverse(FakefsFile *start, char *search,
+FakefsFile *fakefsTraverse(FakefsFile *start, char *search,
                            size_t searchLength) {
   FakefsFile *browse = start;
   while (browse) {
@@ -40,33 +40,35 @@ FakefsFile *fake_file_systemTraverse(FakefsFile *start, char *search,
     if (memcmp(search, browse->filename,
                MAX(browse->filenameLength, searchLength)) == 0)
       break;
-    browse = browse->next;
+    browse = (FakefsFile *)browse->_ll.next;
   }
 
   return browse;
 }
 
-void fake_file_system_setup_root(FakefsFile **ptr) {
-  FakefsFile fake_file_systemRoot = {
-                           .next = 0,
-                           .inner = 0,
-                           .filename = "/",
-                           .filenameLength = 1,
-                           .filetype = S_IFDIR | S_IRUSR | S_IWUSR | S_IXUSR,
-                           .symlink = 0,
-                           .symlinkLength = 0,
-                           .size = 3620,
-                           .handlers = &fake_file_systemRootHandlers
-                           };
+void fakefsSetupRoot(LLcontrol *root) {
+  FakefsFile fakefsRoot = {
+      ._ll = {0},
+      .inner = {0},
+      .filename = "/",
+      .filenameLength = 1,
+      .filetype = S_IFDIR | S_IRUSR | S_IWUSR | S_IXUSR,
+      .inode = 0,
+      .symlink = 0,
+      .symlinkLength = 0,
+      .size = 3620,
+      .extra = NULL,
+      .handlers = &fakefsRootHandlers
+  };
 
-
-
-  *ptr = (FakefsFile *)malloc(sizeof(FakefsFile));
-  memcpy(*ptr, &fake_file_systemRoot, sizeof(FakefsFile));
+  LinkedListInit(root, sizeof(FakefsFile));
+  FakefsFile *target = LinkedListAllocate(root, sizeof(FakefsFile));
+  memcpy(target, &fakefsRoot, sizeof(FakefsFile));
+  LinkedListInit(&target->inner, sizeof(FakefsFile));
 }
 
-FakefsFile *fake_file_systemTraversePath(FakefsFile *start, char *path) {
-  FakefsFile *fake_file_system = start->inner;
+FakefsFile *fakefsTraversePath(FakefsFile *start, char *path) {
+  FakefsFile *fakefs = (FakefsFile *)start->inner.firstObject;
   size_t      len = strlen(path);
 
   if (len == 1) // meaning it's trying to open /
@@ -81,13 +83,13 @@ FakefsFile *fake_file_systemTraversePath(FakefsFile *start, char *path) {
       if (last) // no need to remove trailing /
         length += 1;
 
-      FakefsFile *res = fake_file_systemTraverse(fake_file_system, path + lastslash + 1, length);
+      FakefsFile *res = fakefsTraverse(fakefs, path + lastslash + 1, length);
 
       // return fail or last's success
       if (!res || i == (len - 1))
         return res;
 
-      fake_file_system = res->inner;
+      fakefs = (FakefsFile *)res->inner.firstObject;
       lastslash = i;
     }
   }
@@ -96,15 +98,16 @@ FakefsFile *fake_file_systemTraversePath(FakefsFile *start, char *path) {
   return 0;
 }
 
-int fake_file_systemOpen(char *filename, int flags, int mode, OpenFile *target,
-               char **symlinkResolve) {
+size_t fakefsOpen(char *filename, int flags, int mode, OpenFile *target,
+                  char **symlinkResolve) {
   MountPoint    *mnt = target->mountPoint;
-  FakefsOverlay *fake_file_system = (FakefsOverlay *)mnt->fsInfo;
+  FakefsOverlay *fakefs = (FakefsOverlay *)mnt->fsInfo;
 
-  FakefsFile *file = fake_file_systemTraversePath(fake_file_system->fake_file_system->rootFile, filename);
+  FakefsFile *file = fakefsTraversePath(
+      (FakefsFile *)fakefs->fakefs->rootFile.firstObject, filename);
   if (!file) {
     // printf("! %s\n", filename);
-    return -ENOENT;
+    return ERR(ENOENT);
   }
   target->handlers = file->handlers;
 
@@ -128,7 +131,7 @@ int fake_file_systemOpen(char *filename, int flags, int mode, OpenFile *target,
   return 0;
 }
 
-void fake_file_system_statGeneric(FakefsFile *file, struct stat *target) {
+void fakefsStatGeneric(FakefsFile *file, struct stat *target) {
   target->st_dev = 69;          // haha
   target->st_ino = file->inode; // could work
   target->st_mode = file->filetype;
@@ -148,84 +151,129 @@ void fake_file_system_statGeneric(FakefsFile *file, struct stat *target) {
   target->st_ctime = 0;
 }
 
-bool fake_file_system_stat(MountPoint *mnt, char *filename, struct stat *target,
+bool fakefsStat(MountPoint *mnt, char *filename, struct stat *target,
                 char **symlinkResolve) {
-  FakefsOverlay *fake_file_system = (FakefsOverlay *)mnt->fsInfo;
-  FakefsFile    *file = fake_file_systemTraversePath(fake_file_system->fake_file_system->rootFile, filename);
+  FakefsOverlay *fakefs = (FakefsOverlay *)mnt->fsInfo;
+  FakefsFile    *file = fakefsTraversePath(
+      (FakefsFile *)fakefs->fakefs->rootFile.firstObject, filename);
   if (!file)
     return false;
 
-  fake_file_system_statGeneric(file, target);
+  fakefsStatGeneric(file, target);
 
   return true;
 }
 
-int fake_file_systemFstat(OpenFile *fd, stat *target) {
+size_t fakefsFstat(OpenFile *fd, stat *target) {
   FakefsFile *file = fd->fake_file_system;
-  fake_file_system_statGeneric(file, target);
+  fakefsStatGeneric(file, target);
   return 0;
 }
 
-bool fake_file_system_lstat(MountPoint *mnt, char *filename, struct stat *target,
+bool fakefsLstat(MountPoint *mnt, char *filename, struct stat *target,
                  char **symlinkResolve) {
   // todo (when we got actual symlinks lol)
-  return fake_file_system_stat(mnt, filename, target, symlinkResolve);
+  return fakefsStat(mnt, filename, target, symlinkResolve);
 }
 
-VfsHandlers fake_file_systemHandlers = {
-                              .read = 0,
-                              .write = 0,
-                              .ioctl = 0,
-                              .stat = 0,
-                              .mmap = 0,
-                              .getdents64 = 0,
-                              .duplicate = 0,
-                              .open = fake_file_systemOpen,
-                              .close = 0
-                              };
+VfsHandlers fakefsHandlers = {
+    .read = 0,
+    .write = 0,
+    .seek = NULL,
+    .ioctl = 0,
+    .stat = 0,
+    .mmap = 0,
+    .getdents64 = 0,
+    .getFilesize = NULL,
+    .poll = NULL,
+    .fcntl = NULL,
+    .bind = NULL,
+    .listen = NULL,
+    .accept = NULL,
+    .connect = NULL,
+    .recvfrom = NULL,
+    .sendto = NULL,
+    .recvmsg = NULL,
+    .sendmsg = NULL,
+    .getsockname = NULL,
+    .getsockopts = NULL,
+    .getpeername = NULL,
+    .internalPoll = NULL,
+    .reportKey = NULL,
+    .addWatchlist = NULL,
+    .duplicate = 0,
+    .open = fakefsOpen,
+    .close = 0
+};
 
+size_t fakefsReadlink(MountPoint *mnt, char *path, char *buf, int size,
+                      char **symlinkResolve) {
+  if (size < 1)
+    return ERR(EINVAL);
 
-int fake_file_systemGetDents64(OpenFile *fd, struct linux_dirent64 *start,
-                     unsigned int hardlimit) {
-  FakefsOverlay *fake_file_system = (FakefsOverlay *)fd->mountPoint->fsInfo;
+  FakefsOverlay *fakefs = (FakefsOverlay *)mnt->fsInfo;
+  FakefsFile    *entry = fakefsTraversePath(
+      (FakefsFile *)fakefs->fakefs->rootFile.firstObject, path);
+  if (!entry)
+    return ERR(ENOENT);
 
-  FakefsFile *weAt = fake_file_systemTraversePath(fake_file_system->fake_file_system->rootFile, fd->dirname);
+  if (!(entry->filetype & S_IFLNK))
+    return ERR(EINVAL);
+  assert(entry->symlink && entry->symlinkLength > 0);
+
+  size_t out = MIN(entry->symlinkLength, size);
+  memcpy(buf, entry->symlink, out);
+  return out;
+}
+
+size_t fakefsGetDents64(OpenFile *fd, struct linux_dirent64 *start,
+                        unsigned int hardlimit) {
+  FakefsOverlay *fakefs = (FakefsOverlay *)fd->mountPoint->fsInfo;
+
+  FakefsFile *weAt = fakefsTraversePath(
+      (FakefsFile *)fakefs->fakefs->rootFile.firstObject, fd->dirname);
 
   if (!fd->tmp1)
-    fd->tmp1 = (size_t)weAt->inner;
+    fd->tmp1 = (size_t)weAt->inner.firstObject;
 
   if (!fd->tmp1)
     fd->tmp1 = (size_t)(-1); // in case it's empty
 
   struct linux_dirent64 *dirp = (struct linux_dirent64 *)start;
-  int                    allocatedlimit = 0;
+  size_t                 allocatedlimit = 0;
+  bool done = false;
 
-  while (fd->tmp1 != (size_t)(-1)) {
+  while (fd->tmp1 != (size_t)(-1) && !done) {
     FakefsFile *current = (FakefsFile *)fd->tmp1;
-    DENTS_RES   res =
-        dents_add(start, &dirp, &allocatedlimit, hardlimit, current->filename,
-                 current->filenameLength, current->inode, 0); // todo: type
+    
+    if (current->filename[0] != '*') {
+      DENTS_RES res =
+          dents_add(start, &dirp, (int *)&allocatedlimit, hardlimit, current->filename,
+                   current->filenameLength, current->inode, 0); // todo: type
 
-    if (res == DENTS_NO_SPACE) {
-      allocatedlimit = -EINVAL;
-      goto cleanup;
-    } else if (res == DENTS_RETURN)
-      goto cleanup;
+      if (res == DENTS_NO_SPACE) {
+        allocatedlimit = ERR(EINVAL);
+        done = true;
+      } else if (res == DENTS_RETURN) {
+        done = true;
+      }
+    }
 
-    fd->tmp1 = (size_t)current->next;
-    if (!fd->tmp1)
-      fd->tmp1 = (size_t)(-1);
+    if (!done) {
+      fd->tmp1 = (size_t)current->_ll.next;
+      if (!fd->tmp1)
+        fd->tmp1 = (size_t)(-1);
+    }
   }
 
-cleanup:
   return allocatedlimit;
 }
 
 // taking in mind that void *extra points to a null terminated string
-int fake_file_systemSimpleRead(OpenFile *fd, uint8_t *out, size_t limit) {
+size_t fakefsSimpleRead(OpenFile *fd, uint8_t *out, size_t limit) {
   FakefsFile *file = (FakefsFile *)fd->fake_file_system;
   if (!file->extra) {
-    printf("[vfs::fake_file_system] simple read failed! no extra! FATAL!\n");
+    printf("[vfs::fakefs] simple read failed! no extra! FATAL!\n");
     Halt();
   }
 
@@ -233,45 +281,81 @@ int fake_file_systemSimpleRead(OpenFile *fd, uint8_t *out, size_t limit) {
   int   cnt = 0;
   for (int i = 0; i < limit; i++) {
     if (!in[i])
-      goto cleanup;
+      break;
 
     out[i] = in[i];
     fd->pointer++;
     cnt++;
   }
 
-cleanup:
   return cnt;
 }
 
-size_t fake_file_systemSimpleSeek(OpenFile *file, size_t target, long int offset,
+size_t fakefsSimpleSeek(OpenFile *file, size_t target, long int offset,
                         int whence) {
   // we're using the official ->pointer so no need to worry about much
   file->pointer = target;
   return 0;
 }
 
-VfsHandlers fake_file_systemRootHandlers = {
-                                  .read = 0,
-                                  .write = 0,
-                                  .ioctl = 0,
-                                  .stat = 0,
-                                  .mmap = 0,
-                                  .getdents64 = fake_file_systemGetDents64,
-                                  .duplicate = 0,
-                                  .open = 0,
-                                  .close = 0
-                                  };
+VfsHandlers fakefsNoHandlers = {0};
 
-VfsHandlers fake_file_systemSimpleReadHandlers = {
-                                        .read = fake_file_systemSimpleRead,
-                                        .write = 0,
-                                        .seek = fake_file_systemSimpleSeek,
-                                        .ioctl = 0,
-                                        .stat = fake_file_systemFstat,
-                                        .mmap = 0,
-                                        .getdents64 = 0,
-                                        .duplicate = 0
-                                        };
+VfsHandlers fakefsRootHandlers = {
+    .read = 0,
+    .write = 0,
+    .seek = NULL,
+    .ioctl = 0,
+    .stat = fakefsFstat,
+    .mmap = 0,
+    .getdents64 = fakefsGetDents64,
+    .getFilesize = NULL,
+    .poll = NULL,
+    .fcntl = NULL,
+    .bind = NULL,
+    .listen = NULL,
+    .accept = NULL,
+    .connect = NULL,
+    .recvfrom = NULL,
+    .sendto = NULL,
+    .recvmsg = NULL,
+    .sendmsg = NULL,
+    .getsockname = NULL,
+    .getsockopts = NULL,
+    .getpeername = NULL,
+    .internalPoll = NULL,
+    .reportKey = NULL,
+    .addWatchlist = NULL,
+    .duplicate = 0,
+    .open = 0,
+    .close = 0
+};
 
-
+VfsHandlers fakefsSimpleReadHandlers = {
+    .read = fakefsSimpleRead,
+    .write = 0,
+    .seek = fakefsSimpleSeek,
+    .ioctl = 0,
+    .stat = fakefsFstat,
+    .mmap = 0,
+    .getdents64 = 0,
+    .getFilesize = NULL,
+    .poll = NULL,
+    .fcntl = NULL,
+    .bind = NULL,
+    .listen = NULL,
+    .accept = NULL,
+    .connect = NULL,
+    .recvfrom = NULL,
+    .sendto = NULL,
+    .recvmsg = NULL,
+    .sendmsg = NULL,
+    .getsockname = NULL,
+    .getsockopts = NULL,
+    .getpeername = NULL,
+    .internalPoll = NULL,
+    .reportKey = NULL,
+    .addWatchlist = NULL,
+    .duplicate = 0,
+    .open = 0,
+    .close = 0
+};

@@ -1,5 +1,5 @@
-#include <types.h>
-#include <vfs.h>
+#include "types.h"
+#include "vfs.h"
 
 #ifndef NULL_H
 #define NULL_H
@@ -7,8 +7,9 @@
 extern VfsHandlers handleNull;
 
 typedef struct FakefsFile {
-  struct FakefsFile *next;
-  struct FakefsFile *inner;
+  struct LLheader _ll;
+
+  LLcontrol inner; // struct FakefsFile
 
   char *filename;
   int   filenameLength;
@@ -26,28 +27,34 @@ typedef struct FakefsFile {
 } FakefsFile;
 
 typedef struct Fakefs {
-  FakefsFile *rootFile;
-  uint64_t    lastInode;
+  LLcontrol rootFile; // struct FakefsFile
+  uint64_t  lastInode;
 } Fakefs;
 
 typedef struct FakefsOverlay {
-  Fakefs *fake_file_system;
+  Fakefs *fakefs;
 } FakefsOverlay;
 
-void        fake_file_system_setup_root(FakefsFile **ptr);
-FakefsFile *fake_file_system_add_file(Fakefs *fake_file_system, FakefsFile *under, char *filename,
+void        fakefsSetupRoot(LLcontrol *root);
+FakefsFile *fakefsAddFile(Fakefs *fakefs, FakefsFile *under, char *filename,
                           char *symlink, uint16_t filetype,
                           VfsHandlers *handlers);
-void        fake_file_system_attach_file(FakefsFile *file, void *ptr, int size);
-bool        fake_file_system_stat(MountPoint *mnt, char *filename, struct stat *target,
+void        fakefsAttachFile(FakefsFile *file, void *ptr, int size);
+bool        fakefsStat(MountPoint *mnt, char *filename, struct stat *target,
                        char **symlinkResolve);
-bool        fake_file_system_lstat(MountPoint *mnt, char *filename, struct stat *target,
+bool        fakefsLstat(MountPoint *mnt, char *filename, struct stat *target,
                         char **symlinkResolve);
-int         fake_file_systemFstat(OpenFile *fd, stat *target);
-int         fake_file_systemSimpleRead(OpenFile *fd, uint8_t *out, size_t limit);
+size_t      fakefsFstat(OpenFile *fd, stat *target);
+size_t      fakefsReadlink(MountPoint *mnt, char *path, char *buf, int size,
+                           char **symlinkResolve);
+size_t      fakefsSimpleRead(OpenFile *fd, uint8_t *out, size_t limit);
 
-extern VfsHandlers fake_file_systemHandlers;
-extern VfsHandlers fake_file_systemRootHandlers;
-extern VfsHandlers fake_file_systemSimpleReadHandlers;
+size_t fakefsGetDents64(OpenFile *fd, struct linux_dirent64 *start,
+                        unsigned int hardlimit);
+
+extern VfsHandlers fakefsNoHandlers;
+extern VfsHandlers fakefsHandlers;
+extern VfsHandlers fakefsRootHandlers;
+extern VfsHandlers fakefsSimpleReadHandlers;
 
 #endif

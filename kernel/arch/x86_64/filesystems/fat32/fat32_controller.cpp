@@ -91,129 +91,132 @@ int fat32_open(char *filename, int flags, int mode, OpenFile *fd,
 }
 
 int fat32_read(OpenFile *fd, uint8_t *buff, size_t limit) {
-  FAT32       *fat = FAT_PTR(fd->mountPoint->fsInfo);
-  FAT32OpenFd *dir = FAT_DIR_PTR(fd->dir);
-
-  if (dir->dirEnt.attrib & FAT_ATTRIB_DIRECTORY)
-    return 0;
-
-  int curr = 0; // will be used to return
-  int bytesPerCluster = LBA_TO_OFFSET(fat->bootsec.sectors_per_cluster);
-  // ^ is used everywhere!
-
-  uint8_t  *bytes = (uint8_t *)malloc(bytesPerCluster);
-  int       fatLookupsNeeded = CEILING_DIVISION(limit, bytesPerCluster);
-  uint32_t *fatLookup =
-      fat32_FAT_chain(fat, dir->directoryCurr, fatLookupsNeeded);
-
-  // optimization: we can use consecutive sectors to make our life easier
-  int consecStart = -1;
-  int consecEnd = 0;
-
-  // +1 for starting
-  for (int i = 0; i < (fatLookupsNeeded + 1); i++) {
-    if (!fatLookup[i])
-      break;
-    dir->directoryCurr = fatLookup[i];
-    bool last = i == (fatLookupsNeeded - 1);
-    if (consecStart < 0) {
-      // nothing consecutive yet
-      if (!last && fatLookup[i + 1] == (fatLookup[i] + 1)) {
-        // consec starts here
-        consecStart = i;
-        continue;
-      }
-    } else {
-      // we are in a consecutive that started since consecStart
-      if (last || fatLookup[i + 1] != (fatLookup[i] + 1))
-        consecEnd = i; // either last or the end
-      else             // otherwise, we good
-        continue;
-    }
-
-    uint32_t offsetStarting = dir->ptr % bytesPerCluster; // remainder
-    if (consecEnd) {
-      // optimized consecutive cluster reading
-      int      needed = consecEnd - consecStart + 1;
-      uint8_t *optimizedBytes = malloc(needed * bytesPerCluster);
-      get_disk_bytes(optimizedBytes,
-                   fat32_cluster_to_LBA(fat, fatLookup[consecStart]),
-                   needed * fat->bootsec.sectors_per_cluster);
-
-      for (uint32_t i = offsetStarting; i < (needed * bytesPerCluster); i++) {
-        if (curr >= limit || dir->ptr >= dir->dirEnt.filesize) {
-          free(optimizedBytes);
-          goto cleanup;
+    FAT32       *fat = FAT_PTR(fd->mountPoint->fsInfo);
+    FAT32OpenFd *dir = FAT_DIR_PTR(fd->dir);
+    
+    if (dir->dirEnt.attrib & FAT_ATTRIB_DIRECTORY)
+        return 0;
+    
+    int curr = 0; // will be used to return
+    int bytesPerCluster = LBA_TO_OFFSET(fat->bootsec.sectors_per_cluster);
+    // ^ is used everywhere!
+    uint8_t  *bytes = (uint8_t *)malloc(bytesPerCluster);
+    int       fatLookupsNeeded = CEILING_DIVISION(limit, bytesPerCluster);
+    uint32_t *fatLookup =
+        fat32_FAT_chain(fat, dir->directoryCurr, fatLookupsNeeded);
+    
+    // optimization: we can use consecutive sectors to make our life easier
+    int consecStart = -1;
+    int consecEnd = 0;
+    // +1 for starting
+    bool done = false;
+    
+    for (int i = 0; i < (fatLookupsNeeded + 1) && !done; i++) {
+        if (!fatLookup[i])
+            break;
+        
+        dir->directoryCurr = fatLookup[i];
+        bool last = i == (fatLookupsNeeded - 1);
+        
+        if (consecStart < 0) {
+            // nothing consecutive yet
+            if (!last && fatLookup[i + 1] == (fatLookup[i] + 1)) {
+                // consec starts here
+                consecStart = i;
+                continue;
+            }
+        } else {
+            // we are in a consecutive that started since consecStart
+            if (last || fatLookup[i + 1] != (fatLookup[i] + 1))
+                consecEnd = i; // either last or the end
+            else             // otherwise, we good
+                continue;
         }
-
-        if (buff)
-          buff[curr] = optimizedBytes[i];
-
-        dir->ptr++;
-        curr++;
-      }
-
-      free(optimizedBytes);
-    } else {
-      get_disk_bytes(bytes, fat32_cluster_to_LBA(fat, fatLookup[i]),
-                   fat->bootsec.sectors_per_cluster);
-
-      for (uint32_t i = offsetStarting; i < bytesPerCluster; i++) {
-        if (curr >= limit || dir->ptr >= dir->dirEnt.filesize)
-          goto cleanup;
-
-        if (buff)
-          buff[curr] = bytes[i];
-
-        dir->ptr++;
-        curr++;
-      }
+        
+        uint32_t offsetStarting = dir->ptr % bytesPerCluster; // remainder
+        
+        if (consecEnd) {
+            // optimized consecutive cluster reading
+            int      needed = consecEnd - consecStart + 1;
+            uint8_t *optimizedBytes = malloc(needed * bytesPerCluster);
+            get_disk_bytes(optimizedBytes,
+                           fat32_cluster_to_LBA(fat, fatLookup[consecStart]),
+                           needed * fat->bootsec.sectors_per_cluster);
+            
+            for (uint32_t j = offsetStarting; j < (needed * bytesPerCluster); j++) {
+                if (curr >= limit || dir->ptr >= dir->dirEnt.filesize) {
+                    free(optimizedBytes);
+                    done = true;
+                    break;
+                }
+                if (buff)
+                    buff[curr] = optimizedBytes[j];
+                dir->ptr++;
+                curr++;
+            }
+            free(optimizedBytes);
+        } else {
+            get_disk_bytes(bytes, fat32_cluster_to_LBA(fat, fatLookup[i]),
+                           fat->bootsec.sectors_per_cluster);
+            
+            for (uint32_t j = offsetStarting; j < bytesPerCluster; j++) {
+                if (curr >= limit || dir->ptr >= dir->dirEnt.filesize) {
+                    done = true;
+                    break;
+                }
+                if (buff)
+                    buff[curr] = bytes[j];
+                dir->ptr++;
+                curr++;
+            }
+        }
+        
+        if (!done) {
+            // traverse
+            consecStart = -1;
+            consecEnd = 0;
+        }
     }
-
-    // traverse
-    consecStart = -1;
-    consecEnd = 0;
-  }
-
-cleanup:
-  free(bytes);
-  free(fatLookup);
-  return curr;
+    
+    free(bytes);
+    free(fatLookup);
+    return curr;
 }
 
 size_t fat32_seek(OpenFile *fd, size_t target, long int offset, int whence) {
-  FAT32       *fat = FAT_PTR(fd->mountPoint->fsInfo);
-  FAT32OpenFd *dir = FAT_DIR_PTR(fd->dir);
-
-  // "hack" because openfile ptr is not used
-  if (whence == SEEK_CURR)
-    target += dir->ptr;
-
-  if (dir->dirEnt.attrib & FAT_ATTRIB_DIRECTORY)
-    return -EINVAL;
-
-  if (target > dir->dirEnt.filesize)
-    return -EINVAL;
-
-  int old = dir->ptr;
-  if (old > target) {
-    dir->directoryCurr =
-        FAT_COMB_HIGH_LOW(dir->dirEnt.clusterhigh, dir->dirEnt.clusterlow);
-    old = 0;
-  }
-  dir->ptr = target;
-
-  // this REALLY needs optimization!
-  int toBeSkipped = target / LBA_TO_OFFSET(fat->bootsec.sectors_per_cluster);
-  int alreadySkipped = old / LBA_TO_OFFSET(fat->bootsec.sectors_per_cluster);
-  for (int i = 0; i < (toBeSkipped - alreadySkipped); i++) {
-    dir->directoryCurr = fat32_FAT_traverse(fat, dir->directoryCurr);
-    if (!dir->directoryCurr)
-      goto cleanup;
-  }
-
-cleanup:
-  return dir->ptr;
+    FAT32       *fat = FAT_PTR(fd->mountPoint->fsInfo);
+    FAT32OpenFd *dir = FAT_DIR_PTR(fd->dir);
+    
+    // "hack" because openfile ptr is not used
+    if (whence == SEEK_CURR)
+        target += dir->ptr;
+    
+    if (dir->dirEnt.attrib & FAT_ATTRIB_DIRECTORY)
+        return -EINVAL;
+    
+    if (target > dir->dirEnt.filesize)
+        return -EINVAL;
+    
+    int old = dir->ptr;
+    if (old > target) {
+        dir->directoryCurr =
+            FAT_COMB_HIGH_LOW(dir->dirEnt.clusterhigh, dir->dirEnt.clusterlow);
+        old = 0;
+    }
+    
+    dir->ptr = target;
+    
+    // this REALLY needs optimization!
+    int toBeSkipped = target / LBA_TO_OFFSET(fat->bootsec.sectors_per_cluster);
+    int alreadySkipped = old / LBA_TO_OFFSET(fat->bootsec.sectors_per_cluster);
+    
+    for (int i = 0; i < (toBeSkipped - alreadySkipped); i++) {
+        dir->directoryCurr = fat32_FAT_traverse(fat, dir->directoryCurr);
+        if (!dir->directoryCurr)
+            break;
+    }
+    
+    return dir->ptr;
 }
 
 size_t fat32_get_filesize(OpenFile *fd) {
