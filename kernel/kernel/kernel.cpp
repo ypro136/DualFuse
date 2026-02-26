@@ -31,9 +31,11 @@
 #include <mouse.h>
 #include <apic.h>
 
+#include <GUI.h>
+#include <fram_loop.h>
 
+#include <ramdisk.h>
 
-bool systemDiskInit;
 
 extern "C" void _init(void);
 
@@ -41,76 +43,56 @@ extern "C" void kernel_main(void);
 
 extern "C" void kernel_main(void) 
 {
-
-    _init();
-
-    systemDiskInit = false;
-
-    serial_initialize(0x3f8);
-    printf("serial initialized.\n");
-
-    initialiseBootloaderParser();
-    printf("Bootloader Parser initialized.\n");
-
-	gdt_initialize();
-	printf("gdt initialized.\n");
-
-    paging_initialize();
-    printf("paging initialized.\n");
-
-    isr_initialize();
-    printf("idt and isr initialized.\n");
+    _init(); // lib c software dependent fatal to fail
     
-    framebuffer_initialize();
-    printf("limine framebuffer initialized.\n");
+    serial_initialize(0x3f8); // serial output(for debuging) non fatal to fail
     
-	timer_initialize();
-	printf("timer initialized.\n");
+    initialiseBootloaderParser(); // parser for limine bootloder fatal to fail
 
-	memory_initialize();
-	printf("memory initialized.\n");
+	gdt_initialize(); // global discriptor table fatal to fail
 
-    // Initialize the global console as a window at position (100,50)
-    console = Console(800, 600, 10, 10);
-    // Use the legacy initializer to set the global `console_initialized` flag
-    console_initialize();
-    console.clear_screen();
-    // Set a visible title for the console window
-    console.set_title("Kernel Console");
-    printf("Console initialized.\n");
+    paging_initialize(); // paging non fatal to fail
+    
+    isr_initialize(); // Interrupt Service Routines fatal to fail
+    
+	memory_initialize(); // memory managment fatal to fail
 
-    // Initialize the global StateMonitor window (updates driven by timer IRQ)
-    stateMonitor = *(new StateMonitor(800, 170, 10, 620));
-    stateMonitor.initialize();
-    stateMonitor.clear_screen();
-    printf("stateMonitor initialized.\n");
-
-	keyboard_initialize();
-    printf("keyboard initialized.\n");
-
-    pci_initialize();
-    printf("pci initialized.\n");
-
-    acpiInit();// TODO: this is very minimal
-    printf("acpi initialized.\n");
-
-    // tasks_initialize(); TODO: fix this
+    framebuffer_initialize(); // framebuffer non fatal to fail
+    
+	timer_initialize(); // timer non fatal to fail
+    
+	keyboard_initialize(); // keyboard non fatal to fail
+    
+    pci_initialize(); // Peripheral Component Interconnect non fatal to fail
+    
+    // tasks_initialize(); TODO: fix this non fatal to fail
     // printf("tasks initialized.\n");
     
-    syscall_inst_initialize();
+    syscall_inst_initialize(); // syscalls non fatal to fail TODO: thay should be
     
-    syscalls_initialize();
-    printf("syscalls initialized.\n");
+    syscalls_initialize(); // syscalls non fatal to fail TODO: thay should be
     
-    initiateSSE();
-    printf("SSE initialized.\n");
+    initiateSSE(); // Streaming SIMD Extensions non fatal to fail
+    
+    block_init();
+    
+    while (true) {
+        frame_loop(render_xp_desktop);
+        // TODO: Handle input
+    }
 
+    test_framebuffer(0xFFFFFF);
 
+    
+    acpiInit();// TODO: this is very minimal
+    printf("acpi initialized.\n");
+    
     initiateAPIC();
     printf("APIC initialized.\n");
-
+    
     initiateMouse();
     printf("mouse initialized.\n");
+    
 
     
     // breakpoint; tested and works

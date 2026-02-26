@@ -27,6 +27,6 @@ bool psfLoadDefaults();
 bool psfLoadFromFile(char *path);
 bool psfLoad(void *buffer);
 
-void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb);
+void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color);
 
 #endif

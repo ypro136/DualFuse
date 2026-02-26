@@ -251,6 +251,15 @@ void initiateMouse() {
   // irq handler
   printf("[mouse] Setting up mouse IRQ handler\n");
   uint8_t targIrq = ioApicRedirect(12, false);
-  irq_install_handler(targIrq, mouseIrq);
+  if (isr_initialized)
+    {
+        irq_install_handler(targIrq, mouseIrq);
+    }
+    else 
+    {
+        printf("[mouse] warning: isr not initialized. Mouse initialization omitted");
+        return;
+    }
+  
   printf("[mouse] Mouse initialization complete (IRQ: %d)\n", targIrq);
 }

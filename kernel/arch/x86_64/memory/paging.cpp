@@ -26,7 +26,6 @@
 // HHDM regions shouldn't cause any issues, since I purposefully avoid mapping
 // or modifying memory mappings close to said regions...
 
-#define PAGING_DEBUG 0
 
 #define HHDMoffset (bootloader.hhdmOffset)
 uint64_t *globalPagedir = 0;
@@ -37,12 +36,14 @@ void paging_initialize() {
   uint64_t pdPhys = 0;
   asm volatile("movq %%cr3,%0" : "=r"(pdPhys));
   if (!pdPhys) {
-    printf("[paging] Could not parse default pagedir!\n");
+    printf("[paging]FATAL Could not parse default pagedir!\n");
     Halt();
   }
 
   uint64_t pdVirt = pdPhys + bootloader.hhdmOffset;
   globalPagedir = (uint64_t *)pdVirt;
+
+  printf("paging initialized.\n");
 
   // VirtualSeek(bootloader.hhdmOffset);
 }

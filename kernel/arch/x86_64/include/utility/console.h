@@ -12,7 +12,7 @@
 class Console
 {
 private:
-    int bg_color;
+    int _bg_color;
     int textcolor;
     int border_color;
     int border_thickness;
@@ -53,6 +53,10 @@ public:
     // Constructor with optional window dimensions (defaults to full screen)
     Console(uint32_t width = 0, uint32_t height = 0, uint32_t start_x = 0, uint32_t start_y = 0);
     ~Console() = default;
+
+    void buffer_character(char c);
+    void draw_frame();
+    void flush_buffer();
     
     void initialize();
     void clear_screen();

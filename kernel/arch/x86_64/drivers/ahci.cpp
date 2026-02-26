@@ -507,8 +507,16 @@ bool AHCI_initialize(pci_device *device)
     printf("[pci::ahci] ahci_port_probe successfully!\n");
     #endif
 
-  // enable interrupts
-  pci->irqHandler = irq_install_handler(details->interruptLine, &ahci_interrupt_handler);
+    if(isr_initialized)
+    {
+      // enable interrupts
+      pci->irqHandler = irq_install_handler(details->interruptLine, &ahci_interrupt_handler);
+    }
+    else 
+    {
+      printf("[pci::ahci] FATAL: interrupts not initialized !\n");
+      return false;
+    }
   #if defined(DEBUG_PCI)
     printf("[pci::ahci] enabled interrupts successfully on interupt line :%d!\n",details->interruptLine);
     #endif
