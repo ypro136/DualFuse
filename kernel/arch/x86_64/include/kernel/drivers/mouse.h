@@ -17,6 +17,11 @@
 
 #define MOUSE_TIMEOUT 100000
 
+extern int mouse_position_x;
+extern int mouse_position_y;
+extern bool clickedLeft;
+extern bool clickedRight;
+
 void initiateMouse();
 void mouseIrq();
 

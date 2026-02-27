@@ -9,6 +9,8 @@
 #include <gui_primitives.h>
 
  
+extern bool GUI_input_loop();
+
 // CONFIGURATION CONSTANTS
  
 
@@ -28,7 +30,12 @@ struct XPWindow {
     bool active;
     bool minimized;
     uint32_t bg_color;
+    void (*draw_frame)(void*);   // function pointer + context pointer
+    void* context;               // pointer to the object (e.g. Console*)
+    void (*on_move)(void*, int x, int y);
 };
+
+extern XPWindow* window_arr[64];
 
  
 // RENDERING FUNCTIONS
@@ -36,14 +43,24 @@ struct XPWindow {
 void direct_clear_screen_dbg ();
 #endif
 
+XPWindow* create_xp_window(int x, int y, int width, int height, const char* title);
+
+static void Console_draw_frame_wrapper(void* context);
+static void Console_on_move(void* ctx, int x, int y);
+void set_active_xp_window(XPWindow* win);
 
 // Main render function - draws complete XP desktop
+void initialize_xp_desktop();
 void render_xp_desktop();
 
 // Window rendering
-void draw_xp_window(const XPWindow& win);
-void draw_window_title_bar(const XPWindow& win);
+void draw_xp_window(XPWindow* win);
+void draw_window_title_bar(XPWindow* win);
 void draw_window_button(int x, int y, int size, const char* label, bool active);
+
+XPWindow* get_window_at(int x, int y);
+bool is_mouse_on_window_title_bar(XPWindow* win, int x, int y);
+void move_xp_window(XPWindow* win, int x, int y);
 
 // Controls
 void draw_xp_button(int x, int y, int width, int height, const char* label, bool pressed);

@@ -11,6 +11,8 @@
 #include <console.h>
 #include <liballoc.h>
 #include <linux.h>
+#include <apic.h>
+
 
 // for info command
 #include <framebufferutil.h>
@@ -105,13 +107,19 @@ void keyboard_initialize()
     #endif
     shift_down = false;
     capsLock = false;
+    int keyboard_irq = 1;
+
+    if (apic_initialized)
+    {
+        keyboard_irq = ioApicRedirect(keyboard_irq, false);
+    }
 
     #if defined(DEBUG_KEYBOARD)
-    printf("[keyboard] keyboard_initialize: irq_install_handler.....\n");
+    printf("[keyboard] keyboard_initialize: irq_install_handler with keyboard_irq:%d\n", keyboard_irq);
     #endif
     if (isr_initialized)
     {
-        irq_install_handler(1, &keyboard_handler);
+        irq_install_handler(keyboard_irq, &keyboard_handler);
     }
     else 
     {
@@ -121,9 +129,20 @@ void keyboard_initialize()
     #if defined(DEBUG_KEYBOARD)
     printf("[keyboard] keyboard_initialize: irq_install_handler done\n");
     #endif
+
+    if (apic_initialized)
+    {
+        keyboard_Write(0x64, 0xae);
+        in_port_byte(0x60);
+    }
     printf("keyboard initialized.\n");
 }
 
+void keyboard_Write(uint16_t port, uint8_t value) {
+  while (in_port_byte(0x64) & 2){}
+
+  out_port_byte(port, value);
+}
 
 void keyboard_handler(struct interrupt_registers *registers)
 {

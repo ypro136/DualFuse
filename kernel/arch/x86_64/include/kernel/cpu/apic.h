@@ -20,6 +20,8 @@
 
 #define APIC_LVT_TIMER_MODE_PERIODIC (1 << 17)
 
+extern bool apic_initialized;
+
 // APIC quick access
 // (same address for different cores)
 extern uint64_t apicPhys;

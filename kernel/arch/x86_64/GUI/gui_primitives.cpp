@@ -46,7 +46,7 @@ uint32_t blend_colors(uint32_t color1, uint32_t color2, int alpha_256) {
 
 void fill_rectangle(int x, int y, int width, int height, uint32_t color) 
 {
-    #if defined(DEBUG_GUI)
+    #if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
         printf("[DEBUG_GUI] fill_rectangle\n");
     #endif
     for (int j = 0; j < height; j++) {
@@ -60,7 +60,7 @@ void fill_rectangle(int x, int y, int width, int height, uint32_t color)
 void draw_rect_outline(int x, int y, int width, int height, uint32_t color, int thickness) 
 {
 
-    #if defined(DEBUG_GUI)
+    #if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
         printf("[DEBUG_GUI] draw_rect_outline\n");
     #endif
     // Top edge
@@ -164,7 +164,7 @@ void fill_circle(int cx, int cy, int radius, uint32_t color) {
 
 
 void draw_gradient(int x, int y, int width, int height, uint32_t color1, uint32_t color2, bool vertical) {
-#if defined(DEBUG_GUI)
+#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
     printf("[DEBUG_GUI] draw_gradient at (%d,%d) size %dx%d color1=0x%06X color2=0x%06X %s\n", 
            x, y, width, height, color1, color2, vertical ? "vertical" : "horizontal");
 #endif
@@ -187,6 +187,32 @@ void draw_gradient(int x, int y, int width, int height, uint32_t color1, uint32_
     }
 }
 
+
+void draw_cursor(int x, int y) {
+    uint32_t white = 0xFFFFFF;
+    uint32_t black = 0x000000;
+
+    //printf("[GUI::mouse] drawing mouse at x:%d ,y:%d\n", x, y);
+    // Simple solid arrow: just a filled triangle outline
+    for (int i = 0; i < 12; i++) {
+        // Left edge of arrow (diagonal)
+        draw_pixel(x,     y + i, black);
+        draw_pixel(x + 1, y + i, white);
+    }
+    for (int i = 0; i < 12; i++) {
+        // Bottom diagonal edge
+        if (i < 12 - i) {
+            draw_pixel(x + i,     y + (12 - i), black);
+            draw_pixel(x + i + 1, y + (12 - i - 1), white);
+        }
+    }
+    // Fill inside
+    for (int row = 0; row < 12; row++) {
+        for (int col = 1; col < (12 - row) && col < 12; col++) {
+            draw_pixel(x + col, y + row, white);
+        }
+    }
+}
 
 void draw_beveled_border(int x, int y, int width, int height, uint32_t light, uint32_t dark, bool raised) {
     if (raised) {
@@ -214,6 +240,9 @@ void draw_beveled_border(int x, int y, int width, int height, uint32_t light, ui
 
 void draw_beveled_border_thick(int x, int y, int width, int height, 
                                uint32_t highlight, uint32_t face, uint32_t shadow, bool raised) {
+    #if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
+        printf("[DEBUG_GUI] draw_beveled_border_thick\n");
+    #endif
     if (raised) {
         // Top-left: highlight
         draw_line(x, y, x + width - 1, y, highlight);
@@ -242,11 +271,11 @@ void draw_beveled_border_thick(int x, int y, int width, int height,
 }
 
 void draw_text(const char* text, int x, int y, uint32_t color, uint32_t bg_color) {
-#if defined(DEBUG_GUI)
+#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
     printf("[DEBUG_GUI] draw_text at (%d,%d) color=0x%06X\n", x, y, color);
 #endif
     if (!text) {
-#if defined(DEBUG_GUI)
+#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
         printf("[DEBUG_GUI] draw_text: text pointer is NULL\n");
 #endif
         return;
@@ -261,18 +290,18 @@ void draw_text(const char* text, int x, int y, uint32_t color, uint32_t bg_color
     
     while (*p != '\0') 
     {
-#if defined(DEBUG_GUI)
+#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
         printf("[DEBUG_GUI] drawing char %d: '%c' (0x%02X) at x=%d, y=%d\n", char_count, *p, (unsigned char)*p, char_x, y);
 #endif
         psfPutC(*p, (uint32_t)char_x, (uint32_t)y, color, bg_color);
-#if defined(DEBUG_GUI)
+#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
         printf("[DEBUG_GUI] char %d drawn successfully\n", char_count);
 #endif
         char_x += 8;
         p++;
         char_count++;
     }
-#if defined(DEBUG_GUI)
+#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
     printf("[DEBUG_GUI] draw_text complete - drew %d characters\n", char_count);
 #endif
 }
@@ -288,7 +317,7 @@ void draw_text_centered(const char* text, int x, int y, int width, uint32_t colo
     
     int text_pixel_width = text_len * 8;  // 8 pixels per character
     int start_x = x + (width - text_pixel_width) / 2;
-    #if defined(DEBUG_GUI)
+    #if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
         printf("[DEBUG_GUI] draw_text_centered ready to draw text\n");
     #endif 
     draw_text(text,  clamp(start_x, 0, screen_width), clamp(y, 0, screen_height), color, bg_color);
@@ -306,7 +335,7 @@ void draw_rectangle_with_shadow(int x, int y, int width, int height, uint32_t co
  
 void draw_hline(int x, int y, int length, uint32_t color) 
 {
-    #if defined(DEBUG_GUI)
+    #if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
         printf("[DEBUG_GUI] draw_hline\n");
     #endif
     for (int i = 0; i < length; i++) {

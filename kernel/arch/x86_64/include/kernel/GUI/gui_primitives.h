@@ -69,6 +69,9 @@ void draw_text_centered(const char* text, int x, int y, int width, uint32_t colo
 void draw_rectangle_with_shadow(int x, int y, int width, int height, uint32_t color, uint32_t shadow_color, int shadow_size);
 void clear_screen(int width, int height, uint32_t color);
 
+// MOUSE
+void draw_cursor(int x, int y);
+
  
 // XP COLOR PALETTE CONSTANTS
  

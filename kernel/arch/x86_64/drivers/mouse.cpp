@@ -46,8 +46,8 @@ int mouseCycle = 0;
 int mouse1 = 0;
 int mouse2 = 0;
 
-int gx = 0;
-int gy = 0;
+int mouse_position_x = 0;
+int mouse_position_y = 0;
 
 bool clickedLeft = false;
 bool clickedRight = true;
@@ -59,26 +59,41 @@ void mouseIrq() {
   // This avoids the blocking mouseWait() calls that freeze the system
   uint8_t byte = in_port_byte(MOUSE_PORT);
   
-  static int irqCount = 0;
-  if (++irqCount % 100 == 0) {
-    printf("[mouse-irq] IRQ fired %d times\n", irqCount);
-  }
+  #if defined(DEBUG_MOUSE)
+    static int irqCount = 0;
+    if (++irqCount % 100 == 0) 
+    {
+      printf("[mouse-irq] IRQ fired %d times\n", irqCount);
+    }
+  #endif
   
   // rest are just for demonstration
 
-  // printf("%d %d %d\n", byte1, byte2, byte3);
   if (mouseCycle == 0) {
     mouse1 = byte;
-    //printf("[mouse-irq] Byte 0: %02x\n", mouse1);
+    #if defined(DEBUG_MOUSE)
+      printf("[mouse-irq] Byte 0: %02x\n", mouse1);
+    #endif
+    if (!(mouse1 & (1 << 3))) {
+        #if defined(DEBUG_MOUSE)
+        printf("[mouse-irq] Desync detected! Byte 0 missing sync bit, discarding\n");
+        #endif
+        mouseCycle = 0;  // stay at 0, wait for real packet start
+        return;
+    }
   }
   else if (mouseCycle == 1) {
     mouse2 = byte;
-    //printf("[mouse-irq] Byte 1: %02x\n", mouse2);
+    #if defined(DEBUG_MOUSE)
+      printf("[mouse-irq] Byte 1: %02x\n", mouse2);
+    #endif
   }
   else {
     int mouse3 = byte;
-    // printf("[mouse-irq] Byte 2: %02x (complete packet)\n", mouse3);
-
+    #if defined(DEBUG_MOUSE)
+      printf("[mouse-irq] Byte 2: %02x (complete packet)\n", mouse3);
+    #endif
+    
     do {
       // Note: The bit 3 check in real hardware is important, but we skip it here
       // for compatibility with test environments like QEMU
@@ -91,16 +106,16 @@ void mouseIrq() {
       if (y && mouse1 & (1 << 5))
         y -= 0x100;
 
-      gx += x;
-      gy += -y;
-      if (gx < 0)
-        gx = 0;
-      if (gy < 0)
-        gy = 0;
-      if (gx > tempframebuffer_data.width)
-        gx = tempframebuffer_data.width;
-      if (gy > tempframebuffer_data.height)
-        gy = tempframebuffer_data.height;
+      mouse_position_x += x/5;
+      mouse_position_y += -y/5;
+      if (mouse_position_x < 0)
+        mouse_position_x = 0;
+      if (mouse_position_y < 0)
+        mouse_position_y = 0;
+      if (mouse_position_x > tempframebuffer_data.width)
+        mouse_position_x = tempframebuffer_data.width;
+      if (mouse_position_y > tempframebuffer_data.height)
+        mouse_position_y = tempframebuffer_data.height;
 
       bool click = mouse1 & (1 << 0);
       bool rclick = mouse1 & (1 << 1);
@@ -197,34 +212,48 @@ size_t mouseEventBit(OpenFile *fd, uint64_t request, void *arg) {
 }
 
 void initiateMouse() {
-  printf("[mouse] Starting mouse initialization\n");
+  // printf("[mouse] Starting mouse initialization\n");
   
-  mouseEvent = devInputEventSetup("PS/2 Mouse");
-  printf("[mouse] Device setup complete\n");
+  // mouseEvent = devInputEventSetup("PS/2 Mouse");
+  // printf("[mouse] Device setup complete\n");
   
   // below is optional (vmware didn't do it)
   // mouseEvent->properties = INPUT_PROP_POINTER;
-  printf("[mouse] Setting input ID fields\n");
-  mouseEvent->inputid.bustype = 0x05;   // BUS_PS2
-  mouseEvent->inputid.vendor = 0x045e;  // Microsoft
-  mouseEvent->inputid.product = 0x00b4; // Generic MS Mouse
-  mouseEvent->inputid.version = 0x0100; // Basic MS Version
-  mouseEvent->eventBit = mouseEventBit;
-  printf("[mouse] Input ID fields set\n");
+  // printf("[mouse] Setting input ID fields\n");
+  // mouseEvent->inputid.bustype = 0x05;   // BUS_PS2
+  // mouseEvent->inputid.vendor = 0x045e;  // Microsoft
+  // mouseEvent->inputid.product = 0x00b4; // Generic MS Mouse
+  // mouseEvent->inputid.version = 0x0100; // Basic MS Version
+  // mouseEvent->eventBit = mouseEventBit;
+  // printf("[mouse] Input ID fields set\n");
 
   // enable the auxiliary mouse
   printf("[mouse] Enabling auxiliary mouse device\n");
   mouseWait(1);
   out_port_byte(0x64, 0xA8);
 
+  // irq handler
+  printf("[mouse] Setting up mouse IRQ handler\n");
+  uint8_t targIrq = 12;
+  if(apic_initialized)
+  {
+    uint8_t targIrq = ioApicRedirect(targIrq, false);
+  }
+  if (isr_initialized)
+    {
+        irq_install_handler(targIrq, mouseIrq);
+    }
+    else 
+    {
+        printf("[mouse] warning: isr not initialized. Mouse initialization omitted");
+        return;
+    }
+
   // enable interrupts
   printf("[mouse] Enabling mouse interrupts\n");
   mouseWait(1);
   out_port_byte(0x64, 0x20);
   
-  // Wait for status byte
-  // NOTE: Skipping sleep() calls - they cause page faults during initialization
-  // The PS/2 controller waits are handled by the mouseWait() function with timeout
   // printf("[mouse] About to call sleep...\n");
   // sleep(100);
   
@@ -247,19 +276,6 @@ void initiateMouse() {
   printf("[mouse] Enabling mouse device\n");
   mouseWrite(0xF4);
   mouseRead();
-
-  // irq handler
-  printf("[mouse] Setting up mouse IRQ handler\n");
-  uint8_t targIrq = ioApicRedirect(12, false);
-  if (isr_initialized)
-    {
-        irq_install_handler(targIrq, mouseIrq);
-    }
-    else 
-    {
-        printf("[mouse] warning: isr not initialized. Mouse initialization omitted");
-        return;
-    }
   
   printf("[mouse] Mouse initialization complete (IRQ: %d)\n", targIrq);
 }
