@@ -19,10 +19,27 @@ extern bool GUI_input_loop();
 #define TITLE_BAR_HEIGHT 24
 #define WINDOW_BORDER_WIDTH 4
 
- 
-// WINDOW STRUCTURE
- 
+#define MAX_NUM_OF_BUTTONS_FOR_WINDOWS 4
 
+#define MAX_NUM_OF_WINDOWS 64
+#define MAX_NUM_OF_BUTTONS 32
+
+
+ 
+struct XPWindow;
+
+// BUTTON STRUCTURE
+struct XPButton {
+    int x, y;
+    int width, height;
+    uint32_t bg_color;
+    const char* label;
+    bool pressed;
+    void (*function)(void*);
+    XPWindow* window;       // pointer is fine with forward declaration
+};
+
+// WINDOW STRUCTURE
 struct XPWindow {
     int x, y;
     int width, height;
@@ -30,10 +47,21 @@ struct XPWindow {
     bool active;
     bool minimized;
     uint32_t bg_color;
-    void (*draw_frame)(void*);   // function pointer + context pointer
-    void* context;               // pointer to the object (e.g. Console*)
+    XPButton* buttons[MAX_NUM_OF_BUTTONS_FOR_WINDOWS];
+    void (*draw_frame)(void*);
+    void* context;
     void (*on_move)(void*, int x, int y);
 };
+
+struct XPTaskbar {
+    int y;
+    int height;
+    uint32_t bg_color;
+    XPButton* start_button;
+    XPButton* window_buttons[MAX_NUM_OF_WINDOWS];
+};
+
+extern XPTaskbar* taskbar;
 
 extern XPWindow* window_arr[64];
 
@@ -49,6 +77,13 @@ static void Console_draw_frame_wrapper(void* context);
 static void Console_on_move(void* ctx, int x, int y);
 void set_active_xp_window(XPWindow* win);
 
+void close_xp_window(void* ctx);
+void maximize_xp_window(void* ctx);
+void minimize_xp_window(void* ctx);
+
+XPButton* get_button_at(int x, int y);
+XPButton* is_mouse_on_window_button(XPWindow* win, int x, int y);
+
 // Main render function - draws complete XP desktop
 void initialize_xp_desktop();
 void render_xp_desktop();
@@ -63,8 +98,12 @@ bool is_mouse_on_window_title_bar(XPWindow* win, int x, int y);
 void move_xp_window(XPWindow* win, int x, int y);
 
 // Controls
+XPButton* create_xp_button(XPWindow* win, int x, int y, int width, int height, const char* label, void (*func)(void*));
+XPButton* register_xp_button(XPButton* btn);
 void draw_xp_button(int x, int y, int width, int height, const char* label, bool pressed);
 void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll);
+
+void taskbar_sync_windows();
 
 // Desktop elements
 void draw_desktop_background();
