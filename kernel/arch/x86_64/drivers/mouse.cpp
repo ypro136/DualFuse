@@ -28,6 +28,26 @@ void mouseWait(uint8_t a_type) {
   }
 }
 
+static inline int apply_mouse_accel(int delta)
+{
+    if (delta == 0) return 0;
+
+    int sign = (delta > 0) ? 1 : -1;
+    int abs_delta = (delta < 0) ? -delta : delta;
+
+    // Scale down first
+    int scaled = abs_delta / MOUSE_BASE_DIVISOR;
+
+    // Apply acceleration if movement is fast
+    if (abs_delta > MOUSE_ACCEL_THRESHOLD)
+        scaled += (abs_delta - MOUSE_ACCEL_THRESHOLD) * MOUSE_ACCEL_FACTOR / MOUSE_BASE_DIVISOR;
+
+    // Always move at least 1 pixel if there was any input
+    if (scaled == 0) scaled = 1;
+
+    return sign * scaled;
+}
+
 void mouseWrite(uint8_t write) {
   mouseWait(1);
   out_port_byte(MOUSE_STATUS, MOUSE_WRITE);
@@ -106,8 +126,9 @@ void mouseIrq() {
       if (y && mouse1 & (1 << 5))
         y -= 0x100;
 
-      mouse_position_x += x/5;
-      mouse_position_y += -y/5;
+      mouse_position_x += apply_mouse_accel(x);
+      mouse_position_y += apply_mouse_accel(-y);
+
       if (mouse_position_x < 0)
         mouse_position_x = 0;
       if (mouse_position_y < 0)

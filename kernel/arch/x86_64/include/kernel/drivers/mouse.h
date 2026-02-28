@@ -17,12 +17,18 @@
 
 #define MOUSE_TIMEOUT 100000
 
+// Mouse acceleration settings
+#define MOUSE_ACCEL_THRESHOLD 5   // speed (pixels/packet) above which accel kicks in
+#define MOUSE_ACCEL_FACTOR    2   // multiplier when above threshold
+#define MOUSE_BASE_DIVISOR    5   // base speed divisor (was 5, lower = faster)
+
 extern int mouse_position_x;
 extern int mouse_position_y;
 extern bool clickedLeft;
 extern bool clickedRight;
 
 void initiateMouse();
+static inline int apply_mouse_accel(int delta);
 void mouseIrq();
 
 extern DevInputEvent *mouseEvent;

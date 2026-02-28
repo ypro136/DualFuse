@@ -214,8 +214,14 @@ void keyboard_handler(struct interrupt_registers *registers)
 	}else{  
 		char letter = sc_ascii[(int)scan_code];
 		/*Remeber that printf only accepts char[] */
-		char str[2]={letter, '\0'};
-		append(key_buffer,letter,sizeof(key_buffer));
+		if ((letter >= 'a' && letter <= 'z') ||
+        (letter >= 'A' && letter <= 'Z') ||
+        (letter >= '0' && letter <= '9') ||
+        (letter == ' '))
+    {
+        char str[2] = {letter, '\0'};
+        append(key_buffer, letter, sizeof(key_buffer));
+    }
 	}
     }
 
