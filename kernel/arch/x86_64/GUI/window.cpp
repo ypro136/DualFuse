@@ -263,7 +263,7 @@ void move_xp_window(XPWindow* win, int x, int y)
     }
 }
 
-//   Rendering                     ─
+//   Rendering 
 void draw_window_title_bar(XPWindow* win)
 {
 #if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
@@ -272,7 +272,7 @@ void draw_window_title_bar(XPWindow* win)
 
     draw_gradient(win->x, win->y, win->width, TITLE_BAR_HEIGHT, 0x000080, 0x1084D7, true);
     draw_line(win->x + 1, win->y + 1, win->x + win->width - 2, win->y + 1, 0x2E5C8A);
-    draw_text(win->title, win->x + 8, win->y + 6, XP_WINDOW_TEXT, 0x000080);
+    draw_text(win->title, win->x + 8, win->y + 6, XP_WINDOW_TEXT, 0x4040f0);
 }
 
 void draw_xp_window(XPWindow* win)

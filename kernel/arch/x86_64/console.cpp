@@ -10,34 +10,17 @@
 #include <utility.h>
 #include <spinlock.h>
 #include <psf.h>
+#include <shell.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <atomic>
-
-#define CHAR_HEIGHT (psf->height)
-#define CHAR_WIDTH (8)
-#define CONSOLE_BUFFER_SIZE (2048)
 
 // Global instance
 Console console;
 
 Console* console_arr[MAX_NUM_OF_CONSOLES] = {0};
 Console* active_console;
-
-// Character buffer for frame-based rendering
-struct ConsoleBuffer {
-    char characters[CONSOLE_BUFFER_SIZE];
-    uint32_t write_index;
-    Spinlock lock;
-};
-
-static ConsoleBuffer console_buffer = {
-    .characters = {},
-    .write_index = 0,
-    .lock = ATOMIC_FLAG_INIT
-};
 
 // Legacy globals for C compatibility
 int _bg_color = 0xC0C0C0;
@@ -84,6 +67,7 @@ Console::Console(uint32_t width, uint32_t height, uint32_t start_x, uint32_t sta
 {
     memset(is_char, 0, sizeof(is_char));
     title[0] = '\0';
+    shell = new Shell(this);
 }
 
 //   Position Helpers                   ─
@@ -139,27 +123,23 @@ void Console::clamp_cursor()
 
 void Console::buffer_character(char c)
 {
-    spinlock_acquire(&console_buffer.lock);
-    if (is_visible())
+    spinlock_acquire(&buffer.lock);
+    if (is_visible() && buffer.write_index < CONSOLE_BUFFER_SIZE - 1)
     {
-        if (console_buffer.write_index < CONSOLE_BUFFER_SIZE - 1)
-        {
-            console_buffer.characters[console_buffer.write_index] = c;
-            console_buffer.write_index++;
-        }
+        buffer.characters[buffer.write_index++] = c;
     }
-    spinlock_release(&console_buffer.lock);
+    spinlock_release(&buffer.lock);
 }
 
 void Console::flush_buffer()
 {
-    spinlock_acquire(&console_buffer.lock);
+    spinlock_acquire(&buffer.lock);
     cursor_position_x = CHAR_WIDTH;
     cursor_position_y = border_thickness + 2;
     clamp_cursor();
-    for (uint32_t i = 0; i < console_buffer.write_index; i++)
-        draw_character(console_buffer.characters[i]);
-    spinlock_release(&console_buffer.lock);
+    for (uint32_t i = 0; i < buffer.write_index; i++)
+        draw_character(buffer.characters[i]);
+    spinlock_release(&buffer.lock);
 }
 
 void Console::draw_frame()
@@ -319,6 +299,13 @@ void Console::initialize()
 #endif
 
     draw_title();
+    if (!shell)
+       shell = new Shell(this);
+
+    buffer.write_index = 0;
+    memset(buffer.characters, 0, sizeof(buffer.characters));
+    buffer.lock = ATOMIC_FLAG_INIT;
+
     is_initialized = true;
 
     set_visible(true);
@@ -330,8 +317,8 @@ void Console::clear_screen()
     {
         return;
     }
-    console_buffer.write_index = 0;
-    memset(console_buffer.characters, 0, CONSOLE_BUFFER_SIZE);
+    buffer.write_index = 0;
+    memset(buffer.characters, 0, CONSOLE_BUFFER_SIZE);
 
     cursor_position_x = CHAR_WIDTH;
     cursor_position_y = border_thickness + 2;
@@ -611,6 +598,8 @@ void destroy_console(Console* c)
             break;
         }
     }
+    delete c->get_shell();
+    c->set_shell(nullptr);
     delete c;
 }
 

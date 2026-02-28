@@ -1,24 +1,42 @@
 #include <types.h>
 #include <limine.h>
+#include <shell.h>
+#include <spinlock.h>
+
 
 #include <GUI.h>
+#include <atomic>
+
 
 #ifndef CONSOLE_H
 #define CONSOLE_H
 
 #define TTY_CHARACTER_WIDTH  8
 #define TTY_CHARACTER_HEIGHT 16
-
 #define MAX_NUM_OF_CONSOLES 32
+
+#define CHAR_HEIGHT (psf->height)
+#define CHAR_WIDTH (8)
+#define CONSOLE_BUFFER_SIZE (2048)
+
+// Character buffer for frame-based rendering
+struct ConsoleBuffer {
+    char characters[CONSOLE_BUFFER_SIZE];
+    uint32_t write_index;
+    Spinlock lock;
+};
 
 class Console
 {
 private:
+    ConsoleBuffer buffer;
     int  _bg_color;
     int  textcolor;
     int  border_color;
     int  border_thickness;
     char title[64];
+
+    Shell* shell;
 
     bool     is_initialized;
     bool     visible;
@@ -96,6 +114,9 @@ public:
     bool  is_ready() const          { return is_initialized; }
     bool  is_visible() const          { return visible; }
     void set_visible(bool val);
+
+    Shell* get_shell() const  { return shell; }
+    void   set_shell(Shell* s){ shell = s;    }
 };
 
 // Global instance
