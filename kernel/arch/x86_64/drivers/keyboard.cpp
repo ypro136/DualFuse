@@ -155,8 +155,6 @@ void keyboard_handler(struct interrupt_registers *registers)
     #if defined(DEBUG_KEYBOARD)
     printf("[keyboard] keyboard_handler scan_code:%d ,press:%d \n");
     #endif
-    
-    
 
     switch(scan_code){
         case 1:

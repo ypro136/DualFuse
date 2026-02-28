@@ -3,6 +3,9 @@
 #include <framebufferutil.h>
 #include <bootloader.h>
 #include <serial.h>
+#include <gui_primitives.h>
+#include <liballoc.h>
+
 
 #include <utility.h>
 #include <spinlock.h>
@@ -19,6 +22,9 @@
 
 // Global instance
 Console console;
+
+Console* console_arr[MAX_NUM_OF_CONSOLES] = {0};
+Console* active_console;
 
 // Character buffer for frame-based rendering
 struct ConsoleBuffer {
@@ -40,7 +46,7 @@ bool console_initialized = false;
 
 static Spinlock LOCK_CONSOLE = ATOMIC_FLAG_INIT;
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+//   Helpers                      ─
 
 // Clamp integer to [lo, hi]
 static inline int clamp_int(int v, int lo, int hi)
@@ -58,7 +64,7 @@ static inline bool screen_pixel_valid(int x, int y)
             (uint32_t)y < screen_height);
 }
 
-// ─── Constructor ────────────────────────────────────────────────────────────
+//   Constructor                     
 
 Console::Console(uint32_t width, uint32_t height, uint32_t start_x, uint32_t start_y)
     : _bg_color(0xC0C0C0),
@@ -80,7 +86,7 @@ Console::Console(uint32_t width, uint32_t height, uint32_t start_x, uint32_t sta
     title[0] = '\0';
 }
 
-// ─── Position Helpers ───────────────────────────────────────────────────────
+//   Position Helpers                   ─
 
 void Console::increment_cursor_x() { cursor_position_x += CHAR_WIDTH; }
 
@@ -113,7 +119,7 @@ void Console::move_to_line_start()
     cursor_position_x = CHAR_WIDTH;
 }
 
-// ─── Cursor clamping ────────────────────────────────────────────────────────
+//   Cursor clamping                   ──
 
 // Call this after ANY cursor change to keep it inside the window
 void Console::clamp_cursor()
@@ -129,15 +135,18 @@ void Console::clamp_cursor()
     if (cursor_position_y > max_y) cursor_position_y = max_y;
 }
 
-// ─── Buffer ─────────────────────────────────────────────────────────────────
+//   Buffer                      ──
 
 void Console::buffer_character(char c)
 {
     spinlock_acquire(&console_buffer.lock);
-    if (console_buffer.write_index < CONSOLE_BUFFER_SIZE - 1)
+    if (is_visible())
     {
-        console_buffer.characters[console_buffer.write_index] = c;
-        console_buffer.write_index++;
+        if (console_buffer.write_index < CONSOLE_BUFFER_SIZE - 1)
+        {
+            console_buffer.characters[console_buffer.write_index] = c;
+            console_buffer.write_index++;
+        }
     }
     spinlock_release(&console_buffer.lock);
 }
@@ -163,7 +172,7 @@ void Console::draw_frame()
     spinlock_release(&LOCK_CONSOLE);
 }
 
-// ─── draw_rect ──────────────────────────────────────────────────────────────
+//   draw_rect                     ──
 // Coordinates are RELATIVE to the window origin.
 // We clamp to both the window rectangle AND the screen rectangle.
 
@@ -210,7 +219,7 @@ void Console::draw_rect(int x, int y, int w, int h, int rgb)
     }
 }
 
-// ─── psfPutC wrapper with bounds check ─────────────────────────────────────
+//   psfPutC wrapper with bounds check             ─
 // All character rendering goes through here.
 
 void Console::safe_put_char(int charnum, int rel_x, int rel_y, int fg, int bg)
@@ -236,7 +245,7 @@ void Console::safe_put_char(int charnum, int rel_x, int rel_y, int fg, int bg)
     psfPutC(charnum, abs_x, abs_y, fg, bg);
 }
 
-// ─── Scrolling ──────────────────────────────────────────────────────────────
+//   Scrolling                     ──
 
 bool Console::scroll_console()
 {
@@ -289,7 +298,7 @@ bool Console::scroll_console()
     return true;
 }
 
-// ─── Public Interface ───────────────────────────────────────────────────────
+//   Public Interface                   ─
 
 void Console::initialize()
 {
@@ -311,10 +320,16 @@ void Console::initialize()
 
     draw_title();
     is_initialized = true;
+
+    set_visible(true);
 }
 
 void Console::clear_screen()
 {
+    if(!is_visible())
+    {
+        return;
+    }
     console_buffer.write_index = 0;
     memset(console_buffer.characters, 0, CONSOLE_BUFFER_SIZE);
 
@@ -363,6 +378,10 @@ void Console::set_title(const char* t)
 
 void Console::draw_title()
 {
+    if(!is_visible())
+    {
+        return;
+    }
     if (!title[0]) return;
     uint32_t tx = border_thickness + 4;
     uint32_t ty = 0;
@@ -372,12 +391,20 @@ void Console::draw_title()
 
 void Console::erase_cursor()
 {
+    if(!is_visible())
+    {
+        return;
+    }
     if (cursorHidden) return;
     draw_rect(cursor_position_x, cursor_position_y, CHAR_WIDTH, CHAR_HEIGHT, _bg_color);
 }
 
 void Console::update_cursor()
 {
+    if(!is_visible())
+    {
+        return;
+    }
     if (cursorHidden) return;
 
     if (cursor_position_x >= window_width - CHAR_WIDTH)
@@ -396,6 +423,11 @@ void Console::draw_character(int charnum)
 {
     if (!charnum)
         return;
+
+    if(!is_visible())
+    {
+        return;
+    }
 
     // Wrap if past right edge
     if (cursor_position_x > (window_width - CHAR_WIDTH * 2))
@@ -502,19 +534,94 @@ void Console::set_window_size(uint32_t width, uint32_t height)
     clamp_cursor();
 }
 
+void Console::set_visible(bool val)
+{
+    visible = val;
+}
+
 void Console::set_window_position(int32_t x, int32_t y)
 {
     window_x = x;
     window_y = y;
 }
 
+Console* create_console(XPWindow* window)
+{
+#if defined(DEBUG_CONSOLE)
+    printf("[DEBUG_CONSOLE] create_console: window ptr:%p x:%d y:%d width:%d height:%d\n",window, window->x, window->y, window->width, window->height);
+#endif
 
-// ─── Legacy C API ───────────────────────────────────────────────────────────
+    Console* temp_console = new Console(window->width, window->height - TITLE_BAR_HEIGHT,window->x, window->y + TITLE_BAR_HEIGHT);
+#if defined(DEBUG_CONSOLE)
+    printf("[DEBUG_CONSOLE] create_console: Console() ptr:%p\n", temp_console);
+#endif
+
+    temp_console->initialize();
+#if defined(DEBUG_CONSOLE)
+    printf("[DEBUG_CONSOLE] create_console: initialized\n");
+#endif
+
+    temp_console->clear_screen();
+#if defined(DEBUG_CONSOLE)
+    printf("[DEBUG_CONSOLE] create_console: screen cleared\n");
+#endif
+
+    temp_console->set_bg_color(XP_BACKGROUND);
+#if defined(DEBUG_CONSOLE)
+    printf("[DEBUG_CONSOLE] create_console: bg_color set to XP_BACKGROUND\n");
+#endif
+
+    temp_console->set_text_color(XP_WINDOW_TEXT);
+#if defined(DEBUG_CONSOLE)
+    printf("[DEBUG_CONSOLE] create_console: text_color set to XP_WINDOW_TEXT\n");
+#endif
+
+    bool slot_found = false;
+    for (int i = 0; i < MAX_NUM_OF_CONSOLES; i++)
+    {
+        if (console_arr[i] == NULL)
+        {
+            console_arr[i] = temp_console;
+            slot_found = true;
+#if defined(DEBUG_CONSOLE)
+            printf("[DEBUG_CONSOLE] create_console: registered in console_arr slot:%d\n", i);
+#endif
+            break;
+        }
+    }
+
+#if defined(DEBUG_CONSOLE)
+    if (!slot_found)
+        printf("[DEBUG_CONSOLE] create_console: console_arr is FULL, console not registered!\n");
+
+    printf("[DEBUG_CONSOLE] create_console: done, returning ptr:%p\n", temp_console);
+#endif
+
+    return temp_console;
+}
+
+void destroy_console(Console* c)
+{
+    if (!c) return;
+    for (int i = 0; i < MAX_NUM_OF_CONSOLES; i++)
+    {
+        if (console_arr[i] == c)
+        {
+            console_arr[i] = NULL;
+            break;
+        }
+    }
+    delete c;
+}
+
+
+//   Legacy C API                    ──
 
 void console_initialize()
 {
     console.initialize();
     console_initialized = console.is_ready();
+    active_console = &console;
     _bg_color = 0xC0C0C0;
     textcolor = 0x000000;
 }
@@ -529,7 +636,11 @@ void setConsoleY(uint32_t y)       { console.set_cursor_y(y); }
 void eraseBull()                   { }
 void updateBull()                  { }
 void clear_screen()                { console.clear_screen(); }
-void printfch(char character)      { console.print_char(character); }
+
+void printfch(char character) { 
+    console.print_char(character); 
+    active_console->print_char(character);
+}
 
 extern "C" void console_draw_frame()
 {

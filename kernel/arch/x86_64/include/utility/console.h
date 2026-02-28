@@ -1,10 +1,15 @@
 #include <types.h>
 #include <limine.h>
+
+#include <GUI.h>
+
 #ifndef CONSOLE_H
 #define CONSOLE_H
 
 #define TTY_CHARACTER_WIDTH  8
 #define TTY_CHARACTER_HEIGHT 16
+
+#define MAX_NUM_OF_CONSOLES 32
 
 class Console
 {
@@ -16,6 +21,7 @@ private:
     char title[64];
 
     bool     is_initialized;
+    bool     visible;
     bool     cursorHidden;
     uint32_t cursor_position_x;
     uint32_t cursor_position_y;
@@ -83,15 +89,24 @@ public:
     uint32_t get_window_height() const { return window_height; }
     int32_t get_window_x()      const { return window_x;      }
     int32_t get_window_y()      const { return window_y;      }
-
+    
     // Framebuffer management
     void  set_framebuffer(void* fb) { framebuffer = fb; }
     void* get_framebuffer() const   { return framebuffer; }
     bool  is_ready() const          { return is_initialized; }
+    bool  is_visible() const          { return visible; }
+    void set_visible(bool val);
 };
 
 // Global instance
 extern Console console;
+
+extern Console* console_arr[MAX_NUM_OF_CONSOLES];
+
+extern Console* active_console;
+
+Console* create_console(XPWindow* window);
+void destroy_console(Console* c);
 
 // Legacy C API
 extern int  _bg_color;

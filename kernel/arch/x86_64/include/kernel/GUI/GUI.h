@@ -1,113 +1,68 @@
-#ifndef XP_DESKTOP_H
-#define XP_DESKTOP_H
+#pragma once
 
 #include <cstdint>
-
 #include <framebufferutil.h>
 #include <psf.h>
-
 #include <gui_primitives.h>
 
- 
-extern bool GUI_input_loop();
+#include <gui_defs.h>
+#include <button.h>     
+#include <window.h>     
 
-// CONFIGURATION CONSTANTS
- 
-
-#define TASKBAR_HEIGHT 28
-#define TASKBAR_Y (SCREEN_HEIGHT - TASKBAR_HEIGHT)
-#define TITLE_BAR_HEIGHT 24
-#define WINDOW_BORDER_WIDTH 4
-
-#define MAX_NUM_OF_BUTTONS_FOR_WINDOWS 4
-
-#define MAX_NUM_OF_WINDOWS 64
-#define MAX_NUM_OF_BUTTONS 32
-
-
- 
-struct XPWindow;
-
-// BUTTON STRUCTURE
-struct XPButton {
-    int x, y;
-    int width, height;
-    uint32_t bg_color;
-    const char* label;
-    bool pressed;
-    void (*function)(void*);
-    XPWindow* window;       // pointer is fine with forward declaration
-};
-
-// WINDOW STRUCTURE
-struct XPWindow {
-    int x, y;
-    int width, height;
-    const char* title;
-    bool active;
-    bool minimized;
-    uint32_t bg_color;
-    XPButton* buttons[MAX_NUM_OF_BUTTONS_FOR_WINDOWS];
-    void (*draw_frame)(void*);
-    void* context;
-    void (*on_move)(void*, int x, int y);
-};
-
+//   Taskbar                      
 struct XPTaskbar {
-    int y;
-    int height;
-    uint32_t bg_color;
+    int       y, height;
+    uint32_t  bg_color;
     XPButton* start_button;
     XPButton* window_buttons[MAX_NUM_OF_WINDOWS];
 };
 
 extern XPTaskbar* taskbar;
 
-extern XPWindow* window_arr[64];
+//   Desktop icon                    ─
+typedef struct {
+    int         x, y, size;
+    const char* label;
+    uint32_t    icon_color;
+    bool        pressed, hovered;
+    void      (*on_click)(void);
+} XPDesktopIcon;
 
- 
-// RENDERING FUNCTIONS
-#if defined(DEBUG_GUI)
-void direct_clear_screen_dbg ();
-#endif
+extern XPDesktopIcon* desktop_icons[MAX_DESKTOP_ICONS];
 
-XPWindow* create_xp_window(int x, int y, int width, int height, const char* title);
+//   Input loop (implemented in GUI_input.cpp)          ──
+extern bool GUI_input_loop();
 
-static void Console_draw_frame_wrapper(void* context);
-static void Console_on_move(void* ctx, int x, int y);
-void set_active_xp_window(XPWindow* win);
-
-void close_xp_window(void* ctx);
-void maximize_xp_window(void* ctx);
-void minimize_xp_window(void* ctx);
-
-XPButton* get_button_at(int x, int y);
-XPButton* is_mouse_on_window_button(XPWindow* win, int x, int y);
-
-// Main render function - draws complete XP desktop
+//   Desktop lifecycle                  ──
 void initialize_xp_desktop();
 void render_xp_desktop();
 
-// Window rendering
-void draw_xp_window(XPWindow* win);
-void draw_window_title_bar(XPWindow* win);
-void draw_window_button(int x, int y, int size, const char* label, bool active);
+//   Desktop background                  ─
+void draw_desktop_background();
 
-XPWindow* get_window_at(int x, int y);
-bool is_mouse_on_window_title_bar(XPWindow* win, int x, int y);
-void move_xp_window(XPWindow* win, int x, int y);
+//   Taskbar                      
+XPTaskbar* create_taskbar();
+void       draw_taskbar();
+void       taskbar_sync_windows();
 
-// Controls
-XPButton* create_xp_button(XPWindow* win, int x, int y, int width, int height, const char* label, void (*func)(void*));
-XPButton* register_xp_button(XPButton* btn);
-void draw_xp_button(int x, int y, int width, int height, const char* label, bool pressed);
+//   Desktop icons                    
+XPDesktopIcon* create_desktop_icon(int x, int y, const char* label,
+                                    uint32_t icon_color, void (*on_click)(void));
+XPDesktopIcon* get_desktop_icon_at(int x, int y);
+
+void draw_desktop_icon(XPDesktopIcon* icon);
+void draw_all_desktop_icons();
+
+bool desktop_icon_hit_test(XPDesktopIcon* icon, int mouse_x, int mouse_y);
+void desktop_icons_handle_mouse(int mouse_x, int mouse_y, bool clicked);
+
+//   Misc widgets                    ─
 void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll);
 
-void taskbar_sync_windows();
+//   Utility                      
+char* u64toa(uint64_t value, char* str, int base);
 
-// Desktop elements
-void draw_desktop_background();
-void draw_desktop_icon(int x, int y, const char* label, uint32_t icon_color);
-void draw_taskbar();
-
+//   Debug                      ──
+#if defined(DEBUG_GUI)
+void direct_clear_screen_dbg();
 #endif
