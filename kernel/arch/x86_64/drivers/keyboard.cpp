@@ -210,30 +210,14 @@ void keyboard_handler(struct interrupt_registers* /*registers*/)
         return;
     }
 
-    char letter = sc_ascii[(int)scan_code];
-    bool printable = ((letter >= 'a' && letter <= 'z') ||
-                      (letter >= 'A' && letter <= 'Z') ||
-                      (letter >= '0' && letter <= '9') ||
-                       letter == ' ');
+    bool upper = shift_down ^ capsLock;   // XOR: shift inverts caps
+    uint32_t mapped = upper ? uppercase[scan_code] : lowercase[scan_code];
 
-    if (!printable) return;
+    if (mapped == UNKNOWN || mapped >= 0x80) return;  // non-printable
 
-    // Apply shift / caps
-    char final_char;
-    if (shift_down || capsLock)
-    {
-        // sc_ascii is already uppercase; just apply shift symbols via uppercase[]
-        uint32_t mapped = uppercase[scan_code];
-        final_char = (mapped < 0x80) ? (char)mapped : letter;
-    }
-    else
-    {
-        final_char = letter;
-    }
+    char final_char = (char)mapped;
 
     kb_append(key_buffer, final_char, sizeof(key_buffer));
-
-    // Echo to active console
     if (active_console)
         active_console->print_char(final_char);
 }

@@ -2,26 +2,20 @@
 
 #include <cstdint>
 
-// Forward declaration — shell.cpp includes console.h, not the other way around
 class Console;
 
 class Shell
 {
 public:
-    // Bind this shell to a console for all output
     explicit Shell(Console* output_console);
 
-    // Feed a completed input line (null-terminated, no newline).
-    // Called by the keyboard handler when Enter is pressed.
     void execute(char* input);
 
-    // Expose the bound console (used by keyboard routing)
     Console* get_console() const { return console; }
 
 private:
     Console* console;
 
-    // ── Command handlers ──────────────────────────────────────────────────
     void cmd_help();
     void cmd_clear();
     void cmd_echo(int argc, char* argv[]);
@@ -32,11 +26,16 @@ private:
     void cmd_ls();
     void cmd_rm(int argc, char* argv[]);
     void cmd_end();
+    void cmd_mkdir(int argc, char* argv[]);
+    void cmd_cd(int argc, char* argv[]);
+    void cmd_pwd();
+    void cmd_search(int argc, char* argv[]);
+    void cmd_start(int argc, char* argv[]);
+    void cmd_grep(int argc, char* argv[]);
 
-    // ── Helpers ───────────────────────────────────────────────────────────
     static int  tokenize(char* input, char* argv[], int max_args);
+    static void str_toupper(char* s);
 
-    // Convenience: printf into this shell's console
     void print(const char* s);
     void println(const char* s);
 };

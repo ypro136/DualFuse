@@ -13,9 +13,6 @@ inline int abs(int x) {
     return (x < 0) ? -x : x;
 }
 
-inline float lerp(float a, float b, float t) {
-    return a + (b - a) * t;
-}
 
 inline int clamp(int val, int min_val, int max_val) {
     if (val < min_val) return min_val;

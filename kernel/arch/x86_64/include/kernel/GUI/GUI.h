@@ -58,6 +58,7 @@ void desktop_icons_handle_mouse(int mouse_x, int mouse_y, bool clicked);
 
 //   Misc widgets                    ─
 void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll);
+static void draw_clock_panel(int x, int y, int /*w*/, int /*h*/, void* /*ctx*/);
 
 //   Utility                      
 char* u64toa(uint64_t value, char* str, int base);

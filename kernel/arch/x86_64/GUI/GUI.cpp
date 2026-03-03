@@ -10,6 +10,10 @@
 #include <bootloader.h>
 #include <mouse.h>
 #include <GUI_input.h>
+#include <panel.h>
+#include <file_explorer.h>
+
+
 
 //   Globals                      
 XPTaskbar*     taskbar                           = NULL;
@@ -43,7 +47,7 @@ static void Console_set_active(void* ctx)
     active_console = static_cast<Console*>(ctx);
 }
 
-//   Desktop-icon click handlers               ─
+//   Desktop-icon click handlers  
 
 void on_console_icon_click()
 {
@@ -56,6 +60,7 @@ void on_console_icon_click()
     XPWindow* window    = create_xp_window(350, 175, 800, 500, "Kernel Console", cb);
     Console*  console   = create_console(window);
     window->context     = (void*)console;
+    window->window_type = WINDOW_TYPE_CONSOLE;
 
     // Fire set_active now that context is valid
     set_active_xp_window(window);
@@ -204,24 +209,38 @@ void draw_taskbar()
         draw_rect_outline(bx + 5, by + 5, 14, 14, XP_BUTTON_SHADOW, 1);
     }
 
-    // ── Clock                     ──
-    const int clock_x = SCREEN_WIDTH - 80;
+    //  Clock 
+    const int clock_x = SCREEN_WIDTH - 100;
     const int clock_y = TASKBAR_Y + 5;
 
-    uint64_t total_sec = timerTicks / 60;
-    uint64_t hours     = total_sec / 3600;
-    uint64_t minutes   = (total_sec % 3600) / 60;
-    uint64_t seconds   = total_sec % 60;
+    uint64_t now     = timerBootUnix + (timerTicks / frequency) + (2 * 3600);
+    uint64_t hours24 = (now % 86400) / 3600;
+    uint64_t minutes =  (now % 3600) / 60;
+    uint64_t seconds =   now % 60;
 
-    char buf[64];
-    draw_text(u64toa(hours,   buf, 10), clock_x,      clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(":",                       clock_x + 14, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(u64toa(minutes, buf, 10), clock_x + 17, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(":",                       clock_x + 31, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(u64toa(seconds, buf, 10), clock_x + 34, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    const char* period = (hours24 >= 12) ? "PM" : "AM";
+    uint64_t hours12   = hours24 % 12;
+    if (hours12 == 0) hours12 = 12;
+
+    // Zero-pad a value into buf, always producing exactly 2 digits
+    auto pad2 = [](uint64_t val, char* buf) -> char* {
+        buf[0] = '0' + (val / 10);
+        buf[1] = '0' + (val % 10);
+        buf[2] = '\0';
+        return buf;
+    };
+
+    char hbuf[4], mbuf[4], sbuf[4];
+
+    draw_text(pad2(hours12,  hbuf), clock_x,      clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(":",                   clock_x + 16, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(pad2(minutes,  mbuf), clock_x + 24, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(":",                   clock_x + 40, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(pad2(seconds,  sbuf), clock_x + 48, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(period,                clock_x + 64, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
 }
 
-//   Desktop background                  ─
+//   Desktop background  
 
 void draw_desktop_background()
 {
@@ -332,7 +351,7 @@ void desktop_icons_handle_mouse(int mouse_x, int mouse_y, bool clicked)
     }
 }
 
-//   Misc widgets                    ─
+//   Misc widgets        
 
 void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll)
 {
@@ -386,7 +405,34 @@ char* u64toa(uint64_t value, char* str, int base)
     return str;
 }
 
-//   Desktop lifecycle                  ──
+static void draw_clock_panel(int x, int y, int /*w*/, int /*h*/, void* /*ctx*/)
+{
+    uint64_t now     = timerBootUnix + (timerTicks / frequency) + (2 * 3600);
+    uint64_t hours24 = (now % 86400) / 3600;
+    uint64_t minutes =  (now % 3600) / 60;
+    uint64_t seconds =   now % 60;
+
+    const char* period = (hours24 >= 12) ? "PM" : "AM";
+    uint64_t hours12   = hours24 % 12;
+    if (hours12 == 0) hours12 = 12;
+
+    auto pad2 = [](uint64_t val, char* buf) -> char* {
+        buf[0] = '0' + (val / 10);
+        buf[1] = '0' + (val % 10);
+        buf[2] = '\0';
+        return buf;
+    };
+
+    char hbuf[4], mbuf[4], sbuf[4];
+    draw_text(pad2(hours12, hbuf), x,      y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(":",                  x + 16, y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(pad2(minutes, mbuf), x + 24, y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(":",                  x + 40, y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(pad2(seconds, sbuf), x + 48, y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(period,               x + 64, y, XP_WINDOW_TEXT, 0xA0A0A0);
+}
+
+//   Desktop lifecycle  
 
 void initialize_xp_desktop()
 {
@@ -398,6 +444,7 @@ void initialize_xp_desktop()
 
     create_taskbar();
     create_desktop_icon(20, 40, "Console", 0x000080, on_console_icon_click);
+    create_desktop_icon(60, 40, "Files", 0xFFCC00, on_file_explorer_icon_click);
 
     if (!console_initialized)
     {
@@ -412,6 +459,17 @@ void initialize_xp_desktop()
         printf("[DEBUG_GUI] initialize_xp_desktop: console initialized\n");
 #endif
     }
+
+    XPPanel* clock_panel = create_xp_panel(
+    SCREEN_WIDTH - 100, TASKBAR_Y + 5,
+    80, 14,
+    200, 
+    36,
+    draw_clock_panel,
+    nullptr
+);
+    register_xp_panel(clock_panel);
+
 
     taskbar_sync_windows();
 
@@ -430,13 +488,14 @@ void render_xp_desktop()
     draw_all_desktop_icons();
     draw_all_xp_windows_but_active();
     draw_active_xp_window();
+    draw_all_xp_panels();
     draw_taskbar();
     draw_cursor(mouse_position_x, mouse_position_y);
 
     frame_ready = true;
 }
 
-//   Debug                      ──
+//   Debug   
 
 #if defined(DEBUG_GUI)
 static int dbg_frame_counter = 0;

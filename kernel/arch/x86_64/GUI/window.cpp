@@ -43,6 +43,7 @@ XPWindow* create_xp_window(int x, int y, int width, int height,
     window->active    = false;
     window->minimized = false;
     window->bg_color  = XP_BACKGROUND;
+    window->window_type = WINDOW_TYPE_NONE;
 
     if (callbacks)
     {
@@ -329,7 +330,7 @@ int draw_all_xp_windows_but_active()
     for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++)
     {
         if (window_arr[i] == NULL)
-            break;
+            continue;
 
         if (!window_arr[i]->active)
         {

@@ -54,6 +54,12 @@ int Shell::tokenize(char* input, char* argv[], int max_args)
     return argc;
 }
 
+void Shell::str_toupper(char* s)
+{
+    for (; *s; ++s)
+        if (*s >= 'a' && *s <= 'z') *s -= 32;
+}
+
 
 void Shell::execute(char* input)
 {
@@ -62,6 +68,8 @@ void Shell::execute(char* input)
     char* argv[100];
     int   argc = tokenize(input, argv, 100);
     if (argc == 0) return;
+
+    str_toupper(argv[0]);
 
     if      (strcmp(argv[0], "HELP")  == 0) cmd_help();
     else if (strcmp(argv[0], "CLEAR") == 0) cmd_clear();
@@ -73,6 +81,12 @@ void Shell::execute(char* input)
     else if (strcmp(argv[0], "LS")    == 0) cmd_ls();
     else if (strcmp(argv[0], "RM")    == 0) cmd_rm(argc, argv);
     else if (strcmp(argv[0], "END")   == 0) cmd_end();
+    else if (strcmp(argv[0], "MKDIR")  == 0) cmd_mkdir(argc, argv);
+    else if (strcmp(argv[0], "CD")     == 0) cmd_cd(argc, argv);
+    else if (strcmp(argv[0], "PWD")    == 0) cmd_pwd();
+    else if (strcmp(argv[0], "SEARCH") == 0) cmd_search(argc, argv);
+    else if (strcmp(argv[0], "START")  == 0) cmd_start(argc, argv);
+    else if (strcmp(argv[0], "GREP")   == 0) cmd_grep(argc, argv);
     else
     {
         print("Unknown command: ");
@@ -80,7 +94,6 @@ void Shell::execute(char* input)
     }
 }
 
-// ─── Command implementations ───────────────────────────────────────────────
 
 void Shell::cmd_help()
 {
@@ -94,6 +107,12 @@ void Shell::cmd_help()
     println("  RM     - Delete file:  RM <name>");
     println("  ECHO   - Print text");
     println("  INFO   - System info");
+    println("  MKDIR  - Make directory");
+    println("  CD     - Change directory");
+    println("  PWD    - Print working directory");
+    println("  SEARCH - Search files by name");
+    println("  START  - Run script or print file");
+    println("  GREP   - Search text in file:  GREP <pattern> <file>");
 }
 
 void Shell::cmd_clear()
@@ -208,20 +227,71 @@ void Shell::cmd_ls()
 
 void Shell::cmd_rm(int argc, char* argv[])
 {
-    if (argc < 2)
-    {
-        println("Usage: RM <filename>");
-        return;
-    }
+    if (argc < 2) { println("Usage: RM <name>"); return; }
 
-    if (fs_delete(argv[1]) == 0)
-        println("File deleted.");
-    else
-        println("Error: could not delete file.");
+    int result = fs_delete(argv[1]);
+    if      (result ==  0) println("Deleted.");
+    else if (result == -2) println("Error: directory is not empty.");
+    else                   println("Error: not found.");
 }
 
 void Shell::cmd_end()
 {
     println("Stopping CPU...");
     Halt();
+}
+
+void Shell::cmd_mkdir(int argc, char* argv[])
+{
+    if (argc < 2) { println("Usage: mkdir <name>"); return; }
+    if (fs_mkdir(argv[1]) == 0) println("Directory created.");
+    else                        println("Error: could not create directory.");
+}
+
+void Shell::cmd_cd(int argc, char* argv[])
+{
+    if (argc < 2) { println("Usage: cd <name|..>"); return; }
+    if (fs_cd(argv[1]) != 0)
+        println("Error: directory not found.");
+}
+
+void Shell::cmd_pwd()
+{
+    char buf[MAX_PATH];
+    fs_pwd(buf);
+    println(buf);
+}
+
+void Shell::cmd_search(int argc, char* argv[])
+{
+    if (argc < 2) { println("Usage: search <term>"); return; }
+    fs_search(argv[1]);
+}
+
+void Shell::cmd_start(int argc, char* argv[])
+{
+    if (argc < 2) { println("Usage: start <file>"); return; }
+    fs_start(argv[1], this);
+}
+
+void Shell::cmd_grep(int argc, char* argv[])
+{
+    if (argc < 3) { println("Usage: grep <pattern> <file>"); return; }
+
+    char buf[BLOCK_SIZE + 1];
+    if (fs_read(argv[2], buf) != 0) { println("Error: file not found."); return; }
+
+    char* line = buf;
+    for (char* p = buf; ; p++)
+    {
+        if (*p == '\n' || *p == '\0')
+        {
+            char end = *p;
+            *p = '\0';
+            if (strstr(line, argv[1]))
+                println(line);
+            if (end == '\0') break;
+            line = p + 1;
+        }
+    }
 }

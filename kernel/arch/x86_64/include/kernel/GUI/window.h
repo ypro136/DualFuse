@@ -4,6 +4,12 @@
 #include <gui_defs.h>
 #include <button.h>  
 
+enum XPWindowType {
+    WINDOW_TYPE_NONE     = 0,
+    WINDOW_TYPE_CONSOLE  = 1,
+    WINDOW_TYPE_EXPLORER = 2,
+};
+
 //   Callback bundle                   ─
 // Pass this to create_xp_window() to wire up content-specific behaviour.
 typedef struct {
@@ -21,6 +27,7 @@ struct XPWindow {
     bool      active;
     bool      minimized;
     uint32_t  bg_color;
+    XPWindowType window_type;
 
     // Title-bar control buttons  [0]=close  [1]=maximise  [2]=minimise
     XPButton* buttons[MAX_NUM_OF_BUTTONS_FOR_WINDOWS];
