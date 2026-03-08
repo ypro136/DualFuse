@@ -201,7 +201,7 @@ extern "C" void handle_interrupt(uint64_t rsp)
     case 32 + 1: // irq1 keyboard
     {
       #if defined(DEBUG_KEYBOARD)
-      printf("[keyboard::isr] irq 33 called calling irq_handler to call keyboard\n");
+      printf("[keyboard::isr] irq 1 called calling irq_handler to call keyboard\n");
       #endif
       irq_handler(1, cpu);
       break;
@@ -209,7 +209,14 @@ extern "C" void handle_interrupt(uint64_t rsp)
     case 32 + 11: // irq11 achi
       irq_handler(11, cpu);
       break;
-
+    case 32 + 12: // irq12 mouse
+    {
+      #if defined(DEBUG_MOUSE)
+      printf("[mousee::isr] irq 12 called calling irq_handler to call mouse\n");
+      #endif
+      irq_handler(12, cpu);
+      break;
+    }
     default: { // execute other handlers
       irqHandler *browse = firstIrqHandler;
       while (browse) {
