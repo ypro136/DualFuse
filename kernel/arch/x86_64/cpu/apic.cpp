@@ -5,6 +5,7 @@
 #include <system.h>
 #include <timer.h>
 #include <hcf.hpp>
+#include <keyboard.h>
 #include <minimal_acpi.h>
 
 // Advanced Programmable Interrupt Controller driver
@@ -17,6 +18,8 @@ LLcontrol dsIoapic = {0};
 uint8_t *irqPerCpu = nullptr;
 uint8_t  irqGenericArray[MAX_IRQ] = {0};
 uint32_t lapicGenericArray[MAX_IRQ] = {0};
+
+bool apic_initialized = false;
 
 /*
  * Trigger mode: 0 is edge-triggered, 1 is level-triggered.
@@ -380,6 +383,9 @@ void initiateAPIC() {
   // enable lapic (for the bootstrap core)
   apicSetBase(apicPhys);
   apicWrite(0xF0, apicRead(0xF0) | 0x1FF);
+
+  apic_initialized = true;
+  keyboard_initialize();
 }
 
 void smpInitiateAPIC() {

@@ -14,7 +14,6 @@ extern void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_co
 // BASIC UTILITY FUNCTIONS
  
 
-inline float lerp(float a, float b, float t);
 inline int clamp(int val, int min_val, int max_val);
 uint32_t blend_colors(uint32_t color1, uint32_t color2, float alpha);
 
@@ -68,6 +67,9 @@ void draw_text_centered(const char* text, int x, int y, int width, uint32_t colo
 
 void draw_rectangle_with_shadow(int x, int y, int width, int height, uint32_t color, uint32_t shadow_color, int shadow_size);
 void clear_screen(int width, int height, uint32_t color);
+
+// MOUSE
+void draw_cursor(int x, int y);
 
  
 // XP COLOR PALETTE CONSTANTS

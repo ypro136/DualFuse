@@ -1,374 +1,517 @@
-#include <gui_primitives.h>
-#include <cstdint>
-#include <cstring>
+#include <GUI.h>
 
+#include <cstdint>
+#include <liballoc.h>
+#include <gui_primitives.h>
 #include <framebufferutil.h>
 #include <psf.h>
 #include <timer.h>
 #include <console.h>
 #include <bootloader.h>
+#include <mouse.h>
+#include <GUI_input.h>
+#include <panel.h>
+#include <file_explorer.h>
 
 
 
-#include <GUI.h>
+//   Globals                      
+XPTaskbar*     taskbar                           = NULL;
+XPDesktopIcon* desktop_icons[MAX_DESKTOP_ICONS]  = {0};
 
  
-// Taskbar constants
-#define TASKBAR_HEIGHT 28
-#define TASKBAR_Y (SCREEN_HEIGHT - TASKBAR_HEIGHT)
+// Console callbacks
+// These live here because they reference Console, which is a GUI.cpp concern.
+// They are passed as function pointers to create_xp_window() and are
+// therefore not exported in any header.
+ 
 
-// Window constants
-#define TITLE_BAR_HEIGHT 24
-#define WINDOW_BORDER_WIDTH 4
-
-
-void draw_window_title_bar(const XPWindow& win) {
-    draw_gradient(win.x, win.y, win.width, TITLE_BAR_HEIGHT, 0x000080, 0x1084D7, true);
-    draw_line(win.x + 1, win.y + 1, win.x + win.width - 2, win.y + 1, 0x2E5C8A);
-    draw_text(win.title, win.x + 8, win.y + 6, XP_WINDOW_TEXT, 0x000080);
-}
-
-void draw_window_button(int x, int y, int size, const char* label, bool active) {
-    uint32_t button_color = XP_BUTTON_FACE;
-    uint32_t highlight = XP_BUTTON_HIGHLIGHT;
-    uint32_t shadow = XP_BUTTON_SHADOW;
-    
-    fill_rectangle(x, y, size, size, button_color);
-    
-    if (active) {
-        draw_hline(x, y, size, highlight);
-        draw_vline(x, y, size, highlight);
-        draw_hline(x, y + size - 1, size, shadow);
-        draw_vline(x + size - 1, y, size, shadow);
-    } else {
-        draw_hline(x, y, size, shadow);
-        draw_vline(x, y, size, shadow);
-        draw_hline(x, y + size - 1, size, highlight);
-        draw_vline(x + size - 1, y, size, highlight);
-    }
-    
-    // X symbol for close button
-    if (label[0] == 'X') {
-        draw_line(x + 4, y + 4, x + size - 5, y + size - 5, 0x000000);
-        draw_line(x + size - 5, y + 4, x + 4, y + size - 5, 0x000000);
-    }
-    // _ for minimize
-    else if (label[0] == '_') {
-        draw_hline(x + 4, y + size / 2, size - 8, 0x000000);
-    }
-    // [] for maximize
-    else if (label[0] == '[') {
-        draw_rect_outline(x + 4, y + 4, size - 8, size - 8, 0x000000, 1);
-    }
-}
-
-  
-
-void draw_xp_window(const XPWindow& win) 
+static void Console_draw_frame_wrapper(void* ctx)
 {
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] draw_xp_window\n");
-        #endif
-    fill_rectangle(win.x, win.y, win.width, win.height, XP_BACKGROUND);
-    
-    draw_window_title_bar(win);
-    
-    draw_beveled_border_thick(win.x, win.y, win.width, win.height,
+#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
+    printf("[DEBUG_GUI] Console_draw_frame_wrapper: ctx:%p\n", ctx);
+#endif
+    static_cast<Console*>(ctx)->draw_frame();
+}
+
+static void Console_on_move(void* ctx, int x, int y)
+{
+#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
+    printf("[DEBUG_GUI] Console_on_move: x:%d y:%d\n", x, y);
+#endif
+    static_cast<Console*>(ctx)->set_window_position((int32_t)x, (int32_t)y);
+}
+
+static void Console_set_active(void* ctx)
+{
+    active_console = static_cast<Console*>(ctx);
+}
+
+//   Desktop-icon click handlers  
+
+void on_console_icon_click()
+{
+    XPWindowCallbacks* cb = (XPWindowCallbacks*)malloc(sizeof(XPWindowCallbacks));
+    cb->draw_frame = Console_draw_frame_wrapper;
+    cb->on_move    = Console_on_move;
+    cb->set_active = Console_set_active;
+    cb->context    = NULL;   // filled in after console creation below
+
+    XPWindow* window    = create_xp_window(350, 175, 800, 500, "Kernel Console", cb);
+    Console*  console   = create_console(window);
+    window->context     = (void*)console;
+    window->window_type = WINDOW_TYPE_CONSOLE;
+
+    // Fire set_active now that context is valid
+    set_active_xp_window(window);
+}
+
+//   Taskbar                      
+
+static void on_start_click(void* /*ctx*/)
+{
+#if defined(DEBUG_GUI)
+    printf("[DEBUG_GUI] on_start_click\n");
+#endif
+    // TODO: open start menu
+}
+
+static void on_taskbar_window_click(void* ctx)
+{
+#if defined(DEBUG_GUI)
+    printf("[DEBUG_GUI] on_taskbar_window_click: ctx:%p\n", ctx);
+#endif
+
+    XPWindow* win = (XPWindow*)ctx;
+    if (!win) return;
+
+    set_active_xp_window(win);
+    if (win->minimized)
+    {
+        win->minimized = false;
+#if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] on_taskbar_window_click: unminimized window\n");
+#endif
+    }
+}
+
+XPTaskbar* create_taskbar()
+{
+#if defined(DEBUG_GUI)
+    printf("[DEBUG_GUI] create_taskbar\n");
+#endif
+
+    XPTaskbar* tb = (XPTaskbar*)malloc(sizeof(XPTaskbar));
+    if (!tb)
+    {
+#if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] create_taskbar: malloc FAILED\n");
+#endif
+        return NULL;
+    }
+
+    tb->y        = TASKBAR_Y;
+    tb->height   = TASKBAR_HEIGHT;
+    tb->bg_color = 0xC0C0C0;
+
+    tb->start_button = create_xp_button(NULL, 2, TASKBAR_Y + 2,
+                                         60, TASKBAR_HEIGHT - 4,
+                                         "Start", on_start_click);
+    register_xp_button(tb->start_button);
+
+    for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++)
+        tb->window_buttons[i] = NULL;
+
+    taskbar = tb;
+
+#if defined(DEBUG_GUI)
+    printf("[DEBUG_GUI] create_taskbar: done ptr:%p\n", taskbar);
+#endif
+
+    return tb;
+}
+
+void taskbar_sync_windows()
+{
+    if (!taskbar) return;
+
+    // Tear down old per-window buttons
+    for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++)
+    {
+        if (taskbar->window_buttons[i] == NULL) continue;
+
+        // Unregister from button_arr
+        for (int j = 0; j < MAX_NUM_OF_BUTTONS; j++)
+        {
+            if (button_arr[j] == taskbar->window_buttons[i])
+            {
+                button_arr[j] = NULL;
+                break;
+            }
+        }
+
+        free(taskbar->window_buttons[i]);
+        taskbar->window_buttons[i] = NULL;
+    }
+
+    int btn_x      = 2 + 60 + 10;   // right of the Start button
+    int btn_y      = TASKBAR_Y + 4;
+    int btn_width  = 150;
+    int btn_height = TASKBAR_HEIGHT - 8;
+
+    for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++)
+    {
+        if (window_arr[i] == NULL) continue;
+
+        // NULL parent → absolute coordinates
+        XPButton* btn = create_xp_button(NULL, btn_x, btn_y,
+                                          btn_width, btn_height,
+                                          window_arr[i]->title,
+                                          on_taskbar_window_click);
+        btn->window                = window_arr[i];
+        taskbar->window_buttons[i] = btn;
+
+        register_xp_button(btn);
+        btn_x += btn_width + 5;
+
+#if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] taskbar_sync_windows: slot:%d title:%s btn x:%d y:%d\n",
+               i, window_arr[i]->title ? window_arr[i]->title : "NULL", btn->x, btn->y);
+#endif
+    }
+}
+
+void draw_taskbar()
+{
+#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
+    printf("[DEBUG_GUI] draw_taskbar: TASKBAR_Y:%d SCREEN_WIDTH:%d TASKBAR_HEIGHT:%d\n",
+           TASKBAR_Y, SCREEN_WIDTH, TASKBAR_HEIGHT);
+#endif
+
+    if (!taskbar) return;
+
+    draw_gradient(0, TASKBAR_Y, SCREEN_WIDTH, TASKBAR_HEIGHT, 0xC0C0C0, 0xA0A0A0, false);
+    draw_hline(0, TASKBAR_Y, SCREEN_WIDTH, XP_BUTTON_HIGHLIGHT);
+
+    draw_xp_button(taskbar->start_button);
+
+    for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++)
+    {
+        if (taskbar->window_buttons[i] == NULL) continue;
+
+        taskbar->window_buttons[i]->pressed =
+            (window_arr[i] && window_arr[i]->active);
+
+        draw_xp_button(taskbar->window_buttons[i]);
+
+        int bx = taskbar->window_buttons[i]->x;
+        int by = taskbar->window_buttons[i]->y;
+        draw_rect_outline(bx + 5, by + 5, 14, 14, XP_BUTTON_SHADOW, 1);
+    }
+
+    //  Clock 
+    const int clock_x = SCREEN_WIDTH - 100;
+    const int clock_y = TASKBAR_Y + 5;
+
+    uint64_t now     = timerBootUnix + (timerTicks / frequency) + (2 * 3600);
+    uint64_t hours24 = (now % 86400) / 3600;
+    uint64_t minutes =  (now % 3600) / 60;
+    uint64_t seconds =   now % 60;
+
+    const char* period = (hours24 >= 12) ? "PM" : "AM";
+    uint64_t hours12   = hours24 % 12;
+    if (hours12 == 0) hours12 = 12;
+
+    // Zero-pad a value into buf, always producing exactly 2 digits
+    auto pad2 = [](uint64_t val, char* buf) -> char* {
+        buf[0] = '0' + (val / 10);
+        buf[1] = '0' + (val % 10);
+        buf[2] = '\0';
+        return buf;
+    };
+
+    char hbuf[4], mbuf[4], sbuf[4];
+
+    draw_text(pad2(hours12,  hbuf), clock_x,      clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(":",                   clock_x + 16, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(pad2(minutes,  mbuf), clock_x + 24, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(":",                   clock_x + 40, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(pad2(seconds,  sbuf), clock_x + 48, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(period,                clock_x + 64, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+}
+
+//   Desktop background  
+
+void draw_desktop_background()
+{
+#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
+    printf("[DEBUG_GUI] draw_desktop_background\n");
+#endif
+    draw_gradient(0, 0, SCREEN_WIDTH, TASKBAR_Y, 0x008DD5, 0x0078D7, true);
+}
+
+//   Desktop icons                    
+
+XPDesktopIcon* create_desktop_icon(int x, int y, const char* label,
+                                    uint32_t icon_color, void (*on_click)(void))
+{
+    XPDesktopIcon* icon = (XPDesktopIcon*)malloc(sizeof(XPDesktopIcon));
+    if (!icon) return NULL;
+
+    icon->x          = x;
+    icon->y          = y;
+    icon->size       = 32;
+    icon->label      = label;
+    icon->icon_color = icon_color;
+    icon->pressed    = false;
+    icon->hovered    = false;
+    icon->on_click   = on_click;
+
+    for (int i = 0; i < MAX_DESKTOP_ICONS; i++)
+    {
+        if (desktop_icons[i] == NULL)
+        {
+            desktop_icons[i] = icon;
+            break;
+        }
+    }
+
+#if defined(DEBUG_GUI)
+    printf("[DEBUG_GUI] create_desktop_icon: x:%d y:%d label:%s ptr:%p\n",
+           x, y, label ? label : "NULL", icon);
+#endif
+
+    return icon;
+}
+
+XPDesktopIcon* get_desktop_icon_at(int x, int y)
+{
+    for (int i = 0; i < MAX_DESKTOP_ICONS; i++)
+    {
+        if (desktop_icons[i] && desktop_icon_hit_test(desktop_icons[i], x, y))
+            return desktop_icons[i];
+    }
+    return NULL;
+}
+
+bool desktop_icon_hit_test(XPDesktopIcon* icon, int mouse_x, int mouse_y)
+{
+    if (!icon) return false;
+    return (mouse_x >= icon->x && mouse_x <= icon->x + icon->size &&
+            mouse_y >= icon->y && mouse_y <= icon->y + icon->size);
+}
+
+void draw_desktop_icon(XPDesktopIcon* icon)
+{
+    if (!icon || !icon->label) return;
+
+    int x    = icon->x;
+    int y    = icon->y;
+    int size = icon->size;
+
+    uint32_t bg = icon->pressed ? XP_BUTTON_SHADOW
+                : icon->hovered ? XP_BUTTON_FACE
+                :                 XP_BUTTON_HIGHLIGHT;
+
+    fill_rectangle(x, y, size, size, bg);
+    draw_rect_outline(x, y, size, size, XP_BUTTON_SHADOW, 1);
+    fill_rectangle(x + 6, y + 6, size - 12, size - 12, icon->icon_color);
+    draw_text_centered(icon->label, x - 20, y + size + 5, size + 40,
+                       XP_WINDOW_TEXT, 0x008DD5);
+}
+
+void draw_all_desktop_icons()
+{
+    for (int i = 0; i < MAX_DESKTOP_ICONS; i++)
+    {
+        if (desktop_icons[i])
+            draw_desktop_icon(desktop_icons[i]);
+    }
+}
+
+void desktop_icons_handle_mouse(int mouse_x, int mouse_y, bool clicked)
+{
+    for (int i = 0; i < MAX_DESKTOP_ICONS; i++)
+    {
+        XPDesktopIcon* icon = desktop_icons[i];
+        if (!icon) continue;
+
+        bool hit     = desktop_icon_hit_test(icon, mouse_x, mouse_y);
+        icon->hovered = hit;
+
+        if (hit && clicked)
+        {
+            icon->pressed = true;
+            draw_desktop_icon(icon);
+            if (icon->on_click) icon->on_click();
+            icon->pressed = false;
+        }
+
+        draw_desktop_icon(icon);
+    }
+}
+
+//   Misc widgets        
+
+void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll)
+{
+    int track_height = height - 32;
+
+    fill_rectangle(x, y, 16, 16, XP_BUTTON_FACE);
+    draw_beveled_border_thick(x, y, 16, 16, XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE, XP_BUTTON_SHADOW, true);
+    draw_line(x + 6, y + 9, x + 10, y + 5, 0x000000);
+    draw_line(x + 10, y + 5, x + 10, y + 9, 0x000000);
+
+    fill_rectangle(x, y + 16, 16, track_height, 0xC0C0C0);
+
+    int thumb_height = (track_height * track_height) / max_scroll;
+    if (thumb_height < 8) thumb_height = 8;
+
+    int thumb_y = y + 16 + (scroll_pos * track_height) / max_scroll;
+    fill_rectangle(x, thumb_y, 16, thumb_height, XP_BUTTON_FACE);
+    draw_beveled_border_thick(x, thumb_y, 16, thumb_height,
                               XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE, XP_BUTTON_SHADOW, true);
-    
-    int client_x = win.x + WINDOW_BORDER_WIDTH;
-    int client_y = win.y + TITLE_BAR_HEIGHT + WINDOW_BORDER_WIDTH;
-    int client_width = win.width - 2 * WINDOW_BORDER_WIDTH;
-    int client_height = win.height - TITLE_BAR_HEIGHT - 2 * WINDOW_BORDER_WIDTH;
-    
-    fill_rectangle(client_x, client_y, client_width, client_height, win.bg_color);
-    
-    int btn_y = win.y + 4;
-    int btn_size = 16;
-    
-    draw_window_button(win.x + win.width - btn_size - 4, btn_y, btn_size, "X", true);
-    draw_window_button(win.x + win.width - (btn_size + 4) * 2, btn_y, btn_size, "[", true);
-    draw_window_button(win.x + win.width - (btn_size + 4) * 3, btn_y, btn_size, "_", true);
+
+    int down_y = y + height - 16;
+    fill_rectangle(x, down_y, 16, 16, XP_BUTTON_FACE);
+    draw_beveled_border_thick(x, down_y, 16, 16,
+                              XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE, XP_BUTTON_SHADOW, true);
 }
 
+//   Utility                      
 
-void draw_xp_button(int x, int y, int width, int height, const char* label, bool pressed) 
+static void reverse_string(char* str, int len)
 {
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] draw_xp_button\n");
-    #endif
-
-    uint32_t button_color = XP_BUTTON_FACE;
-    uint32_t highlight = XP_BUTTON_HIGHLIGHT;
-    uint32_t shadow = XP_BUTTON_SHADOW;
-    
-    // Button background
-    fill_rectangle(x, y, width, height, button_color);
-    
-    // 3D beveled border
-    if (!pressed) {
-        // Raised button
-        draw_beveled_border_thick(x, y, width, height, 
-                                  highlight, button_color, shadow, true);
-    } else {
-        // Pressed button
-        draw_beveled_border_thick(x, y, width, height, 
-                                  shadow, button_color, highlight, false);
-    }
-    
-    // Button text (centered)
-    draw_text_centered(label, x, y + (height - 8) / 2, width, XP_WINDOW_TEXT, XP_BACKGROUND);
-}
-
- static void reverse_string(char* str, int len) {
-    for (int i = 0; i < len / 2; i++) {
-        char temp = str[i];
-        str[i] = str[len - 1 - i];
-        str[len - 1 - i] = temp;
+    for (int i = 0; i < len / 2; i++)
+    {
+        char tmp        = str[i];
+        str[i]          = str[len - 1 - i];
+        str[len - 1 - i] = tmp;
     }
 }
 
-// Convert unsigned 64-bit integer to string
-char* u64toa(uint64_t value, char* str, int base) {
-    if (!str || base < 2 || base > 36) {
-        return str;
-    }
-    
-    char digits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
-    
-    // Handle zero
-    if (value == 0) {
-        str[0] = '0';
-        str[1] = '\0';
-        return str;
-    }
-    
+char* u64toa(uint64_t value, char* str, int base)
+{
+    if (!str || base < 2 || base > 36) return str;
+
+    static const char digits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+    if (value == 0) { str[0] = '0'; str[1] = '\0'; return str; }
+
     int i = 0;
-    while (value > 0) {
-        str[i++] = digits[value % base];
-        value /= base;
-    }
-    
+    while (value > 0) { str[i++] = digits[value % base]; value /= base; }
     str[i] = '\0';
     reverse_string(str, i);
     return str;
 }
 
-void draw_taskbar() 
-{   
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] draw_taskbar\n");
-    #endif
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] TASKBAR_Y:%d SCREEN_WIDTH:%d TASKBAR_HEIGHT:%d\n", TASKBAR_Y, SCREEN_WIDTH, TASKBAR_HEIGHT);
-    #endif
-    draw_gradient(0, TASKBAR_Y, SCREEN_WIDTH, TASKBAR_HEIGHT, 0xC0C0C0, 0xA0A0A0, false);
-    
-    draw_hline(0, TASKBAR_Y, SCREEN_WIDTH, XP_BUTTON_HIGHLIGHT);
-    
-    int start_btn_x = 2;
-    int start_btn_y = TASKBAR_Y + 2;
-    int start_btn_width = 60;
-    int start_btn_height = TASKBAR_HEIGHT - 4;
-    
-    draw_xp_button(start_btn_x, start_btn_y, start_btn_width, start_btn_height, "Start", false);
-    
-    int clock_x = SCREEN_WIDTH - 80;
-    int clock_y = TASKBAR_Y + 5;
-
-    // Total seconds elapsed
-    uint64_t total_seconds = timerTicks / 60;
-    
-    // Calculate hours, minutes, seconds
-    uint64_t hours = total_seconds / 3600;
-    uint64_t minutes = (total_seconds % 3600) / 60;
-    uint64_t seconds = total_seconds % 60;
-    char string[64];
-    draw_text(u64toa(hours, string, 10), clock_x, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(u64toa(minutes, string, 10), clock_x + 17, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(u64toa(seconds, string, 10), clock_x + 34, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text("AM", clock_x + 51, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
-    
-
-    int win_btn_x = start_btn_x + start_btn_width + 10;
-    int win_btn_y = TASKBAR_Y + 4;
-    int win_btn_width = 150;
-    int win_btn_height = TASKBAR_HEIGHT - 8;
-    
-    fill_rectangle(win_btn_x, win_btn_y, win_btn_width, win_btn_height, XP_BUTTON_FACE);
-    draw_rect_outline(win_btn_x, win_btn_y, win_btn_width, win_btn_height, XP_BUTTON_SHADOW, 1);
-    draw_text("Example window", win_btn_x + 5, win_btn_y + 4, XP_WINDOW_TEXT, 0xC0C0C0);
-    win_btn_x = win_btn_x + win_btn_width + 5;
-    draw_line(win_btn_x + 16, win_btn_y + 9,win_btn_x + 10, win_btn_y + 4, XP_WINDOW_TEXT);
-    draw_line(win_btn_x + 16, win_btn_y + 9,win_btn_x + 9, win_btn_y + 14, XP_WINDOW_TEXT);
-    draw_line(win_btn_x + 14, win_btn_y + 14,win_btn_x + 24, win_btn_y + 14, XP_WINDOW_TEXT);
-    draw_rect_outline(win_btn_x, win_btn_y, win_btn_width, win_btn_height, XP_BUTTON_SHADOW, 1);
-    draw_text("Kernel Console", win_btn_x + 26, win_btn_y + 4, XP_WINDOW_TEXT, 0xC0C0C0);
-}
-
-
-void draw_desktop_icon(int x, int y, const char* label, uint32_t icon_color) {
-    int icon_size = 32;
-    
-    // Icon background (light square)
-    fill_rectangle(x, y, icon_size, icon_size, XP_BUTTON_HIGHLIGHT);
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] draw_desktop_icon fill_rectangle done\n");
-    #endif 
-    // Icon border
-    draw_rect_outline(x, y, icon_size, icon_size, XP_BUTTON_SHADOW, 1);
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] draw_desktop_icon draw_rect_outline done\n");
-    #endif 
-    // Icon content (simple colored square)
-    fill_rectangle(x + 6, y + 6, icon_size - 12, icon_size - 12, icon_color);
-    
-    // Icon label (below icon)
-    draw_text_centered(label, x - 20, y + icon_size + 5, icon_size + 40, XP_WINDOW_TEXT, 0x008DD5);
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] draw_desktop_icon draw_text_centered done\n");
-    #endif 
-}
-
- 
-// DRAW DESKTOP BACKGROUND
- 
-
-void draw_desktop_background() {
-
-    draw_gradient(0, 0, SCREEN_WIDTH, TASKBAR_Y,0x008DD5, 0x0078D7, true); 
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] desktop background done\n");
-    #endif 
-    
-    draw_desktop_icon(10, 10, "Computer", 0x808080);
-    draw_desktop_icon(10, 60, "Documents", 0x808080);
-    draw_desktop_icon(10, 110, "Network", 0x808080);
-}
-
- 
-// DRAW SCROLLBAR
- 
-
-void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll) {
-    int track_height = height - 32;  // Account for buttons
-    
-    // Up button
-    fill_rectangle(x, y, 16, 16, XP_BUTTON_FACE);
-    draw_beveled_border_thick(x, y, 16, 16, XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE, XP_BUTTON_SHADOW, true);
-    draw_line(x + 6, y + 9, x + 10, y + 5, 0x000000);
-    draw_line(x + 10, y + 5, x + 10, y + 9, 0x000000);
-    
-    // Track
-    fill_rectangle(x, y + 16, 16, track_height, 0xC0C0C0);
-    
-    // Thumb
-    int thumb_height = (track_height * track_height) / max_scroll;
-    if (thumb_height < 8) thumb_height = 8;
-    
-    int thumb_y = y + 16 + (scroll_pos * track_height) / max_scroll;
-    fill_rectangle(x, thumb_y, 16, thumb_height, XP_BUTTON_FACE);
-    draw_beveled_border_thick(x, thumb_y, 16, thumb_height, XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE, XP_BUTTON_SHADOW, true);
-    
-    // Down button
-    int down_y = y + height - 16;
-    fill_rectangle(x, down_y, 16, 16, XP_BUTTON_FACE);
-    draw_beveled_border_thick(x, down_y, 16, 16, XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE, XP_BUTTON_SHADOW, true);
-    // draw_line(x + 6, y + down_y + 4, x + 10, down_y + 8, 0x000000);
-    // draw_line(x + 10, down_y + 8, x + 10, down_y + 4, 0x000000);
-}
-
-#if defined(DEBUG_GUI)
-int l = 0;
-void direct_clear_screen_dbg ()
+static void draw_clock_panel(int x, int y, int /*w*/, int /*h*/, void* /*ctx*/)
 {
-    // Fill entire screen red so you know the kernel started
-    //tempframebuffer->address  bootloader.framebuffer;
-    struct limine_framebuffer *fb = bootloader.framebuffer;
-    uint32_t *addr = (uint32_t*)fb->address;
-    size_t pixel_count = fb->pitch / 4 * fb->height;
-    
-    l++;
-    int mod = l % 3;
-    switch (mod)
-    {
-        case 0:
-        for (size_t i = 0; i < pixel_count; i++)
-        addr[i] = 0x0F0F00;
-        break;
-        case 1:
-        for (size_t i = 0; i < pixel_count; i++)
-        addr[i] = 0x0F000F;
-        break;
-        case 2:
-        for (size_t i = 0; i < pixel_count; i++)
-        addr[i] = 0x00F0F;
-        break;
-        
-        default:
-        break;
-    }
-}
-#endif
+    uint64_t now     = timerBootUnix + (timerTicks / frequency) + (2 * 3600);
+    uint64_t hours24 = (now % 86400) / 3600;
+    uint64_t minutes =  (now % 3600) / 60;
+    uint64_t seconds =   now % 60;
 
-void render_xp_desktop() 
+    const char* period = (hours24 >= 12) ? "PM" : "AM";
+    uint64_t hours12   = hours24 % 12;
+    if (hours12 == 0) hours12 = 12;
+
+    auto pad2 = [](uint64_t val, char* buf) -> char* {
+        buf[0] = '0' + (val / 10);
+        buf[1] = '0' + (val % 10);
+        buf[2] = '\0';
+        return buf;
+    };
+
+    char hbuf[4], mbuf[4], sbuf[4];
+    draw_text(pad2(hours12, hbuf), x,      y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(":",                  x + 16, y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(pad2(minutes, mbuf), x + 24, y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(":",                  x + 40, y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(pad2(seconds, sbuf), x + 48, y, XP_WINDOW_TEXT, 0xA0A0A0);
+    draw_text(period,               x + 64, y, XP_WINDOW_TEXT, 0xA0A0A0);
+}
+
+//   Desktop lifecycle  
+
+void initialize_xp_desktop()
 {
     frame_ready = false;
-    
-    #if defined(DEBUG_GUI)
-    printf("[DEBUG_GUI] Drawing desktop background\n");
-    #endif
-    
-    #if defined(DEBUG_GUI)
-    printf("[DEBUG_GUI] Creating window1 at (%d,%d) size %dx%d\n", 100, 100, 400, 300);
-    #endif
 
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Creating window2 at (%d,%d) size %dx%d\n", 550, 150, 350, 250);
-    #endif
-        XPWindow window2 = {
-            .x = 350,
-            .y = 175,
-            .width = 800,
-            .height = 500,
-            .title = "Kernel Console",
-            .active = false,
-            .minimized = false,
-            .bg_color = XP_BACKGROUND
-        };
-        #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window2\n");
-        #endif
-        draw_desktop_background();
-        draw_xp_window(window2);
-        
-        #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing console\n");
-        #endif
-        // Initialize the global console as a window at window position 
-        if(!console_initialized)
-        {    
-            console = Console(window2.width, window2.height - TITLE_BAR_HEIGHT, window2.x, window2.y + TITLE_BAR_HEIGHT);
-            console_initialize();
-            console.clear_screen();
-            console.set_bg_color(XP_BACKGROUND);
-            console.set_text_color(XP_WINDOW_TEXT);
-        }
-        console.draw_frame();
-        
-        #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window2 text line 1\n");
-        #endif
-        #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] Drawing window2 scrollbar at x=%d, y=%d, height=%d\n", window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, window2.height - TITLE_BAR_HEIGHT - 10);
-        #endif
-            draw_scrollbar(window2.x + window2.width - 20, window2.y + TITLE_BAR_HEIGHT + 4, window2.height - TITLE_BAR_HEIGHT - 10, 0, window2.height);
-            
-            draw_taskbar();
-    #if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] render_xp_desktop done\n");
-    #endif
+#if defined(DEBUG_GUI)
+    printf("[DEBUG_GUI] initialize_xp_desktop: start\n");
+#endif
+
+    create_taskbar();
+    create_desktop_icon(20, 40, "Console", 0x000080, on_console_icon_click);
+    create_desktop_icon(60, 40, "Files", 0xFFCC00, on_file_explorer_icon_click);
+
+    if (!console_initialized)
+    {
+        console = Console(400, 400, 200, 200);
+        console_initialize();
+        console.clear_screen();
+        console.set_bg_color(XP_BACKGROUND);
+        console.set_text_color(XP_WINDOW_TEXT);
+        console.set_visible(false);
+
+#if defined(DEBUG_GUI)
+        printf("[DEBUG_GUI] initialize_xp_desktop: console initialized\n");
+#endif
+    }
+
+    XPPanel* clock_panel = create_xp_panel(
+    SCREEN_WIDTH - 100, TASKBAR_Y + 5,
+    80, 14,
+    200, 
+    36,
+    draw_clock_panel,
+    nullptr
+);
+    register_xp_panel(clock_panel);
+
+
+    taskbar_sync_windows();
+
+#if defined(DEBUG_GUI)
+    printf("[DEBUG_GUI] initialize_xp_desktop: done\n");
+#endif
+
     frame_ready = true;
 }
 
- 
+void render_xp_desktop()
+{
+    frame_ready = false;
+
+    draw_desktop_background();
+    draw_all_desktop_icons();
+    draw_all_xp_windows_but_active();
+    draw_active_xp_window();
+    draw_all_xp_panels();
+    draw_taskbar();
+    draw_cursor(mouse_position_x, mouse_position_y);
+
+    frame_ready = true;
+}
+
+//   Debug   
+
+#if defined(DEBUG_GUI)
+static int dbg_frame_counter = 0;
+
+void direct_clear_screen_dbg()
+{
+    struct limine_framebuffer* fb   = bootloader.framebuffer;
+    uint32_t*                  addr = (uint32_t*)fb->address;
+    size_t pixel_count              = fb->pitch / 4 * fb->height;
+
+    dbg_frame_counter++;
+    switch (dbg_frame_counter % 3)
+    {
+        case 0: for (size_t i = 0; i < pixel_count; i++) addr[i] = 0x0F0F00; break;
+        case 1: for (size_t i = 0; i < pixel_count; i++) addr[i] = 0x0F000F; break;
+        case 2: for (size_t i = 0; i < pixel_count; i++) addr[i] = 0x000F0F; break;
+    }
+}
+#endif

@@ -76,24 +76,26 @@ extern "C" void kernel_main(void)
     
     block_init();
     
-    while (true) {
+    initiateMouse();
+    printf("mouse initialized.\n");
+    
+    initialize_xp_desktop();
+
+    bool should_exit = false;
+    while (!should_exit) 
+    {
         frame_loop(render_xp_desktop);
-        // TODO: Handle input
+        should_exit = GUI_input_loop(); // TODO: Handle input
     }
-
+    
     test_framebuffer(0xFFFFFF);
-
+    
     
     acpiInit();// TODO: this is very minimal
     printf("acpi initialized.\n");
     
     initiateAPIC();
     printf("APIC initialized.\n");
-    
-    initiateMouse();
-    printf("mouse initialized.\n");
-    
-
     
     // breakpoint; tested and works
 	
