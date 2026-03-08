@@ -7,6 +7,7 @@
 //#include <schedule.h>
 #include <task.h>
 #include <dbg.h>
+#include <apic.h>
 
 #include <utility.h>
 #include <hcf.hpp>
@@ -185,10 +186,17 @@ extern "C" void handle_interrupt(uint64_t rsp)
   AsmPassedInterrupt *cpu = (AsmPassedInterrupt *)rsp;
   if (cpu->interrupt >= 32 && cpu->interrupt <= 47) 
   { // IRQ
-    if (cpu->interrupt >= 40) {
-      out_port_byte(0xA0, 0x20);
+    if (apic_initialized)
+    {
+      apicWrite(0xB0, 0);   // LAPIC EOI
     }
-    out_port_byte(0x20, 0x20);
+    else
+    {
+      if (cpu->interrupt >= 40) {
+        out_port_byte(0xA0, 0x20);
+      }
+      out_port_byte(0x20, 0x20);
+  }
 
     #if defined(DEBUG_INTERRUPT)
     printf("[isr] handle_interrupt: interrupt:%d\n", 32 - cpu->interrupt);

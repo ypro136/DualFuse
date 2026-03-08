@@ -7,6 +7,8 @@
 #include <hcf.hpp>
 #include <keyboard.h>
 #include <minimal_acpi.h>
+#include <timer.h>
+#include <utility.h>
 
 // Advanced Programmable Interrupt Controller driver
 // (SMP-friendly 8259 PIC)
@@ -228,8 +230,8 @@ uint8_t irqPerCoreAllocate(uint8_t gsi, uint32_t *lapicId) {
 
   irqLast++; // for the next one
 //   *lapicId = bootloader.smp->cpus[minIndex]->lapic_id; TODO: fix after smp
-  *lapicId = 1;
-  return irqGenericIndex + 32;
+  *lapicId = 0;
+  return (gsi < 16) ? (32 + gsi) : (irqGenericIndex + 32);
 }
 
 void apicPrintCb(void *data, void *ctx) {
@@ -385,6 +387,13 @@ void initiateAPIC() {
   apicWrite(0xF0, apicRead(0xF0) | 0x1FF);
 
   apic_initialized = true;
+    // Disable legacy 8259 PIC — mask all IRQs on both chips
+  out_port_byte(0x21, 0xff);
+  out_port_byte(0xa1, 0xff);
+  printf("APIC initialized.\n");
+
+  timer_initialize();
+
   keyboard_initialize();
 }
 

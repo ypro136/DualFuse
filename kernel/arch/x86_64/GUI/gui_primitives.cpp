@@ -185,28 +185,30 @@ void draw_gradient(int x, int y, int width, int height, uint32_t color1, uint32_
 }
 
 
-void draw_cursor(int x, int y) {
+void draw_cursor(int x, int y)
+{
     uint32_t white = 0xFFFFFF;
     uint32_t black = 0x000000;
 
-    //printf("[GUI::mouse] drawing mouse at x:%d ,y:%d\n", x, y);
-    // Simple solid arrow: just a filled triangle outline
-    for (int i = 0; i < 12; i++) {
-        // Left edge of arrow (diagonal)
-        draw_pixel(x,     y + i, black);
-        draw_pixel(x + 1, y + i, white);
-    }
-    for (int i = 0; i < 12; i++) {
-        // Bottom diagonal edge
-        if (i < 12 - i) {
-            draw_pixel(x + i,     y + (12 - i), black);
-            draw_pixel(x + i + 1, y + (12 - i - 1), white);
+    bool inc = true;
+    int width = 0;
+    for (int row = 0; row < 18; row++)
+    {
+        int w = width;
+        for (int col = 0; col < w; col++)
+        {
+            bool outline = (col == 0 || col == w - 1 || row == 0 || row == 17);
+                draw_pixel(x + col, y + row, outline ? black : white);
         }
-    }
-    // Fill inside
-    for (int row = 0; row < 12; row++) {
-        for (int col = 1; col < (12 - row) && col < 12; col++) {
-            draw_pixel(x + col, y + row, white);
+
+        if (width < 12 && inc) 
+        {
+            width++;
+        }
+        else if(width > 1)
+        {
+            inc = false;
+            width = width - 2;
         }
     }
 }

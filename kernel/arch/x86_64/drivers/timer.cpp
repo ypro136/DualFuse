@@ -7,6 +7,7 @@
 #include <idt.h>
 #include <isr.h>
 #include <rtc.h>
+#include <apic.h>
 
 #include <framebufferutil.h>
 #include <console.h>
@@ -21,22 +22,34 @@ uint64_t timerBootUnix;
 
 const uint32_t frequency = 60;
 
-bool frame_ready = false;
+volatile bool frame_ready = false;
 uint64_t GUI_frame = 1;
+
+volatile bool copy_happened = false;  // debug only
 
 
 void timer_irq_0(struct interrupt_registers *registers)
 {
+    #if defined(DEBUG_FRAMEBUFFER)
+    static int fired = 0;
+    if (fired++ == 0) checkpoint(9, 0xFF0088);  // pink — timer fired at least once
+    #endif
     timerTicks += 1;
 
     if (frame_ready)
     {
+        frame_ready = false;
         copy_buffer_to_screan();
         GUI_frame++;
+        copy_happened = true;
     }
 
     #if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
         printf("[DEBUG_GUI::timer] GUI_frame : %d\n", GUI_frame);
+    #endif
+
+    #if defined(DEBUG_TIMER) && defined(DEBUG_LOOPING)
+        printf("[timer] timerTicks : %d\n", timerTicks);
     #endif
 
 }
@@ -92,6 +105,11 @@ void timer_initialize()
     {
         printf("[timer] warning: isr not initialized. timer initialization omitted");
         return;
+    }
+
+    if (apic_initialized)
+    {
+        ioApicRedirect(0, false);   // tell IOAPIC: GSI 0 → CPU vector 32
     }
     
     out_port_byte(0x43, 0x36); // 0x43 mode and command rigister, 0x36Access mode: lobyte/hibyte, 16-bit binary, square wave generator at channel 0

@@ -258,11 +258,12 @@ void initiateMouse() {
   uint8_t targIrq = 12;
   if(apic_initialized)
   {
-    uint8_t targIrq = ioApicRedirect(targIrq, false);
+    targIrq = ioApicRedirect(targIrq, false);
   }
+
   if (isr_initialized)
     {
-        irq_install_handler(targIrq, mouseIrq);
+        irq_install_handler(12, mouseIrq);
     }
     else 
     {

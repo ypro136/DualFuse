@@ -114,7 +114,7 @@ void draw_xp_button(XPButton* button)
     if (button->label != NULL)
         draw_text_centered(button->label,
                            button->x,
-                           button->y + (button->height - 8) / 2,
+                           button->y + (button->height - 12) / 2,
                            button->width,
                            XP_WINDOW_TEXT,
                            XP_BACKGROUND);
