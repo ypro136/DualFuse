@@ -9,6 +9,7 @@
 #include <bootloader.h>
 #include <utility.h>
 #include <ramdisk.h>
+#include <apic.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -162,6 +163,11 @@ void Shell::cmd_info()
     // framerate
     print("  FPS:      ");
     u64toa(frequency, buf, 10);
+    println(buf);
+
+    // framerate
+    print("  apic base lapic ID:");
+    u64toa(apicGetBspLapicId(), buf, 10);
     println(buf);
 }
 

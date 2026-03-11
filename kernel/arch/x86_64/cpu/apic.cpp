@@ -1,5 +1,6 @@
 #include <apic.h>
 #include <bootloader.h>
+#include <framebufferutil.h>
 #include <linked_list.h>
 #include <liballoc.h>
 #include <system.h>
@@ -18,10 +19,18 @@ uint64_t apicPhys = 0;
 uint64_t apicVirt = 0;
 LLcontrol dsIoapic = {0};
 uint8_t *irqPerCpu = nullptr;
+bool x2apic_mode = false;
 uint8_t  irqGenericArray[MAX_IRQ] = {0};
 uint32_t lapicGenericArray[MAX_IRQ] = {0};
 
 bool apic_initialized = false;
+
+
+ bool apicIsX2Apic() 
+ {
+    uint64_t msr = rdmsr(IA32_APIC_BASE_MSR);
+    return (msr & IA32_APIC_BASE_MSR_X2APIC) != 0;
+}
 
 /*
  * Trigger mode: 0 is edge-triggered, 1 is level-triggered.
@@ -112,6 +121,10 @@ uint32_t apicCurrentCore() {
   }
 
   return (apicRead(APIC_REGISTER_ID) >> 24) & 0xFF;
+}
+
+uint8_t apicGetBspLapicId() {
+    return (apicRead(APIC_REGISTER_ID) >> 24) & 0xFF;
 }
 
 /* PCI routing - TODO: Implement when needed without UACPI */
@@ -225,12 +238,12 @@ uint8_t irqPerCoreAllocate(uint8_t gsi, uint32_t *lapicId) {
 
   irqGenericArray[irqGenericIndex] = gsi; // keep track
   // lapicGenericArray[irqGenericIndex] = bootloader.smp->cpus[minIndex]->lapic_id; // keep track TODO: fix after smp
-  lapicGenericArray[irqGenericIndex] = 0;
-  irqPerCpu[minIndex]++;                        // count per CPU
+  uint8_t bspId = apicGetBspLapicId();
+  lapicGenericArray[irqGenericIndex] = bspId;
+  irqPerCpu[minIndex]++;
+  irqLast++;
+  *lapicId = bspId;
 
-  irqLast++; // for the next one
-//   *lapicId = bootloader.smp->cpus[minIndex]->lapic_id; TODO: fix after smp
-  *lapicId = 0;
   return (gsi < 16) ? (32 + gsi) : (irqGenericIndex + 32);
 }
 
@@ -245,78 +258,36 @@ void initiateAPIC() {
   }
   #if defined(DEBUG_APIC)
   printf("[apic] APIC is supported, beginning initialization...\n");
-
   printf("[apic] Initializing IRQ per core...\n");
   #endif
+
+  x2apic_mode = apicIsX2Apic();
+
   initiateIrqPerCore();
+
   #if defined(DEBUG_APIC)
   printf("[apic] IRQ per core initialized\n");
-  
   printf("[apic] Reading APIC base from MSR...\n");
   #endif
+
   apicPhys = apicGetBase();
-  #if defined(DEBUG_APIC)
-  printf("[apic] Successfully read MSR\n");
-  
-  printf("[apic] APIC physical address from MSR: %lx\n", apicPhys);
-  #endif
-  
+
   // Validate APIC physical address
   if (!apicPhys || apicPhys > 0xFFFFFFFF) {
     printf("[apic] Invalid APIC address: %lx, using fallback 0xFEE00000\n", apicPhys);
     apicPhys = 0xFEE00000;
   }
-  
-  // Set virtual address
-  apicVirt = bootloader.hhdmOffset + apicPhys;
-  #if defined(DEBUG_APIC)
-  printf("[apic] APIC virtual address: %lx (phys: %lx, hhdm: %lx)\n", 
-         apicVirt, apicPhys, bootloader.hhdmOffset);
-  #endif
 
-  #if defined(DEBUG_APIC)
-  // Initialize minimal ACPI parser and get MADT
-  printf("[apic] Initializing ACPI...\n");
-  #endif
-  //acpiInit();
-  #if defined(DEBUG_APIC)
-  printf("[apic] geting madt from acpiGetMadt\n");
-  #endif
+  apicVirt = bootloader.hhdmOffset + apicPhys;
+
   AcpiMadt* madt = acpiGetMadt();
-  #if defined(DEBUG_APIC)
-  printf("[apic] madt at %lx\n", madt);
-  #endif
-  
+
   if (!madt) {
     printf("[apic] MADT not available - initializing basic LAPIC only\n");
-    #if defined(DEBUG_APIC)
-    printf("[apic] Setting APIC base at %lx...\n", apicPhys);
-  #endif
-    
-    // Very basic LAPIC initialization
-    // Set the APIC enable bit in MSR
-    #if defined(DEBUG_APIC)
-    printf("[apic] Enabling APIC via MSR...\n");
-  #endif
     apicSetBase(apicPhys);
-    
-    #if defined(DEBUG_APIC)
-    printf("[apic] Reading SVR register at offset 0xF0...\n");
-    #endif
-    // Try to enable the LAPIC (software enable bit in SVR register at offset 0xF0)
     uint32_t svr = apicRead(0xF0);
-    #if defined(DEBUG_APIC)
-    printf("[apic] SVR value: %lx\n", svr);
-  #endif
-    
-  #if defined(DEBUG_APIC)
-  printf("[apic] Setting software enable bit...\n");
-  #endif
     apicWrite(0xF0, svr | 0x1FF);
-    
-    #if defined(DEBUG_APIC)
-    printf("[apic] Basic LAPIC initialization complete\n");
-  #endif
+    checkpoint(2, 0xFF0000); // red — bailed out, no MADT
     return;
   }
 
@@ -329,30 +300,25 @@ void initiateAPIC() {
   }
 
   LinkedListInit(&dsIoapic, sizeof(IOAPIC));
-  
+
   // Parse MADT entries
   size_t curr = (size_t)madt + sizeof(AcpiMadt);
   size_t end = curr + madt->hdr.length;
   int    ioapics = 0;
-  
+
   while (curr < end) {
     AcpiEntryHdr *browse = (AcpiEntryHdr *)curr;
-    
+
     #if defined(DEBUG_APIC)
-    printf("[apic] MADT browse type is: %u\n",browse->type);
-  #endif
+    printf("[apic] MADT browse type is: %u\n", browse->type);
+    #endif
 
     if (browse->type == ACPI_MADT_ENTRY_TYPE_IOAPIC) {
       AcpiMadtIoapic *specialized = (AcpiMadtIoapic *)browse;
-      #if defined(DEBUG_APIC)
-      printf("[apic] MADT &dsIoapic is: %lx , sizeof(IOAPIC) is: %u\n",&dsIoapic, sizeof(IOAPIC));
-  #endif
       IOAPIC *ioapic = (IOAPIC *)LinkedListAllocate(&dsIoapic, sizeof(IOAPIC));
       ioapic->id = specialized->id;
-    
       ioapic->ioapicPhys = specialized->address;
       ioapic->ioapicVirt = bootloader.hhdmOffset + ioapic->ioapicPhys;
-    
       ioapic->ioapicRedStart = specialized->gsi_base;
       int capacity = (ioApicRead(ioapic->ioapicVirt, 1) >> 16) & 0xFF;
       ioapic->ioapicRedEnd = ioapic->ioapicRedStart + capacity;
@@ -368,33 +334,25 @@ void initiateAPIC() {
     curr += browse->length;
   }
 
-  #if defined(DEBUG_APIC)
-  printf("[apic] ioapics is :%d\n", ioapics);
-  #endif
-  if (ioapics == 0) 
-  {
-    printf("[apic] No I/O APICs found - skipping I/O APIC setup\n");
-  }
 
-  #if defined(DEBUG_APIC)
-  printf("[apic] Detection completed: lapic{%lx} ", apicPhys);
-  #endif
+  if (ioapics == 0)
+    printf("[apic] No I/O APICs found - skipping I/O APIC setup\n");
+
   if (ioapics) LinkedListTraverse(&dsIoapic, apicPrintCb, 0);
   printf("\n");
 
-  // enable lapic (for the bootstrap core)
+  // Enable LAPIC
   apicSetBase(apicPhys);
   apicWrite(0xF0, apicRead(0xF0) | 0x1FF);
 
   apic_initialized = true;
-    // Disable legacy 8259 PIC — mask all IRQs on both chips
+
+  // Disable legacy 8259 PIC
   out_port_byte(0x21, 0xff);
   out_port_byte(0xa1, 0xff);
+
   printf("APIC initialized.\n");
 
-  timer_initialize();
-
-  keyboard_initialize();
 }
 
 void smpInitiateAPIC() {

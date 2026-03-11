@@ -12,6 +12,7 @@
 #include <GUI_input.h>
 #include <panel.h>
 #include <file_explorer.h>
+#include <apic.h>
 
 
 
@@ -484,44 +485,19 @@ void render_xp_desktop()
 {
     frame_ready = false;
 
-#if defined(DEBUG_FRAMEBUFFER)
-    checkpoint(0, 0xFF0000);
-#endif
     draw_desktop_background();
 
-#if defined(DEBUG_FRAMEBUFFER)
-    checkpoint(1, 0xFF8800);
-#endif
     draw_all_desktop_icons();
 
-#if defined(DEBUG_FRAMEBUFFER)
-    checkpoint(2, 0xFFFF00);
-#endif
     draw_all_xp_windows_but_active();
 
-#if defined(DEBUG_FRAMEBUFFER)
-    checkpoint(3, 0x00FF00);
-#endif
     draw_active_xp_window();
 
-#if defined(DEBUG_FRAMEBUFFER)
-    checkpoint(4, 0x00FFFF);
-#endif
     draw_all_xp_panels();
 
-#if defined(DEBUG_FRAMEBUFFER)
-    checkpoint(5, 0x0000FF);
-#endif
     draw_taskbar();
 
-#if defined(DEBUG_FRAMEBUFFER)
-    checkpoint(6, 0xFFFFFF);
-#endif
     draw_cursor(mouse_position_x, mouse_position_y);
-
-#if defined(DEBUG_FRAMEBUFFER)
-    checkpoint(7, 0xFF00FF);
-#endif
 
     frame_ready = true;
 }

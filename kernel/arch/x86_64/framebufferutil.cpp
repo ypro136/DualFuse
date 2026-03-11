@@ -210,18 +210,14 @@ void test_framebuffer(uint32_t test_color)
 
 void copy_buffer_to_screan()
 {
+    checkpoint(35, 0xFFFF00); // yellow at pos 820 — entered copy
     if (tempframebuffer->address)
     {
+        checkpoint(36, 0xFF6600); // orange at pos 840 — about to memcpy
         memcpy((void*)framebuffer->address,
                (void*)tempframebuffer->address,
                buffer_size);
-    }
-    else
-    {
-        volatile uint32_t* fb = framebuffer->address;
-        uint64_t count = framebuffer->pitch / 4 * framebuffer->height;
-        for (uint64_t i = 0; i < count; i++)
-            fb[i] = 0x00FF00;
+        checkpoint(37, 0x00FF00); // green at pos 860 — memcpy done
     }
 }
 
@@ -296,10 +292,20 @@ void early_debug_bars()
             row[x] = 0xFFFFFF;
     }
 
+        // Encode bpp as a white bar (20px per byte, so 4 bytes = 80px)
+    uint64_t full_bar = w;
+    for (uint64_t y = 100; y < 120; y++) {
+        uint32_t* row = (uint32_t*)(base + y * pitch);
+        for (uint64_t x = 0; x < full_bar && x < w; x++)
+            row[x] = 0xFFFFFF;
+    }
+
 }
+#endif
 
 void checkpoint(int n, uint32_t color)
 {
+    #if defined(DEBUG_FRAMEBUFFER)
     struct limine_framebuffer* fb = bootloader.framebuffer;
     if (!fb || !fb->address) return;
     uint8_t* base = (uint8_t*)fb->address;
@@ -309,5 +315,7 @@ void checkpoint(int n, uint32_t color)
         for (int x = x_start; x < x_start + 18 && x < (int)fb->width; x++)
             row[x] = color;
     }
+    #endif
+    return;
+
 }
-#endif

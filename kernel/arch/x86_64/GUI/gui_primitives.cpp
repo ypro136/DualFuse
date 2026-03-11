@@ -5,6 +5,7 @@
 
 #include <gui_primitives.h>
 #include <console.h>
+#include <mouse.h>
 
 
 
@@ -187,9 +188,13 @@ void draw_gradient(int x, int y, int width, int height, uint32_t color1, uint32_
 
 void draw_cursor(int x, int y)
 {
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > SCREEN_WIDTH  - 12) x = SCREEN_WIDTH  - 12;
+    if (y > SCREEN_HEIGHT - 18) y = SCREEN_HEIGHT - 18;
+
     uint32_t white = 0xFFFFFF;
     uint32_t black = 0x000000;
-
     bool inc = true;
     int width = 0;
     for (int row = 0; row < 18; row++)
@@ -198,19 +203,16 @@ void draw_cursor(int x, int y)
         for (int col = 0; col < w; col++)
         {
             bool outline = (col == 0 || col == w - 1 || row == 0 || row == 17);
-                draw_pixel(x + col, y + row, outline ? black : white);
+            draw_pixel(x + col, y + row, outline ? black : white);
         }
-
-        if (width < 12 && inc) 
-        {
+        if (width < 12 && inc)
             width++;
-        }
-        else if(width > 1)
-        {
+        else if (width > 1) {
             inc = false;
             width = width - 2;
         }
     }
+
 }
 
 void draw_beveled_border(int x, int y, int width, int height, uint32_t light, uint32_t dark, bool raised) {

@@ -30,12 +30,7 @@ volatile bool copy_happened = false;  // debug only
 
 void timer_irq_0(struct interrupt_registers *registers)
 {
-    #if defined(DEBUG_FRAMEBUFFER)
-    static int fired = 0;
-    if (fired++ == 0) checkpoint(9, 0xFF0088);  // pink — timer fired at least once
-    #endif
     timerTicks += 1;
-
     if (frame_ready)
     {
         frame_ready = false;
@@ -43,15 +38,6 @@ void timer_irq_0(struct interrupt_registers *registers)
         GUI_frame++;
         copy_happened = true;
     }
-
-    #if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-        printf("[DEBUG_GUI::timer] GUI_frame : %d\n", GUI_frame);
-    #endif
-
-    #if defined(DEBUG_TIMER) && defined(DEBUG_LOOPING)
-        printf("[timer] timerTicks : %d\n", timerTicks);
-    #endif
-
 }
 
 uint32_t sleep(uint32_t time) 
@@ -109,13 +95,18 @@ void timer_initialize()
 
     if (apic_initialized)
     {
-        ioApicRedirect(0, false);   // tell IOAPIC: GSI 0 → CPU vector 32
+        // Use LAPIC timer instead of PIT — PIT not wired on modern UEFI systems
+        apicWrite(APIC_REGISTER_TIMER_DIV, 0x3);       // divide by 16
+        apicWrite(APIC_REGISTER_LVT_TIMER, 32 | APIC_LVT_TIMER_MODE_PERIODIC); // vector 32, periodic
+        apicWrite(APIC_REGISTER_TIMER_INITCNT, 100000); // initial count — calibrate later
     }
-    
-    out_port_byte(0x43, 0x36); // 0x43 mode and command rigister, 0x36Access mode: lobyte/hibyte, 16-bit binary, square wave generator at channel 0
-
-    out_port_byte(0x40, (uint8_t)(divisor & 0xFF)); // 0x40 channel 0 data port
-    out_port_byte(0x40, (uint8_t)((divisor >> 8) & 0xFF)); // 0x40 channel 0 data port
+    else
+    {
+        // Legacy PIT path (Toshiba/PIC machines)
+        out_port_byte(0x43, 0x36);
+        out_port_byte(0x40, (uint8_t)(divisor & 0xFF));
+        out_port_byte(0x40, (uint8_t)((divisor >> 8) & 0xFF));
+    }
 
     timerBootUnix = rtc_to_unix(&rtc);
 

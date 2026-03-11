@@ -133,10 +133,10 @@ void mouseIrq() {
         mouse_position_x = 0;
       if (mouse_position_y < 0)
         mouse_position_y = 0;
-      if (mouse_position_x > tempframebuffer_data.width)
-        mouse_position_x = tempframebuffer_data.width;
-      if (mouse_position_y > tempframebuffer_data.height)
-        mouse_position_y = tempframebuffer_data.height;
+      if (mouse_position_x > (int)SCREEN_WIDTH - 1)
+        mouse_position_x = (int)SCREEN_WIDTH - 1;
+      if (mouse_position_y > (int)SCREEN_HEIGHT - 1)
+        mouse_position_y = (int)SCREEN_HEIGHT - 1;
 
       bool click = mouse1 & (1 << 0);
       bool rclick = mouse1 & (1 << 1);
@@ -232,22 +232,11 @@ size_t mouseEventBit(OpenFile *fd, uint64_t request, void *arg) {
   return ret;
 }
 
-void initiateMouse() {
-  // printf("[mouse] Starting mouse initialization\n");
-  
-  // mouseEvent = devInputEventSetup("PS/2 Mouse");
-  // printf("[mouse] Device setup complete\n");
-  
-  // below is optional (vmware didn't do it)
-  // mouseEvent->properties = INPUT_PROP_POINTER;
-  // printf("[mouse] Setting input ID fields\n");
-  // mouseEvent->inputid.bustype = 0x05;   // BUS_PS2
-  // mouseEvent->inputid.vendor = 0x045e;  // Microsoft
-  // mouseEvent->inputid.product = 0x00b4; // Generic MS Mouse
-  // mouseEvent->inputid.version = 0x0100; // Basic MS Version
-  // mouseEvent->eventBit = mouseEventBit;
-  // printf("[mouse] Input ID fields set\n");
-
+void initiateMouse() 
+{
+  // Initialize position to screen center
+  mouse_position_x = SCREEN_WIDTH / 2;
+  mouse_position_y = SCREEN_HEIGHT / 2;
   // enable the auxiliary mouse
   printf("[mouse] Enabling auxiliary mouse device\n");
   mouseWait(1);

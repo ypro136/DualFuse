@@ -47,5 +47,5 @@ void test_framebuffer(uint32_t test_color);
 
 #if defined(DEBUG_FRAMEBUFFER)
 void early_debug_bars();
-void checkpoint(int n, uint32_t color);
 #endif
+void checkpoint(int n, uint32_t color);
