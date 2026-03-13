@@ -53,6 +53,7 @@ static void dispatch_to_active_window(bool left_clicked, bool right_clicked)
 
 bool GUI_input_loop()
 {
+
     bool left_clicked  = mouse_down_left();
     bool right_clicked = mouse_down_right();
 
@@ -191,5 +192,6 @@ bool GUI_input_loop()
     update_all_xp_panels(mouse_position_x, mouse_position_y);
 
     mouse_update();
+
     return should_exit;
 }

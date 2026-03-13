@@ -131,7 +131,7 @@ void keyboard_initialize()
 
     if (isr_initialized)
     {
-        irq_install_handler(keyboard_irq, &keyboard_handler);
+        irq_install_handler(1, &keyboard_handler);
     }
     else
     {

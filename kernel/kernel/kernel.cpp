@@ -58,11 +58,7 @@ extern "C" void kernel_main(void)
 	memory_initialize(); // memory managment fatal to fail
 
     framebuffer_initialize(); // framebuffer non fatal to fail
-    
-	timer_initialize(); // timer non fatal to fail
-    
-	keyboard_initialize(); // keyboard non fatal to fail
-    
+        
     pci_initialize(); // Peripheral Component Interconnect non fatal to fail
     
     // tasks_initialize(); TODO: fix this non fatal to fail
@@ -76,26 +72,31 @@ extern "C" void kernel_main(void)
     
     block_init();
     
+    acpiInit();// TODO: this is very minimal
+    printf("acpi initialized.\n");
+    
+    initiateAPIC();
+	
+    timer_initialize();
+
+    keyboard_initialize();
+    
     initiateMouse();
     printf("mouse initialized.\n");
     
     initialize_xp_desktop();
 
     bool should_exit = false;
+    int loop_count = 0;
     while (!should_exit) 
     {
         frame_loop(render_xp_desktop);
-        should_exit = GUI_input_loop(); // TODO: Handle input
+        should_exit = GUI_input_loop();
     }
     
     test_framebuffer(0xFFFFFF);
     
     
-    acpiInit();// TODO: this is very minimal
-    printf("acpi initialized.\n");
-    
-    initiateAPIC();
-    printf("APIC initialized.\n");
     
     // breakpoint; tested and works
 	

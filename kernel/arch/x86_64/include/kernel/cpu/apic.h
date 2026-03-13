@@ -8,6 +8,7 @@
 #define IA32_APIC_BASE_MSR 0x1B
 #define IA32_APIC_BASE_MSR_BSP 0x100 // Processor is a BSP
 #define IA32_APIC_BASE_MSR_ENABLE 0x800
+#define IA32_APIC_BASE_MSR_X2APIC 0x400  // bit 10 — x2APIC mode active
 
 #define APIC_REGISTER_ID 0x20
 #define APIC_REGISTER_APICID 0x20
@@ -21,6 +22,7 @@
 #define APIC_LVT_TIMER_MODE_PERIODIC (1 << 17)
 
 extern bool apic_initialized;
+extern bool x2apic_mode;
 
 // APIC quick access
 // (same address for different cores)
@@ -30,12 +32,12 @@ extern uint64_t apicVirt;
 // I/O APIC quick access
 typedef struct IOAPIC {
   struct LLheader _ll;
-
+  
   uint8_t id;
-
+  
   uint64_t ioapicPhys;
   uint64_t ioapicVirt;
-
+  
   int ioapicRedStart;
   int ioapicRedEnd; // NOT max!
 } IOAPIC;
@@ -49,6 +51,7 @@ extern uint32_t lapicGenericArray[MAX_IRQ];
 
 void initiateAPIC();
 void smpInitiateAPIC();
+bool apicIsX2Apic();
 
 uint8_t ioApicRedirect(uint8_t irq, bool ignored);
 uint8_t ioApicPciRegister(pci_device *device, pci_general_device *details);
@@ -58,5 +61,6 @@ uint32_t apicRead(uint32_t offset);
 void     apicWrite(uint32_t offset, uint32_t value);
 
 uint32_t apicCurrentCore();
+uint8_t apicGetBspLapicId();
 
 #endif
