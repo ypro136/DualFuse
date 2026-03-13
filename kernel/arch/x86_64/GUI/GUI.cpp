@@ -12,6 +12,7 @@
 #include <GUI_input.h>
 #include <panel.h>
 #include <file_explorer.h>
+#include <apic.h>
 
 
 
@@ -114,8 +115,8 @@ XPTaskbar* create_taskbar()
     tb->height   = TASKBAR_HEIGHT;
     tb->bg_color = 0xC0C0C0;
 
-    tb->start_button = create_xp_button(NULL, 2, TASKBAR_Y + 2,
-                                         60, TASKBAR_HEIGHT - 4,
+    tb->start_button = create_xp_button(NULL, 2, TASKBAR_Y + 3,
+                                         60, TASKBAR_HEIGHT - 6,
                                          "Start", on_start_click);
     register_xp_button(tb->start_button);
 
@@ -199,8 +200,7 @@ void draw_taskbar()
     {
         if (taskbar->window_buttons[i] == NULL) continue;
 
-        taskbar->window_buttons[i]->pressed =
-            (window_arr[i] && window_arr[i]->active);
+        taskbar->window_buttons[i]->pressed = (window_arr[i] && window_arr[i]->active);
 
         draw_xp_button(taskbar->window_buttons[i]);
 
@@ -211,7 +211,7 @@ void draw_taskbar()
 
     //  Clock 
     const int clock_x = SCREEN_WIDTH - 100;
-    const int clock_y = TASKBAR_Y + 5;
+    const int clock_y = TASKBAR_Y + 7;
 
     uint64_t now     = timerBootUnix + (timerTicks / frequency) + (2 * 3600);
     uint64_t hours24 = (now % 86400) / 3600;
@@ -443,8 +443,8 @@ void initialize_xp_desktop()
 #endif
 
     create_taskbar();
-    create_desktop_icon(20, 40, "Console", 0x000080, on_console_icon_click);
-    create_desktop_icon(60, 40, "Files", 0xFFCC00, on_file_explorer_icon_click);
+    create_desktop_icon(20, 15, "Console", 0x000080, on_console_icon_click);
+    create_desktop_icon(20, 70, "Files", 0xFFCC00, on_file_explorer_icon_click);
 
     if (!console_initialized)
     {
@@ -478,6 +478,7 @@ void initialize_xp_desktop()
 #endif
 
     frame_ready = true;
+    printf("xp desktop initialized.\n");
 }
 
 void render_xp_desktop()
@@ -485,11 +486,17 @@ void render_xp_desktop()
     frame_ready = false;
 
     draw_desktop_background();
+
     draw_all_desktop_icons();
+
     draw_all_xp_windows_but_active();
+
     draw_active_xp_window();
+
     draw_all_xp_panels();
+
     draw_taskbar();
+
     draw_cursor(mouse_position_x, mouse_position_y);
 
     frame_ready = true;

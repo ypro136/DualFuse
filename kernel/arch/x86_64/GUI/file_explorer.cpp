@@ -145,8 +145,8 @@ static void fe_draw_toolbar(XPFileExplorer* fe)
     bool can_back = (fe->back_depth > 0);
     uint32_t btn_bg = can_back ? 0xD4D0C8 : 0xBBB8B0;
 
-    fill_rectangle(x + 4, y + 4, 48, 20, btn_bg);
-    draw_beveled_border_thick(x + 4, y + 4, 48, 20,
+    fill_rectangle(x + 4, y + 4, 64, 20, btn_bg);
+    draw_beveled_border_thick(x + 4, y + 4, 64, 20,
                               can_back ? 0xFFFFFF : 0xD4D0C8,
                               btn_bg,
                               can_back ? 0x808080 : 0xD4D0C8,

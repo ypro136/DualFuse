@@ -8,8 +8,9 @@
 extern uint64_t timerTicks;
 extern uint64_t timerBootUnix;
 extern uint64_t GUI_frame;
-extern bool frame_ready;
+extern volatile bool frame_ready;
 extern const uint32_t frequency;
+extern volatile bool copy_happened;
 
 
 void timer_initialize();
