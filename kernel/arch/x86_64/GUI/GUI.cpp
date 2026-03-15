@@ -58,7 +58,7 @@ void on_console_icon_click()
     cb->set_active = Console_set_active;
     cb->context    = NULL;   // filled in after console creation below
 
-    XPWindow* window    = create_xp_window(350, 175, 800, 500, "Kernel Console", cb);
+    XPWindow* window    = create_xp_window(100, 100, screen_width - 200, screen_height - 200, "Kernel Console", cb);
     Console*  console   = create_console(window);
     window->context     = (void*)console;
     window->window_type = WINDOW_TYPE_CONSOLE;
@@ -470,6 +470,7 @@ void initialize_xp_desktop()
 );
     register_xp_panel(clock_panel);
 
+    on_console_icon_click();
 
     taskbar_sync_windows();
 

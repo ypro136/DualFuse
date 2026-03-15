@@ -8,7 +8,7 @@
 #define IA32_APIC_BASE_MSR 0x1B
 #define IA32_APIC_BASE_MSR_BSP 0x100 // Processor is a BSP
 #define IA32_APIC_BASE_MSR_ENABLE 0x800
-#define IA32_APIC_BASE_MSR_X2APIC 0x400  // bit 10 — x2APIC mode active
+#define IA32_APIC_BASE_MSR_X2APIC 0x400  // bit 10 - x2APIC mode active
 
 #define APIC_REGISTER_ID 0x20
 #define APIC_REGISTER_APICID 0x20
