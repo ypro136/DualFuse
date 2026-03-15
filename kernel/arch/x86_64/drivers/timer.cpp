@@ -44,9 +44,7 @@ uint32_t sleep(uint32_t time)
 {
   // Simple sleep without printf to avoid stack corruption
   uint64_t target = timerTicks + (time);
-  while (target > timerTicks) {
-    hand_control();
-  }
+  while (target > timerTicks) {}
   return 0;
 }
 
@@ -95,10 +93,10 @@ void timer_initialize()
 
     if (apic_initialized)
     {
-        // Use LAPIC timer instead of PIT — PIT not wired on modern UEFI systems
+        // Use LAPIC timer instead of PIT - PIT not wired on modern UEFI systems
         apicWrite(APIC_REGISTER_TIMER_DIV, 0x3);       // divide by 16
         apicWrite(APIC_REGISTER_LVT_TIMER, 32 | APIC_LVT_TIMER_MODE_PERIODIC); // vector 32, periodic
-        apicWrite(APIC_REGISTER_TIMER_INITCNT, 100000); // initial count — calibrate later
+        apicWrite(APIC_REGISTER_TIMER_INITCNT, 100000); // initial count - calibrate later
     }
     else
     {

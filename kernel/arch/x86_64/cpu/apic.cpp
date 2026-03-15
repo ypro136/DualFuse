@@ -287,7 +287,7 @@ void initiateAPIC() {
     apicSetBase(apicPhys);
     uint32_t svr = apicRead(0xF0);
     apicWrite(0xF0, svr | 0x1FF);
-    checkpoint(2, 0xFF0000); // red — bailed out, no MADT
+    checkpoint(2, 0xFF0000); // red - bailed out, no MADT
     return;
   }
 

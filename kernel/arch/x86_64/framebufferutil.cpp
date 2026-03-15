@@ -210,14 +210,14 @@ void test_framebuffer(uint32_t test_color)
 
 void copy_buffer_to_screan()
 {
-    checkpoint(35, 0xFFFF00); // yellow at pos 820 — entered copy
+    checkpoint(35, 0xFFFF00); // yellow at pos 820 - entered copy
     if (tempframebuffer->address)
     {
-        checkpoint(36, 0xFF6600); // orange at pos 840 — about to memcpy
+        checkpoint(36, 0xFF6600); // orange at pos 840 - about to memcpy
         memcpy((void*)framebuffer->address,
                (void*)tempframebuffer->address,
                buffer_size);
-        checkpoint(37, 0x00FF00); // green at pos 860 — memcpy done
+        checkpoint(37, 0x00FF00); // green at pos 860 - memcpy done
     }
 }
 

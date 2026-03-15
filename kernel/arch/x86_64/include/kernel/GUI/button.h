@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <gui_defs.h>
 
-// Forward declaration — XPWindow is defined in window.h
+// Forward declaration - XPWindow is defined in window.h
 struct XPWindow;
 
 //   Button structure                   

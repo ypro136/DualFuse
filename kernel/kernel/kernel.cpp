@@ -30,6 +30,8 @@
 #include <minimal_acpi.h>
 #include <mouse.h>
 #include <apic.h>
+#include <i2c.h>
+#include <hid_i2c.h>
 
 #include <GUI.h>
 #include <fram_loop.h>
@@ -83,6 +85,8 @@ extern "C" void kernel_main(void)
     
     initiateMouse();
     printf("mouse initialized.\n");
+
+    i2cInitialize();
     
     initialize_xp_desktop();
 
@@ -94,11 +98,7 @@ extern "C" void kernel_main(void)
         should_exit = GUI_input_loop();
     }
     
-    test_framebuffer(0xFFFFFF);
-    
-    
-    
-    // breakpoint; tested and works
+    // breakpoint; not tested and dose not work
 	
     for (;;) {}
 }
