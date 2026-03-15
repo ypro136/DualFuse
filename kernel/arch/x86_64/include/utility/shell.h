@@ -32,6 +32,11 @@ private:
     void cmd_search(int argc, char* argv[]);
     void cmd_start(int argc, char* argv[]);
     void cmd_grep(int argc, char* argv[]);
+    
+    void cmd_madt();
+    void cmd_i2c();
+    void cmd_i2chid();
+    void cmd_i2cpoll();
 
     static int  tokenize(char* input, char* argv[], int max_args);
     static void str_toupper(char* s);

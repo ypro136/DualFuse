@@ -5,7 +5,7 @@
 #include <psf.h>
 #include <liballoc.h>
 
-// taskbar_sync_windows() is declared in GUI.h — forward-declare here
+// taskbar_sync_windows() is declared in GUI.h - forward-declare here
 // to avoid a circular include (GUI.h → window.h → GUI.h).
 extern void taskbar_sync_windows();
 

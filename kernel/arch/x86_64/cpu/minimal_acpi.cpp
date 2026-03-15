@@ -230,3 +230,79 @@ void acpiInit() {
 AcpiMadt* acpiGetMadt() {
   return cachedMadt;
 }
+
+/* =========================================================================
+ * acpiGetDsdt - locate DSDT via FADT
+ *
+ * The FADT (signature "FACP") contains two fields pointing at the DSDT:
+ *   dsdt   (offset 40) - 32-bit physical address, all ACPI revisions
+ *   x_dsdt (offset 140) - 64-bit physical address, ACPI 2.0+ (revision >= 2)
+ *
+ * We prefer x_dsdt when available and non-zero, because on 64-bit systems
+ * with >4 GB of RAM the DSDT may be placed above the 4 GB boundary.
+ * ========================================================================= */
+
+AcpiDsdtInfo acpiGetDsdt() {
+  AcpiDsdtInfo result;
+  result.ptr    = nullptr;
+  result.length = 0;
+
+  /* Step 1 - get FADT */
+  AcpiFadt* fadt = (AcpiFadt*)acpiGetTableBySignature("FACP");
+  if (!fadt) {
+    printf("[acpi] acpiGetDsdt: FADT (FACP) not found\n");
+    return result;
+  }
+
+  /* Step 2 - pick 32-bit or 64-bit DSDT physical address */
+  uint64_t dsdtPhys = 0;
+
+  if (fadt->hdr.revision >= 2 &&
+      fadt->hdr.length >= 148 &&   /* x_dsdt is at offset 140; table must be
+                                     * at least 148 bytes long to contain it */
+      fadt->x_dsdt != 0) {
+    dsdtPhys = fadt->x_dsdt;
+    #if defined(DEBUG_ACPI)
+    printf("[acpi] acpiGetDsdt: using X_DSDT (64-bit) = 0x%lx\n", dsdtPhys);
+    #endif
+  } else if (fadt->dsdt != 0) {
+    dsdtPhys = (uint64_t)fadt->dsdt;
+    #if defined(DEBUG_ACPI)
+    printf("[acpi] acpiGetDsdt: using DSDT (32-bit) = 0x%lx\n", dsdtPhys);
+    #endif
+  } else {
+    printf("[acpi] acpiGetDsdt: both DSDT and X_DSDT fields are zero\n");
+    return result;
+  }
+
+  /* Step 3 - apply HHDM offset and read the DSDT table header */
+  AcpiTableHeader* dsdtHdr =
+      (AcpiTableHeader*)(bootloader.hhdmOffset + dsdtPhys);
+
+  /* Sanity-check the DSDT header signature */
+  if (dsdtHdr->signature[0] != 'D' ||
+      dsdtHdr->signature[1] != 'S' ||
+      dsdtHdr->signature[2] != 'D' ||
+      dsdtHdr->signature[3] != 'T') {
+    printf("[acpi] acpiGetDsdt: bad DSDT signature at phys 0x%lx "
+           "(got '%c%c%c%c')\n",
+           dsdtPhys,
+           dsdtHdr->signature[0], dsdtHdr->signature[1],
+           dsdtHdr->signature[2], dsdtHdr->signature[3]);
+    return result;
+  }
+
+  /* Sanity-check the length */
+  if (dsdtHdr->length < sizeof(AcpiTableHeader) ||
+      dsdtHdr->length > 0x400000) {   /* 4 MB hard cap - real DSDTs are <512 KB */
+    printf("[acpi] acpiGetDsdt: DSDT length %u looks wrong\n", dsdtHdr->length);
+    return result;
+  }
+
+  printf("[acpi] acpiGetDsdt: DSDT found at phys=0x%lx virt=0x%lx len=%u\n",
+         dsdtPhys, (uint64_t)(uintptr_t)dsdtHdr, dsdtHdr->length);
+
+  result.ptr    = (const uint8_t*)dsdtHdr;
+  result.length = dsdtHdr->length;
+  return result;
+}
