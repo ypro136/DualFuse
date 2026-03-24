@@ -27,6 +27,25 @@ void Shell::print(const char* s)
 
 void Shell::println(const char* s) { print(s); console->print_char('\n'); }
 
+int atoi(const char *str)
+{
+    int res = 0;
+    int sign = 1;
+
+    // Handle optional sign
+    if (*str == '-'){
+        sign = -1;
+        str++;
+    }
+    // Convert digits to integer
+    while (*str >= '0' && *str <= '9'){
+        res = res * 10 + (*str - '0');
+        str++;
+    }
+
+    return sign * res;
+}
+
 int Shell::tokenize(char* input, char* argv[], int max_args)
 {
     int argc = 0; char* p = input;
@@ -69,6 +88,7 @@ void Shell::execute(char* input)
     else if (strcmp(argv[0], "SEARCH")  == 0) cmd_search(argc, argv);
     else if (strcmp(argv[0], "START")   == 0) cmd_start(argc, argv);
     else if (strcmp(argv[0], "GREP")    == 0) cmd_grep(argc, argv);
+    else if (strcmp(argv[0], "CALC")    == 0) cmd_calc(argc, argv);
     else if (strcmp(argv[0], "MADT")    == 0) cmd_madt();
     else if (strcmp(argv[0], "I2C")     == 0) cmd_i2c();
     else if (strcmp(argv[0], "I2CHID")  == 0) cmd_i2chid();
@@ -81,10 +101,70 @@ void Shell::cmd_help()
     println("Commands:");
     println("  CLEAR ECHO INFO PAGE END HELP");
     println("  MK CAT LS RM MKDIR CD PWD SEARCH START GREP");
+    println("  CALC <n> <op> <n> [<op> <n> ...]  ops: + - * / %");
+    println("    e.g:  CALC 11 * 11 - 3  =>  118");
     println("  MADT       - dump ACPI MADT entries");
     println("  I2C        - I2C controller status");
     println("  I2CHID     - full HID-over-I2C init + report dump");
     println("  I2CPOLL    - poll 30 HID reports (touch the pad)");
+}
+
+// expr-style calculator: CALC <num> <op> <num> [<op> <num> ...]
+//
+// Evaluates strictly left-to-right (no operator precedence), matching
+// the behaviour of the Unix `expr` utility for arithmetic.
+//
+// Operators:  +  -  *  /  %
+//
+// Examples:
+//   CALC 7 + 4          =>  11
+//   CALC 7 - 4          =>  3
+//   CALC 7 * 4          =>  28
+//   CALC 7 / 4          =>  1      (integer division, truncates toward zero)
+//   CALC 7 % 4          =>  3
+//   CALC 11 * 11        =>  121
+//   CALC 11 * 11 * 11   =>  1331
+//   CALC 11 * 11 - 3    =>  118
+//
+// argc must be even (CALC + pairs of <num> <op>) and at least 4.
+void Shell::cmd_calc(int argc, char* argv[])
+{
+    if (argc < 4 || (argc & 1) != 0) {
+        println("Usage: CALC <num> <op> <num> [<op> <num> ...]");
+        println("  ops: + - * / %");
+        return;
+    }
+
+    int result = atoi(argv[1]);
+
+    for (int i = 2; i + 1 < argc; i += 2) {
+        char op = argv[i][0];
+        int  b  = atoi(argv[i + 1]);
+
+        switch (op) {
+            case '+': result += b; break;
+            case '-': result -= b; break;
+            case '*': result *= b; break;
+            case '/':
+                if (b == 0) { println("Error: division by zero"); return; }
+                result /= b;
+                break;
+            case '%':
+                if (b == 0) { println("Error: modulo by zero"); return; }
+                result %= b;
+                break;
+            default:
+                print("Error: unknown operator '");
+                console->print_char(op);
+                println("'");
+                return;
+        }
+    }
+
+    char buf[32];
+    if (result < 0) { print("-"); u64toa((uint64_t)(-(int64_t)result), buf, 10); }
+    else            { u64toa((uint64_t)result, buf, 10); }
+    println(buf);
 }
 
 void Shell::cmd_i2c()
@@ -93,9 +173,6 @@ void Shell::cmd_i2c()
 
     println("I2C controller (MSI Modern 14 Alder Lake):");
 
-    /* FIX: use confirmed physical base 0x4017000000 from /proc/iomem.
-     * Previous code used 0xFE040000 which is a different platform entirely
-     * and was giving false-zero readings silently.                      */
     uint64_t physBase = 0x4017000000ULL;
     uint64_t base     = bootloader.hhdmOffset + physBase;
 
@@ -259,7 +336,6 @@ void Shell::cmd_i2chid()
     char buf[64];
     println("=== I2CHID: HID init ===");
 
-    // Use cached base — deassert/init already done at boot
     uint64_t base = i2cGetBase();
     if (base == 0) { println("no controller at boot"); return; }
     print("  base=0x"); u64toa(base, buf, 16); println(buf);
@@ -272,7 +348,6 @@ void Shell::cmd_i2chid()
         return;
     }
 
-    // Full HID init — sets hidI2cActive = true
     HidI2cDescriptor desc;
     if (hidI2cInit(base, I2C_ADDR_ELAN_TOUCHPAD, &desc) < 0) {
         println("hidI2cInit failed"); return;
@@ -313,7 +388,6 @@ void Shell::cmd_i2cpoll()
     uint64_t base = i2cGetBase();
     if (base == 0) { println("no controller"); return; }
 
-    // If HID not yet active, init it
     if (!hidI2cIsActive()) {
         HidI2cDescriptor desc;
         if (hidI2cInit(base, I2C_ADDR_ELAN_TOUCHPAD, &desc) < 0) {
@@ -321,7 +395,6 @@ void Shell::cmd_i2cpoll()
         }
     }
 
-    // Read directly from global descriptor
     uint8_t reg[2] = { (uint8_t)(hidI2cGetDesc()->wInputRegister & 0xFF),
                        (uint8_t)(hidI2cGetDesc()->wInputRegister >> 8) };
     uint16_t maxLen = hidI2cGetDesc()->wMaxInputLength;

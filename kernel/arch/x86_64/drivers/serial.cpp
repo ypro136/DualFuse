@@ -21,27 +21,24 @@ static volatile int  rx_tail = 0;
 // ── Message assembly (newline-delimited, for Arduino lines) ──────────────────
 
 #define SERIAL_MSG_MAX 128
-static char     msg_buf[SERIAL_MSG_MAX];
-static int      msg_idx = 0;
+static char msg_buf[SERIAL_MSG_MAX];
+static int  msg_idx = 0;
 
-// Optional: define SERIAL_ON_MESSAGE(str) somewhere to handle complete lines.
-// Default behaviour here just discards them; hook in your console as needed.
 __attribute__((weak)) void serial_on_message(const char* /*msg*/) {}
 
 // ── IRQ4 handler (COM1) ──────────────────────────────────────────────────────
+// irq_install_handler expects: void handler(struct interrupt_registers*)
 
-static void serial_irq_handler(registers_t* /*r*/) {
+static void serial_irq_handler(struct interrupt_registers* /*r*/) {
     while (inb(port + 5) & 0x01) {
         char c = (char)inb(port);
 
-        // Put in ring buffer (drop if full)
         int next = (rx_head + 1) % SERIAL_BUFFER_SIZE;
         if (next != rx_tail) {
             rx_buf[rx_head] = c;
             rx_head = next;
         }
 
-        // Assemble newline-terminated messages
         if (c == '\r') continue;
         if (c == '\n') {
             msg_buf[msg_idx] = '\0';
@@ -59,27 +56,26 @@ bool serial_initialize(uint16_t _port) {
     port = _port;
 
     outb(port + 1, 0x00);    // Disable all interrupts
-    outb(port + 3, 0x80);    // Enable DLAB (set baud rate divisor)
-    outb(port + 0, 0x03);    // Set divisor to 3 (lo byte) 38400 baud
-    outb(port + 1, 0x00);    //                  (hi byte)
-    outb(port + 3, 0x03);    // 8 bits, no parity, one stop bit
-    outb(port + 2, 0xC7);    // Enable FIFO, clear them, with 14-byte threshold
+    outb(port + 3, 0x80);    // Enable DLAB
+    outb(port + 0, 0x03);    // 38400 baud (lo)
+    outb(port + 1, 0x00);    //            (hi)
+    outb(port + 3, 0x03);    // 8n1
+    outb(port + 2, 0xC7);    // Enable FIFO
     outb(port + 4, 0x0B);    // IRQs enabled, RTS/DSR set
-    outb(port + 4, 0x1E);    // Set in loopback mode, test the serial chip
-    outb(port + 0, 0xAE);    // Test serial chip
+    outb(port + 4, 0x1E);    // Loopback test
+    outb(port + 0, 0xAE);
 
     if (inb(port + 0) != 0xAE) {
         serial_initialized = false;
         return false;
     }
 
-    outb(port + 4, 0x0F);    // Normal operation mode
+    outb(port + 4, 0x0F);    // Normal operation
+    outb(port + 1, 0x01);    // Enable receive-data-available interrupt
 
-    // Enable receive-data-available interrupt on the UART
-    outb(port + 1, 0x01);
-
-    // IRQ4 = COM1.  With PIC remapped to base 0x20: vector = 0x20 + 4 = 0x24
-    register_interrupt_handler(0x24, serial_irq_handler);
+    // irq_install_handler takes the IRQ LINE (0-based), not the PIC vector.
+    // COM1 = IRQ line 4.
+    irq_install_handler(4, serial_irq_handler);
 
     serial_initialized = true;
     printf("serial initialization :%d.\n", serial_initialized);
@@ -104,7 +100,6 @@ void serial_print(const char* str) {
     while (*str) serial_write(*str++);
 }
 
-// Sends str followed by \r\n — matches Arduino Serial.println() framing
 void serial_send_line(const char* str) {
     serial_print(str);
     serial_write('\r');
@@ -124,8 +119,8 @@ char serial_read_byte() {
     return c;
 }
 
-// ── Polled fallback (use in frame_loop if IRQ4 not wired on MSI) ─────────────
-// Call this from your frame_loop on MSI if serial_on_message() never fires.
+// ── Polled fallback (call from frame_loop if IRQ4 not wired on MSI) ──────────
+
 void serial_poll() {
     if (!serial_initialized) return;
     while (inb(port + 5) & 0x01) {
