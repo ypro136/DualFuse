@@ -3,8 +3,6 @@
 
 #include <types.h>
 
-/* HID over I2C descriptor (30 bytes, little-endian).
- * Returned by reading the HID descriptor register (0x0001 for ELAN).    */
 struct __attribute__((packed)) HidI2cDescriptor {
     uint16_t wHIDDescLength;
     uint16_t bcdVersion;
@@ -22,37 +20,24 @@ struct __attribute__((packed)) HidI2cDescriptor {
     uint32_t reserved;
 };
 
-/* Parsed touch report from ELAN touchpad.
- * Filled by hidI2cReadReport() when a finger is detected.               */
 struct TouchReport {
     bool     fingerDown;
     uint16_t x;
     uint16_t y;
     bool     leftClick;
+    bool     rightClick;
 };
 
-/* Read 30-byte HID descriptor from device at `addr` over `base` I2C.
- * Returns 0 on success.                                                 */
-int hidI2cGetDescriptor(uint64_t base, uint8_t addr,
-                        HidI2cDescriptor* out);
+const HidI2cDescriptor* hidI2cGetDesc();
 
-/* Send SET_POWER ON + RESET to put device in operational mode.          */
-int hidI2cReset(uint64_t base, uint8_t addr,
-                const HidI2cDescriptor* desc);
+bool hidI2cIsActive();
 
-/* Read one input report. Returns 0 on success, fills `out`.
- * Call in a poll loop or from an IRQ handler.                           */
-int hidI2cReadReport(uint64_t base, uint8_t addr,
-                     const HidI2cDescriptor* desc,
-                     TouchReport* out);
-
-/* Top-level init: get descriptor, reset device, return descriptor.
- * Called from hid_i2c layer init in kernel_main.                        */
-int hidI2cInit(uint64_t base, uint8_t addr, HidI2cDescriptor* out);
-
-/* Poll loop tick - call from timer ISR or a polling shell command.
- * Reads one report and updates mouse_position_x/y + clickedLeft.       */
-void hidI2cPoll(uint64_t base, uint8_t addr,
-                const HidI2cDescriptor* desc);
+int  hidI2cGetDescriptor(uint64_t base, uint8_t addr, HidI2cDescriptor* out);
+int  hidI2cReset(uint64_t base, uint8_t addr, const HidI2cDescriptor* desc);
+int  hidI2cReadReport(uint64_t base, uint8_t addr,
+                      const HidI2cDescriptor* desc, TouchReport* out);
+int  hidI2cInit(uint64_t base, uint8_t addr, HidI2cDescriptor* out);
+void hidI2cPoll(uint64_t base, uint8_t addr, const HidI2cDescriptor* desc);
+void hidI2cTickPoll();
 
 #endif

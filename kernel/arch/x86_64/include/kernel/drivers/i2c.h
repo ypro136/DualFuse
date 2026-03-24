@@ -3,7 +3,7 @@
 #include <types.h>
 
 /*
- * i2c.h — Intel DesignWare I2C host controller driver
+ * i2c.h - Intel DesignWare I2C host controller driver
  *
  * Targets the Intel Alder Lake PCH I2C controller (PCI 00:15.x) which hosts
  * the ELAN/Synaptics HID-over-I2C touchpad on the MSI Modern 14.
@@ -22,7 +22,7 @@
 #define DW_IC_CON               0x00    /* Control register                   */
 #define DW_IC_TAR               0x04    /* Target (slave) address             */
 #define DW_IC_SAR               0x08    /* Own slave address (unused in master)*/
-#define DW_IC_DATA_CMD          0x10    /* TX/RX FIFO — write=send, read=recv
+#define DW_IC_DATA_CMD          0x10    /* TX/RX FIFO - write=send, read=recv
                                          * bit[8]=1: issue a READ command     */
 #define DW_IC_SS_SCL_HCNT       0x14    /* Standard-speed clock HIGH count    */
 #define DW_IC_SS_SCL_LCNT       0x18    /* Standard-speed clock LOW count     */
@@ -32,7 +32,7 @@
 #define DW_IC_INTR_MASK         0x30    /* Interrupt mask                     */
 #define DW_IC_CLR_INTR          0x40    /* Clear all interrupts (read-to-clr) */
 #define DW_IC_CLR_TX_ABRT       0x54    /* Clear TX_ABRT (must read after NACK)*/
-#define DW_IC_ENABLE            0x6C    /* Enable/disable — 1=enable, 0=disable*/
+#define DW_IC_ENABLE            0x6C    /* Enable/disable - 1=enable, 0=disable*/
 #define DW_IC_STATUS            0x70    /* Bus activity + FIFO status         */
 #define DW_IC_TXFLR             0x74    /* TX FIFO fill level                 */
 #define DW_IC_RXFLR             0x78    /* RX FIFO fill level                 */
@@ -77,7 +77,7 @@
 #define DW_IC_TX_ABRT_10ADDR2_NOACK    (1 << 2)  /* No ACK on 10-bit addr[1] */
 #define DW_IC_TX_ABRT_TXDATA_NOACK     (1 << 3)  /* No ACK on data byte      */
 
-/* Any NACK on the address phase — device not present */
+/* Any NACK on the address phase - device not present */
 #define DW_IC_TX_ABRT_ADDR_NOACK  \
     (DW_IC_TX_ABRT_7B_ADDR_NOACK | DW_IC_TX_ABRT_10ADDR1_NOACK | \
      DW_IC_TX_ABRT_10ADDR2_NOACK)
@@ -89,7 +89,7 @@
 #define DW_IC_COMP_TYPE_VALUE           0x44570140u
 
 /* -------------------------------------------------------------------------
- * Intel PCH I2C PCI identifiers — Alder Lake (MSI Modern 14)
+ * Intel PCH I2C PCI identifiers - Alder Lake (MSI Modern 14)
  *
  * Bus 0, Device 0x15 (21), Functions 0–3.
  * All four controllers share the same vendor ID; device IDs are sequential.
@@ -119,7 +119,7 @@
 #define I2C_ADDR_SYNAPTICS_TOUCHPAD 0x2C
 
 /* -------------------------------------------------------------------------
- * Clock timing — Alder Lake PCH I2C reference clock is 100 MHz
+ * Clock timing - Alder Lake PCH I2C reference clock is 100 MHz
  *
  * Formula (from DesignWare databook):
  *   hcnt = ceil(clk_mhz * t_high_ns / 1000) + 1
@@ -160,10 +160,10 @@ struct I2cBaseResult {
  * controller that matches a known device ID.
  *
  * Strategy:
- *   1. PCI scan — bus 0, device 0x15, functions 0–3.  If vendor==0x8086 and
+ *   1. PCI scan - bus 0, device 0x15, functions 0–3.  If vendor==0x8086 and
  *      device ID is in the Alder Lake set, read BAR0 as the 64-bit physical
  *      base and apply hhdmOffset.
- *   2. DSDT byte scan fallback — scan raw DSDT bytes for known _HID strings
+ *   2. DSDT byte scan fallback - scan raw DSDT bytes for known _HID strings
  *      (INTC10B / INTC10C / INTC10D / INT33C2 / INT33C3), then locate the
  *      nearest Memory32Fixed resource descriptor to extract the MMIO base.
  *
@@ -182,11 +182,12 @@ int  i2cProbeAck(uint64_t virtBase); /* 1=ACK, 0=NACK, -1=timeout */
 int  i2cSend(uint64_t base, const uint8_t* data, uint32_t len);
 int  i2cWriteRead(uint64_t base, const uint8_t* wbuf, uint32_t wlen, uint8_t* rbuf, uint32_t rlen);
 int  i2cRecv(uint64_t base, uint8_t* buf,        uint32_t len);
+uint64_t i2cGetBase();
 void i2cInitialize();
 
 I2cBaseResult i2cFindBase();
 
-/* MMIO helpers — thin wrappers around volatile 32-bit reads/writes.
+/* MMIO helpers - thin wrappers around volatile 32-bit reads/writes.
  * base must already have hhdmOffset applied.                              */
 static inline uint32_t i2cRead(uint64_t base, uint32_t reg) {
     return *((volatile uint32_t *)(base + reg));

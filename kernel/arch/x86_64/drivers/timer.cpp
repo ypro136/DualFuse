@@ -14,6 +14,7 @@
 #include <state_monitor.h>
 #include <graphic_composer.h>
 #include <graphic_composer_examples.h>
+#include <hid_i2c.h>
 
 
 __attribute__((used))
@@ -31,6 +32,7 @@ volatile bool copy_happened = false;  // debug only
 void timer_irq_0(struct interrupt_registers *registers)
 {
     timerTicks += 1;
+    hidI2cTickPoll();
     if (frame_ready)
     {
         frame_ready = false;

@@ -53,63 +53,51 @@ void Shell::execute(char* input)
     if (argc == 0) return;
     str_toupper(argv[0]);
 
-    if      (strcmp(argv[0], "HELP")   == 0) cmd_help();
-    else if (strcmp(argv[0], "CLEAR")  == 0) cmd_clear();
-    else if (strcmp(argv[0], "ECHO")   == 0) cmd_echo(argc, argv);
-    else if (strcmp(argv[0], "INFO")   == 0) cmd_info();
-    else if (strcmp(argv[0], "PAGE")   == 0) cmd_page();
-    else if (strcmp(argv[0], "MK")     == 0) cmd_mk(argc, argv);
-    else if (strcmp(argv[0], "CAT")    == 0) cmd_cat(argc, argv);
-    else if (strcmp(argv[0], "LS")     == 0) cmd_ls();
-    else if (strcmp(argv[0], "RM")     == 0) cmd_rm(argc, argv);
-    else if (strcmp(argv[0], "END")    == 0) cmd_end();
-    else if (strcmp(argv[0], "MKDIR")  == 0) cmd_mkdir(argc, argv);
-    else if (strcmp(argv[0], "CD")     == 0) cmd_cd(argc, argv);
-    else if (strcmp(argv[0], "PWD")    == 0) cmd_pwd();
-    else if (strcmp(argv[0], "SEARCH") == 0) cmd_search(argc, argv);
-    else if (strcmp(argv[0], "START")  == 0) cmd_start(argc, argv);
-    else if (strcmp(argv[0], "GREP")   == 0) cmd_grep(argc, argv);
-    else if (strcmp(argv[0], "MADT")   == 0) cmd_madt();
+    if      (strcmp(argv[0], "HELP")    == 0) cmd_help();
+    else if (strcmp(argv[0], "CLEAR")   == 0) cmd_clear();
+    else if (strcmp(argv[0], "ECHO")    == 0) cmd_echo(argc, argv);
+    else if (strcmp(argv[0], "INFO")    == 0) cmd_info();
+    else if (strcmp(argv[0], "PAGE")    == 0) cmd_page();
+    else if (strcmp(argv[0], "MK")      == 0) cmd_mk(argc, argv);
+    else if (strcmp(argv[0], "CAT")     == 0) cmd_cat(argc, argv);
+    else if (strcmp(argv[0], "LS")      == 0) cmd_ls();
+    else if (strcmp(argv[0], "RM")      == 0) cmd_rm(argc, argv);
+    else if (strcmp(argv[0], "END")     == 0) cmd_end();
+    else if (strcmp(argv[0], "MKDIR")   == 0) cmd_mkdir(argc, argv);
+    else if (strcmp(argv[0], "CD")      == 0) cmd_cd(argc, argv);
+    else if (strcmp(argv[0], "PWD")     == 0) cmd_pwd();
+    else if (strcmp(argv[0], "SEARCH")  == 0) cmd_search(argc, argv);
+    else if (strcmp(argv[0], "START")   == 0) cmd_start(argc, argv);
+    else if (strcmp(argv[0], "GREP")    == 0) cmd_grep(argc, argv);
+    else if (strcmp(argv[0], "MADT")    == 0) cmd_madt();
     else if (strcmp(argv[0], "I2C")     == 0) cmd_i2c();
-    else if (strcmp(argv[0], "I2CHID")   == 0) cmd_i2chid();
-    else if (strcmp(argv[0], "I2CPOLL")  == 0) cmd_i2cpoll();
+    else if (strcmp(argv[0], "I2CHID")  == 0) cmd_i2chid();
+    else if (strcmp(argv[0], "I2CPOLL") == 0) cmd_i2cpoll();
     else { print("Unknown command: "); println(argv[0]); }
 }
 
 void Shell::cmd_help()
 {
-    println("Available commands:");
-    println("  END    - Halt the CPU");
-    println("  CLEAR  - Clear the screen");
-    println("  PAGE   - Allocate memory");
-    println("  MK     - Create file:  MK <n> <content>");
-    println("  CAT    - Show file:    CAT <n>");
-    println("  LS     - List files");
-    println("  RM     - Delete file:  RM <n>");
-    println("  ECHO   - Print text");
-    println("  INFO   - System info");
-    println("  MKDIR  - Make directory");
-    println("  CD     - Change directory");
-    println("  PWD    - Print working directory");
-    println("  SEARCH - Search files by name");
-    println("  START  - Run script or print file");
-    println("  GREP   - Search text in file");
-    println("  HELP   - Show this message");
-    println("  debug:");
-    println("  MADT   - Show MADT entries");
-    println("  I2C    - I2C status / probe");
-    println("  I2CHID  - HID-over-I2C touchpad test");
-    println("  I2CPOLL - Poll HID-over-I2C touchpad");
+    println("Commands:");
+    println("  CLEAR ECHO INFO PAGE END HELP");
+    println("  MK CAT LS RM MKDIR CD PWD SEARCH START GREP");
+    println("  MADT       - dump ACPI MADT entries");
+    println("  I2C        - I2C controller status");
+    println("  I2CHID     - full HID-over-I2C init + report dump");
+    println("  I2CPOLL    - poll 30 HID reports (touch the pad)");
 }
 
 void Shell::cmd_i2c()
 {
     char buf[64];
 
-    println("I2C status (initialized at boot):");
+    println("I2C controller (MSI Modern 14 Alder Lake):");
 
-    /* Read state from the already-initialized controller */
-    uint64_t base = bootloader.hhdmOffset + 0xFE040000u;
+    /* FIX: use confirmed physical base 0x4017000000 from /proc/iomem.
+     * Previous code used 0xFE040000 which is a different platform entirely
+     * and was giving false-zero readings silently.                      */
+    uint64_t physBase = 0x4017000000ULL;
+    uint64_t base     = bootloader.hhdmOffset + physBase;
 
     uint32_t comp   = i2cRead(base, DW_IC_COMP_TYPE);
     uint32_t con    = i2cRead(base, DW_IC_CON);
@@ -117,19 +105,18 @@ void Shell::cmd_i2c()
     uint32_t status = i2cRead(base, DW_IC_STATUS);
     uint32_t en     = i2cRead(base, DW_IC_ENABLE);
 
+    print("  phys base  : 0x"); u64toa(physBase, buf, 16); println(buf);
     print("  controller : ");
-    println(comp == DW_IC_COMP_TYPE_VALUE ? "DesignWare (OK)" : "unknown/not found");
-
-    print("  base addr  : 0x"); u64toa(0xFE040000u, buf, 16); println(buf);
-
-    print("  IC_ENABLE  : "); u64toa(en,     buf, 16); println(buf);
-    print("  IC_CON     : 0x"); u64toa(con,    buf, 16); println(buf);
-    print("  IC_TAR     : 0x"); u64toa(tar,    buf, 16); println(buf);
-    print("  IC_STATUS  : 0x"); u64toa(status, buf, 16); println(buf);
-
-    println("  device     : ELAN touchpad");
-    print("  address    : 0x"); u64toa(I2C_ADDR_ELAN_TOUCHPAD, buf, 16); println(buf);
-    println("  last probe : ACK (confirmed at boot)");
+    println(comp == DW_IC_COMP_TYPE_VALUE ? "DesignWare (OK)" : "NOT FOUND / wrong base");
+    print("  IC_COMP_TYPE: 0x"); u64toa(comp,   buf, 16); println(buf);
+    print("  IC_ENABLE  : 0x"); u64toa(en,      buf, 16); println(buf);
+    print("  IC_CON     : 0x"); u64toa(con,     buf, 16); println(buf);
+    print("  IC_TAR     : 0x"); u64toa(tar,     buf, 16); println(buf);
+    print("  IC_STATUS  : 0x"); u64toa(status,  buf, 16); println(buf);
+    print("  touchpad   : ELAN 04F3:3282 at I2C addr 0x");
+    u64toa(I2C_ADDR_ELAN_TOUCHPAD, buf, 16); println(buf);
+    print("  GSI        : 27 (IR-IO-APIC 27-fasteoi, confirmed from Linux)");
+    println("");
 }
 
 void Shell::cmd_madt()
@@ -270,101 +257,98 @@ void Shell::cmd_grep(int argc, char* argv[])
 void Shell::cmd_i2chid()
 {
     char buf[64];
+    println("=== I2CHID: HID init ===");
 
-    println("[1] Power on + find base...");
-    i2cPowerOnAll();
-    I2cBaseResult res = i2cFindBase();
-    if (res.virtBase == 0) { println("  FAILED - no controller"); return; }
-    print("  base=0x"); u64toa(res.virtBase, buf, 16); println(buf);
+    // Use cached base — deassert/init already done at boot
+    uint64_t base = i2cGetBase();
+    if (base == 0) { println("no controller at boot"); return; }
+    print("  base=0x"); u64toa(base, buf, 16); println(buf);
 
-    println("[2] Deassert LPSS resets...");
-    i2cDeassertReset(res.virtBase);
+    if (hidI2cIsActive()) {
+        println("  HID already active from boot — touchpad running.");
+        print("  vendor=0x"); u64toa(hidI2cGetDesc()->wVendorID, buf, 16); println(buf);
+        print("  product=0x"); u64toa(hidI2cGetDesc()->wProductID, buf, 16); println(buf);
+        print("  inputReg=0x"); u64toa(hidI2cGetDesc()->wInputRegister, buf, 16); println(buf);
+        return;
+    }
 
-    println("[3] Init DW controller (target=0x15)...");
-    i2cInit(res.virtBase, I2C_ADDR_ELAN_TOUCHPAD);
-    uint32_t en = i2cRead(res.virtBase, DW_IC_ENABLE);
-    print("  IC_ENABLE="); u64toa(en, buf, 10); println(buf);
-    sleep(1);
-
-    println("[4] Reading HID descriptor (reg 0x0001)...");
+    // Full HID init — sets hidI2cActive = true
     HidI2cDescriptor desc;
-    if (hidI2cGetDescriptor(res.virtBase, I2C_ADDR_ELAN_TOUCHPAD, &desc) < 0) {
-        println("  FAILED"); return;
-    }
-    print("  wHIDDescLength   : "); u64toa(desc.wHIDDescLength,     buf, 10); println(buf);
-    print("  wInputRegister   : 0x"); u64toa(desc.wInputRegister,   buf, 16); println(buf);
-    print("  wMaxInputLength  : "); u64toa(desc.wMaxInputLength,     buf, 10); println(buf);
-    print("  wCommandRegister : 0x"); u64toa(desc.wCommandRegister, buf, 16); println(buf);
-    print("  wVendorID        : 0x"); u64toa(desc.wVendorID,        buf, 16); println(buf);
-    print("  wProductID       : 0x"); u64toa(desc.wProductID,       buf, 16); println(buf);
-
-    println("[5] Sending SET_POWER ON + RESET...");
-    if (hidI2cReset(res.virtBase, I2C_ADDR_ELAN_TOUCHPAD, &desc) < 0) {
-        println("  reset failed - continuing anyway");
+    if (hidI2cInit(base, I2C_ADDR_ELAN_TOUCHPAD, &desc) < 0) {
+        println("hidI2cInit failed"); return;
     }
 
-    println("[6] Reading raw reports (touch the pad now)...");
-    uint16_t maxLen = desc.wMaxInputLength;
-    if (maxLen < 4 || maxLen > 64) maxLen = 32;
-    uint8_t rbuf[64];
+    println("HID ready. Move finger on pad — cursor should move now.");
+    println("Raw report dump (5 reads)...");
+
     uint8_t reg[2] = { (uint8_t)(desc.wInputRegister & 0xFF),
                        (uint8_t)(desc.wInputRegister >> 8) };
+    uint16_t maxLen = desc.wMaxInputLength;
+    if (maxLen < 4 || maxLen > 64) maxLen = 32;
 
     for (int rep = 0; rep < 5; rep++) {
         sleep(120);
-        int got = i2cWriteRead(res.virtBase, reg, 2, rbuf, maxLen);
-        if (got < 0) { println("  read failed"); continue; }
-        print("  ["); u64toa(rep, buf, 10); print(buf); print("] id=0x");
-        u64toa(rbuf[2], buf, 16); print(buf);
-        print(" raw: ");
+        uint8_t rbuf[64] = {0};
+        int got = i2cWriteRead(base, reg, 2, rbuf, maxLen);
+        if (got < 0) { println("  read error"); continue; }
+        uint16_t pktLen = (uint16_t)rbuf[0] | ((uint16_t)rbuf[1] << 8);
+        print("  ["); u64toa(rep, buf, 10); print(buf);
+        print("] id=0x"); u64toa(rbuf[2], buf, 16); print(buf);
+        print(" len="); u64toa(pktLen, buf, 10); print(buf);
+        print(" : ");
         for (int i = 0; i < got && i < 12; i++) {
             if (rbuf[i] < 0x10) print("0");
             u64toa(rbuf[i], buf, 16); print(buf); print(" ");
         }
         println("");
     }
-    println("done.");
+    println("done. Cursor now driven by timer ISR.");
 }
 
 void Shell::cmd_i2cpoll()
 {
     char buf[64];
-    i2cPowerOnAll();
-    I2cBaseResult res = i2cFindBase();
-    if (res.virtBase == 0) { println("no controller"); return; }
-    i2cDeassertReset(res.virtBase);
-    i2cInit(res.virtBase, I2C_ADDR_ELAN_TOUCHPAD);
-    sleep(1);
+    println("=== I2CPOLL: 30 reports ===");
 
-    HidI2cDescriptor desc;
-    if (hidI2cGetDescriptor(res.virtBase, I2C_ADDR_ELAN_TOUCHPAD, &desc) < 0) {
-        println("descriptor failed"); return;
+    uint64_t base = i2cGetBase();
+    if (base == 0) { println("no controller"); return; }
+
+    // If HID not yet active, init it
+    if (!hidI2cIsActive()) {
+        HidI2cDescriptor desc;
+        if (hidI2cInit(base, I2C_ADDR_ELAN_TOUCHPAD, &desc) < 0) {
+            println("hidI2cInit failed"); return;
+        }
     }
-    hidI2cReset(res.virtBase, I2C_ADDR_ELAN_TOUCHPAD, &desc);
 
-    println("Polling 30 reports - touch the pad...");
+    // Read directly from global descriptor
+    uint8_t reg[2] = { (uint8_t)(hidI2cGetDesc()->wInputRegister & 0xFF),
+                       (uint8_t)(hidI2cGetDesc()->wInputRegister >> 8) };
+    uint16_t maxLen = hidI2cGetDesc()->wMaxInputLength;
+    if (maxLen < 4 || maxLen > 64) maxLen = 32;
+
     for (int i = 0; i < 30; i++) {
-        /* small delay between reads */
-        sleep(1);
-
-        uint8_t rbuf[16] = {0};
-        uint8_t reg[2] = { (uint8_t)(desc.wInputRegister & 0xFF),
-                           (uint8_t)(desc.wInputRegister >> 8) };
-        int got = i2cWriteRead(res.virtBase, reg, 2, rbuf, 14);
-        if (got < 0) { println("read failed"); continue; }
-
-        /* ELAN 14-byte report layout:
-         * [0,1]=len [2]=reportID [3]=flags [4,5]=X [6,7]=Y */
-        uint8_t flags = rbuf[3];
-        uint16_t x = (uint16_t)rbuf[4] | ((uint16_t)rbuf[5] << 8);
-        uint16_t y = (uint16_t)rbuf[6] | ((uint16_t)rbuf[7] << 8);
-
-        if (flags & 0x01) {
-            print("  TOUCH x="); u64toa(x, buf, 10); print(buf);
-            print(" y="); u64toa(y, buf, 10); print(buf);
-            print(" flags=0x"); u64toa(flags, buf, 16); println(buf);
+        sleep(2);
+        uint8_t rbuf[64] = {0};
+        int got = i2cWriteRead(base, reg, 2, rbuf, maxLen);
+        if (got < 0) { println("read error"); continue; }
+        uint16_t pktLen = (uint16_t)rbuf[0] | ((uint16_t)rbuf[1] << 8);
+        uint8_t  rid    = rbuf[2];
+        if (pktLen < 3) { println("  [--] idle"); continue; }
+        if (rid == 0x04) {
+            bool tip = (rbuf[3] & 0x02) != 0;
+            uint16_t x = (uint16_t)rbuf[4] | ((uint16_t)rbuf[5] << 8);
+            uint16_t y = (uint16_t)rbuf[6] | ((uint16_t)rbuf[7] << 8);
+            print(tip ? "  [ABS] x=" : "  [ABS-notip] x=");
+            u64toa(x, buf, 10); print(buf);
+            print(" y="); u64toa(y, buf, 10); println(buf);
+        } else if (rid == 0x01) {
+            int8_t dx = (int8_t)rbuf[4];
+            int8_t dy = (int8_t)rbuf[5];
+            print("  [REL] dx="); u64toa((uint64_t)(int64_t)dx, buf, 10); print(buf);
+            print(" dy="); u64toa((uint64_t)(int64_t)dy, buf, 10); println(buf);
         } else {
-            println("  idle");
+            print("  [0x"); u64toa(rid, buf, 16); print(buf); println("] unknown");
         }
     }
     println("poll done.");
