@@ -7,48 +7,75 @@
 #include <stdio.h>
 #include <string.h>
 
+
 static bool             hidI2cActive = false;
 static HidI2cDescriptor hidGlobalDesc;
 static uint64_t         hidGlobalBase = 0;
 static uint8_t          hidGlobalAddr = 0;
 
+static uint8_t hidLastReport[64] = {0};
+static uint16_t hidLastReportLen = 0;
+
 bool hidI2cIsActive() { return hidI2cActive; }
 
-/* HID-over-I2C register for ELAN descriptor */
-#define HID_DESC_REG        0x0001
+/* HID-over-I2C register address for HID descriptor (spec §5.1) */
+#define HID_DESC_REG     0x0001
 
-/* HID output commands (written to wCommandRegister) */
-#define HID_CMD_RESET       0x0100
-#define HID_CMD_SET_POWER   0x0800
+/* Command opcodes - placed in byte[2] of the 4-byte command frame:
+ *   [cmdReg_lo][cmdReg_hi][opcode][param]
+ * Source: HID over I2C spec §7.2 and Linux i2c-hid-core.c              */
+#define HID_OP_SET_POWER 0x08   /* was incorrectly 0x0800 in prior version */
+#define HID_OP_RESET     0x01   /* was incorrectly 0x0100 in prior version */
+#define HID_POWER_ON     0x00
 
-/* SET_POWER values */
-#define HID_POWER_ON        0x00
-#define HID_POWER_SLEEP     0x01
+/* Touchpad resolution - from actual HID report descriptor on MSI Modern 14.
+ * Extracted from /sys/kernel/debug/hid/0018:04F3:3282.0001/rdesc:
+ *   X: 26 5b 0e  → logical max = 0x0E5B = 3675
+ *   Y: 26 d5 08  → logical max = 0x08D5 = 2261
+ * Report ID for multitouch: 0x04  (from rdesc: 85 04 = Report ID 4)
+ * Driver used by Linux: hid-multitouch (not elan_i2c - standard HID mode) */
+#define ELAN_MAX_X  3675
+#define ELAN_MAX_Y  2261
+#define HID_REPORT_ID_TOUCH  0x04
 
-/* Write a 2-byte little-endian register address then read `len` bytes. */
-static int hidReadReg(uint64_t base, uint16_t reg,
-                      uint8_t* buf, uint16_t len) {
+/* Counter for raw report dumps - print first N reports unconditionally
+ * so we can verify byte layout against the rdesc on real hardware.      */
+static int hidRawDumpCount = 0;
+#define HID_RAW_DUMP_MAX 0
+
+static int hidReadReg(uint64_t base, uint16_t reg, uint8_t* buf, uint16_t len) {
     uint8_t addr[2] = { (uint8_t)(reg & 0xFF), (uint8_t)(reg >> 8) };
     return i2cWriteRead(base, addr, 2, buf, len);
 }
 
-/* Write `len` bytes to `reg` (register address first, then data). */
-static int hidWriteReg(uint64_t base, uint16_t reg,
-                       const uint8_t* data, uint16_t len) {
-    uint8_t buf[64];
-    if (len + 2 > 64) return -1;
-    buf[0] = (uint8_t)(reg & 0xFF);
-    buf[1] = (uint8_t)(reg >> 8);
-    memcpy(buf + 2, data, len);
-    return i2cSend(base, buf, (uint32_t)(len + 2));
+/* Send the standard 4-byte HID-over-I2C command frame (spec §7.2):
+ *   byte 0: wCommandRegister low byte
+ *   byte 1: wCommandRegister high byte
+ *   byte 2: opcode  (HID_OP_*)
+ *   byte 3: param   (e.g. HID_POWER_ON or 0x00)                        */
+static int hidWriteCmd(uint64_t base, uint16_t cmdReg,
+                       uint8_t opcode, uint8_t param) {
+    uint8_t buf[4];
+    buf[0] = (uint8_t)(cmdReg & 0xFF);
+    buf[1] = (uint8_t)(cmdReg >> 8);
+    buf[2] = opcode;
+    buf[3] = param;
+    return i2cSend(base, buf, 4);
 }
+
+const HidI2cDescriptor* hidI2cGetDesc() { return &hidGlobalDesc; }
 
 int hidI2cGetDescriptor(uint64_t base, uint8_t addr,
                         HidI2cDescriptor* out) {
+
     (void)addr;
+    
+    /* Flush any stale RX FIFO bytes before reading descriptor */
+    while (i2cRead(base, DW_IC_RXFLR) & 0xFF)
+        i2cRead(base, DW_IC_DATA_CMD);
+        
     uint8_t buf[30];
 
-    /* Retry up to 3 times - ELAN may need an extra wake cycle */
     int ok = -1;
     for (int attempt = 0; attempt < 5 && ok < 0; attempt++) {
         memset(buf, 0, sizeof(buf));
@@ -65,11 +92,14 @@ int hidI2cGetDescriptor(uint64_t base, uint8_t addr,
 
     memcpy(out, buf, sizeof(HidI2cDescriptor));
 
-    printf("[hid] descriptor: len=%u inputReg=0x%04x maxIn=%u cmdReg=0x%04x\n",
-           out->wHIDDescLength,
-           out->wInputRegister,
-           out->wMaxInputLength,
-           out->wCommandRegister);
+    printf("[hid] descriptor: len=%u bcd=0x%04x\n",
+           out->wHIDDescLength, out->bcdVersion);
+    printf("[hid]   wInputRegister  =0x%04x  wMaxInputLength=%u\n",
+           out->wInputRegister, out->wMaxInputLength);
+    printf("[hid]   wCommandRegister=0x%04x  wDataRegister  =0x%04x\n",
+           out->wCommandRegister, out->wDataRegister);
+    printf("[hid]   wVendorID=0x%04x  wProductID=0x%04x  wVersionID=0x%04x\n",
+           out->wVendorID, out->wProductID, out->wVersionID);
 
     if (out->wHIDDescLength < 18 || out->wHIDDescLength > 30) {
         printf("[hid] descriptor length suspicious: %u\n", out->wHIDDescLength);
@@ -82,9 +112,7 @@ int hidI2cReset(uint64_t base, uint8_t addr,
                 const HidI2cDescriptor* desc) {
     (void)addr;
 
-    /* Flush stale TX abort state before issuing commands.
-     * On the second call the controller may have leftover abort state
-     * from the previous run which corrupts transactions.              */
+    /* Flush any stale TX abort state before issuing commands */
     i2cWrite(base, DW_IC_ENABLE, 0);
     sleep(1);
     i2cRead(base, DW_IC_CLR_TX_ABRT);
@@ -92,50 +120,60 @@ int hidI2cReset(uint64_t base, uint8_t addr,
     i2cWrite(base, DW_IC_ENABLE, 1);
     sleep(1);
 
-    /* SET_POWER ON */
-    uint8_t setPower[4];
-    setPower[0] = (uint8_t)(desc->wCommandRegister & 0xFF);
-    setPower[1] = (uint8_t)(desc->wCommandRegister >> 8);
-    setPower[2] = (uint8_t)((HID_CMD_SET_POWER | HID_POWER_ON) & 0xFF);
-    setPower[3] = (uint8_t)((HID_CMD_SET_POWER | HID_POWER_ON) >> 8);
-    if (i2cSend(base, setPower, 4) < 0) {
+    /* SET_POWER ON - spec §7.2.2
+     * Frame: [cmdReg_lo][cmdReg_hi][0x08][0x00]                        */
+    if (hidWriteCmd(base, desc->wCommandRegister,
+                    HID_OP_SET_POWER, HID_POWER_ON) < 0) {
         printf("[hid] SET_POWER ON failed\n");
         return -1;
     }
+    sleep(2);
 
-    /* small delay */
-    sleep(1);
-
-    /* RESET */
-    uint8_t reset[4];
-    reset[0] = (uint8_t)(desc->wCommandRegister & 0xFF);
-    reset[1] = (uint8_t)(desc->wCommandRegister >> 8);
-    reset[2] = (uint8_t)(HID_CMD_RESET & 0xFF);
-    reset[3] = (uint8_t)(HID_CMD_RESET >> 8);
-    if (i2cSend(base, reset, 4) < 0) {
+    /* RESET - spec §7.2.1
+     * Frame: [cmdReg_lo][cmdReg_hi][0x01][0x00]
+     * NOTE: for ELAN devices do NOT send another SET_POWER after RESET.
+     * Linux quirk QUIRK_RESET_ON_RESUME documents this.                */
+    if (hidWriteCmd(base, desc->wCommandRegister,
+                    HID_OP_RESET, 0x00) < 0) {
         printf("[hid] RESET failed\n");
         return -1;
     }
 
-    sleep(2);
-    printf("[hid] reset complete\n");
+    /* Spec §7.2.1.2: after RESET the device asserts its interrupt line
+     * and sends exactly two zero bytes {0x00, 0x00} as a sentinel.
+     * This MUST be drained before any real report read or the first
+     * report will be garbage and subsequent reads may desync.           */
+    sleep(10);
+    uint8_t sentinel[2] = { 0xFF, 0xFF };
+    uint8_t inputReg[2] = { (uint8_t)(desc->wInputRegister & 0xFF),
+                             (uint8_t)(desc->wInputRegister >> 8) };
+    i2cWriteRead(base, inputReg, 2, sentinel, 2);
+    printf("[hid] sentinel: %02x %02x%s\n",
+           sentinel[0], sentinel[1],
+           (sentinel[0] == 0x00 && sentinel[1] == 0x00) ? " (OK)" : " (unexpected - non-fatal)");
 
-    /* Switch ELAN to absolute multitouch mode.
-     * Write value 0x0003 to ELAN vendor register 0x0300 (TP Driver Control).
-     * This is a raw I2C write: [reg_lo, reg_hi, value_lo, value_hi].
-     * After this command reports change from relative (ID=0x01, 3 bytes)
-     * to absolute multitouch (ID=0x5D, variable length).              */
-    uint8_t setAbs[4] = { 0x00, 0x03, 0x03, 0x00 };
-    i2cWrite(base, DW_IC_ENABLE, 0);
-    sleep(1);
-    i2cWrite(base, DW_IC_TAR, 0x15);
-    i2cWrite(base, DW_IC_ENABLE, 1);
-    sleep(1);
-    if (i2cSend(base, setAbs, 4) < 0)
-        printf("[hid] abs mode cmd failed (non-fatal)\n");
-    else
-        printf("[hid] absolute mode cmd sent\n");
-    sleep(1);
+    uint8_t setMode[6];
+    setMode[0] = (uint8_t)(desc->wCommandRegister & 0xFF);  // 0x05
+    setMode[1] = (uint8_t)(desc->wCommandRegister >> 8);    // 0x00
+    setMode[2] = 0x03;   // SET_REPORT opcode
+    setMode[3] = 0x03;   // report type: Feature (0x03) | report ID: 0x00 → = 0x03
+    setMode[4] = (uint8_t)(desc->wDataRegister & 0xFF);     // 0x06
+    setMode[5] = (uint8_t)(desc->wDataRegister >> 8);       // 0x00
+    i2cSend(base, setMode, 6);
+    sleep(2);
+    printf("[hid] SET_REPORT mode cmd sent\n");
+
+    /* NOTE: the setAbs command (writing vendor reg 0x0300) has been removed.
+     * This device (ELAN 04F3:3282 on MSI Modern 14) is operated by Linux's
+     * hid-multitouch driver in standard HID mode - it natively produces
+     * report ID 0x04 multitouch reports. The proprietary absolute mode
+     * command was incorrect for this device and also toggled DW_IC_ENABLE
+     * mid-sequence which corrupts the FIFO state.                       */
+    memset(hidLastReport, 0, sizeof(hidLastReport));
+    hidLastReportLen = 0;
+    
+    hidRawDumpCount = 0;   /* reset dump counter so next init gets fresh dumps */
+    printf("[hid] reset complete\n");
     return 0;
 }
 
@@ -151,34 +189,98 @@ int hidI2cReadReport(uint64_t base, uint8_t addr,
     uint8_t buf[256];
     if (hidReadReg(base, desc->wInputRegister, buf, maxLen) < 0)
         return -1;
-    /* HID-over-I2C framing: buf[0..1]=length LE, buf[2]=reportID, buf[3..N]=payload
-     * ELAN 14-byte confirmed: reportID 0x01=touch, 0x03=idle
-     *   buf[3] flags: bit0=finger, bit1=btn_left, bit2=btn_right
-     *   buf[4..5] X (12-bit LE: lo byte, hi nibble)
-     *   buf[6..7] Y (12-bit LE: lo byte, hi nibble)
-     *   buf[8..13] pressure/reserved                                   */
+
+    /* HID-over-I2C framing (spec §5.2):
+     *   buf[0..1] = total packet length LE (includes these 2 bytes)
+     *   buf[2]    = HID report ID
+     *   buf[3..N] = report payload                                      */
     uint16_t reportLen = (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
+
+    /* Empty / idle packet */
     if (reportLen < 3 || reportLen > maxLen) return 0;
 
+    if (reportLen == hidLastReportLen &&
+        memcmp(buf, hidLastReport, reportLen) == 0) return 0;
+    memcpy(hidLastReport, buf, reportLen);
+    hidLastReportLen = reportLen;
+
     uint8_t reportId = buf[2];
-    if (reportId != 0x01) return 0;
 
-    uint8_t flags   = buf[3];
-    out->fingerDown = (flags & 0x01) != 0;
-    out->leftClick  = (flags & 0x02) != 0;
-
-    if (out->fingerDown && reportLen >= 8) {
-        out->x = (uint16_t)buf[4] | ((uint16_t)(buf[5] & 0x0F) << 8);
-        out->y = (uint16_t)buf[6] | ((uint16_t)(buf[7] & 0x0F) << 8);
+    /* Unconditionally dump first HID_RAW_DUMP_MAX reports so we can
+     * verify byte layout against the rdesc on real hardware.
+     * Remove or guard with a flag once layout is confirmed.             */
+    if (hidRawDumpCount < HID_RAW_DUMP_MAX) {
+        printf("[hid] raw[%d]: len=%u id=0x%02x  ", hidRawDumpCount, reportLen, reportId);
+        int dumpN = (int)reportLen < 16 ? (int)reportLen : 16;
+        for (int i = 3; i < dumpN + 2 && i < (int)maxLen; i++) {
+            printf("%02x ", buf[i]);
+        }
+        printf("\n");
+        hidRawDumpCount++;
     }
 
-    return 1;
+    /* ------------------------------------------------------------------ *
+     * Report ID 0x04 - standard HID multitouch (primary touch report)    *
+     *                                                                     *
+     * Confirmed from rdesc on MSI Modern 14 (04F3:3282):                 *
+     *   Report ID 4, Usage Page: Digitizer, Usage: Touch Pad             *
+     *   Contact collection:                                               *
+     *     Confidence (1 bit) + Tip Switch (1 bit) → buf[3] bits [0,1]    *
+     *     Padding (2 bits)                         → buf[3] bits [2,3]    *
+     *     Contact ID (4 bits)                      → buf[3] bits [4..7]   *
+     *     X: 16-bit LE, max 3675                   → buf[4..5]            *
+     *     Y: 16-bit LE, max 2261                   → buf[6..7]            *
+     *   Scan Time (16-bit)                         → follows contacts     *
+     *   Contact Count (8-bit)                                             *
+     *   Button 1 (1 bit)                                                  *
+     *                                                                     *
+     * NOTE: byte offsets beyond [7] depend on how many contacts precede  *
+     * the button field. Verify with the raw dump on first boot.          *
+     * ------------------------------------------------------------------ */
+    if (reportId == HID_REPORT_ID_TOUCH) {
+        /* Tip Switch is bit 1 of buf[3] (Confidence is bit 0 per rdesc) */
+        out->fingerDown = (buf[3] & 0x02) != 0;
+        /* Button field position depends on contact count field value.
+         * For single-contact packets it's typically at buf[10] bit 0.
+         * Set leftClick conservatively from buf[3] bit 0 (Confidence)
+         * until the raw dump confirms the real button byte position.    */
+        out->leftClick  = false;  /* will be fixed once raw dump confirms offset */
+
+        if (out->fingerDown && reportLen >= 8) {
+            out->x = (uint16_t)buf[4] | ((uint16_t)buf[5] << 8);
+            out->y = (uint16_t)buf[6] | ((uint16_t)buf[7] << 8);
+            /* Clamp to declared max */
+            if (out->x > ELAN_MAX_X) out->x = ELAN_MAX_X;
+            if (out->y > ELAN_MAX_Y) out->y = ELAN_MAX_Y;
+        }
+        return 1;
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Report ID 0x01 - relative mouse fallback                           *
+     * Present in the rdesc as a separate top-level collection.           *
+     * Layout: flags byte, rel-X byte, rel-Y byte (standard HID mouse).  *
+     * ------------------------------------------------------------------ */
+    if (reportId == 0x01) {
+        /* Relative mouse report — rdesc: flags, rel-X (signed), rel-Y (signed).
+         * Device is in relative mode. Use deltas to move cursor.
+         * Return 2 so caller applies as relative, not absolute.         */
+        out->leftClick  = (buf[3] & 0x01) != 0;
+        out->rightClick = (buf[3] & 0x02) != 0;
+        out->fingerDown = true;
+        out->x = (uint16_t)(int8_t)buf[4];   /* signed delta, cast via int8 */
+        out->y = (uint16_t)(int8_t)buf[5];
+        return 2;
+    }
+
+    /* Unknown report ID - already dumped above if within dump window */
+    return 0;
 }
 
 int hidI2cInit(uint64_t base, uint8_t addr, HidI2cDescriptor* out) {
     if (hidI2cGetDescriptor(base, addr, out) < 0) return -1;
     if (hidI2cReset(base, addr, out) < 0) return -1;
-    printf("[hid] HID-over-I2C ready: vendor=0x%04x product=0x%04x\n",
+    printf("[hid] ready: vendor=0x%04x product=0x%04x\n",
            out->wVendorID, out->wProductID);
     hidGlobalBase = base;
     hidGlobalAddr = addr;
@@ -187,19 +289,30 @@ int hidI2cInit(uint64_t base, uint8_t addr, HidI2cDescriptor* out) {
     return 0;
 }
 
-/* Touchpad resolution - ELAN typically reports 0..4096 on both axes.
- * Scale to screen coords.                                              */
-#define ELAN_MAX_X  4096
-#define ELAN_MAX_Y  4096
-
 void hidI2cPoll(uint64_t base, uint8_t addr,
                 const HidI2cDescriptor* desc) {
     TouchReport rep;
-    if (hidI2cReadReport(base, addr, desc, &rep) != 1) return;
-    if (!rep.fingerDown) return;
+    int r = hidI2cReadReport(base, addr, desc, &rep);
+    if (r == 0 || r < 0) return;
 
-    mouse_position_x = (int)((uint32_t)rep.x * SCREEN_WIDTH  / ELAN_MAX_X);
-    mouse_position_y = (int)((uint32_t)rep.y * SCREEN_HEIGHT / ELAN_MAX_Y);
+    if (r == 1) {
+        /* Absolute multitouch (report 0x04) */
+        mouse_position_x = (int)((uint32_t)rep.x * SCREEN_WIDTH  / ELAN_MAX_X);
+        mouse_position_y = (int)((uint32_t)rep.y * SCREEN_HEIGHT / ELAN_MAX_Y);
+    } else if (r == 2) {
+        int dx = (int)(int16_t)rep.x;
+        int dy = (int)(int16_t)rep.y;
+        if (dx != 0) {
+            int sign = dx > 0 ? 1 : -1;
+            int abs_d = dx < 0 ? -dx : dx;
+            mouse_position_x += sign * (abs_d > 3 ? abs_d + (abs_d - 3) : abs_d);
+        }
+        if (dy != 0) {
+            int sign = dy > 0 ? 1 : -1;
+            int abs_d = dy < 0 ? -dy : dy;
+            mouse_position_y += sign * (abs_d > 3 ? abs_d + (abs_d - 3) : abs_d);
+        }
+    }
 
     if (mouse_position_x < 0) mouse_position_x = 0;
     if (mouse_position_y < 0) mouse_position_y = 0;
@@ -209,11 +322,12 @@ void hidI2cPoll(uint64_t base, uint8_t addr,
         mouse_position_y = (int)SCREEN_HEIGHT - 1;
 
     clickedLeft = rep.leftClick;
+    clickedRight = rep.rightClick;
 }
 
-/* Called from timer_irq_0 at 60Hz. No printf, no blocking.
- * Reads one report and updates mouse_position_x/y + clickedLeft.       */
+/* Called from timer_irq_0 at 60 Hz. No printf, no blocking. */
 void hidI2cTickPoll() {
     if (!hidI2cActive || !hidGlobalBase) return;
+
     hidI2cPoll(hidGlobalBase, hidGlobalAddr, &hidGlobalDesc);
 }
