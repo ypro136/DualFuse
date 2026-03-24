@@ -87,6 +87,15 @@ extern "C" void kernel_main(void)
     printf("mouse initialized.\n");
 
     i2cInitialize();
+
+    // Auto-init HID layer if I2C controller was found
+    if (i2cGetBase() != 0) {
+        static HidI2cDescriptor bootDesc;
+        if (hidI2cInit(i2cGetBase(), I2C_ADDR_ELAN_TOUCHPAD, &bootDesc) == 0)
+            printf("[hid] touchpad ready\n");
+        else
+            printf("[hid] touchpad init failed\n");
+    }
     
     initialize_xp_desktop();
 
