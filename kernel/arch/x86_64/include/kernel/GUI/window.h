@@ -8,6 +8,7 @@ enum XPWindowType {
     WINDOW_TYPE_NONE     = 0,
     WINDOW_TYPE_CONSOLE  = 1,
     WINDOW_TYPE_EXPLORER = 2,
+    WINDOW_TYPE_CALC     = 3,
 };
 
 //   Callback bundle                   ─

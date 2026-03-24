@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+int atoi(const char *str);
+
 class Console;
 
 class Shell

@@ -12,6 +12,7 @@
 #include <GUI_input.h>
 #include <panel.h>
 #include <file_explorer.h>
+#include <calculator.h>
 #include <apic.h>
 
 
@@ -443,8 +444,9 @@ void initialize_xp_desktop()
 #endif
 
     create_taskbar();
-    create_desktop_icon(20, 15, "Console", 0x000080, on_console_icon_click);
-    create_desktop_icon(20, 70, "Files", 0xFFCC00, on_file_explorer_icon_click);
+    create_desktop_icon(20,  15, "Console", 0x000080, on_console_icon_click);
+    create_desktop_icon(20,  70, "Files",   0xFFCC00, on_file_explorer_icon_click);
+    create_desktop_icon(20, 125, "Calc",    0x007F00, on_calculator_icon_click);
 
     if (!console_initialized)
     {
