@@ -15,6 +15,9 @@
 #include <calculator.h>
 #include <apic.h>
 
+#include <png_loader.h>
+#include <wallpaper_data.h> //image!!! TODO: make achual images
+
 
 
 //   Globals                      
@@ -245,10 +248,19 @@ void draw_taskbar()
 
 void draw_desktop_background()
 {
-#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-    printf("[DEBUG_GUI] draw_desktop_background\n");
-#endif
-    draw_gradient(0, 0, SCREEN_WIDTH, TASKBAR_Y, 0x008DD5, 0x0078D7, true);
+    #if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
+        printf("[DEBUG_GUI] draw_desktop_background\n");
+    #endif
+
+    if (png_wallpaper_loaded())
+    {
+        png_blit_wallpaper();
+    }
+    else
+    {
+        // Fallback: original XP-blue gradient
+        draw_gradient(0, 0, SCREEN_WIDTH, TASKBAR_Y, 0x008DD5, 0x0078D7, true);
+    }
 }
 
 //   Desktop icons                    
@@ -442,6 +454,11 @@ void initialize_xp_desktop()
 #if defined(DEBUG_GUI)
     printf("[DEBUG_GUI] initialize_xp_desktop: start\n");
 #endif
+
+    if (!png_load_wallpaper(wallpaper_png, wallpaper_png_len))
+    {
+        printf("[GUI] wallpaper load failed, using gradient fallback\n");
+    }
 
     create_taskbar();
     create_desktop_icon(20,  15, "Console", 0x000080, on_console_icon_click);
