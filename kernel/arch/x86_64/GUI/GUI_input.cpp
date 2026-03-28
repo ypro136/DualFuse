@@ -9,6 +9,7 @@
 #include <mouse.h>
 #include <panel.h>
 #include <file_explorer.h>
+#include <calculator.h>
 
 bool should_exit      = false;
 bool old_clickedLeft  = false;
@@ -44,6 +45,13 @@ static void dispatch_to_active_window(bool left_clicked, bool right_clicked)
                 left_clicked, right_clicked);
             break;
 
+        case WINDOW_TYPE_CALC:
+            if (left_clicked)
+                calc_handle_mouse(
+                    static_cast<XPCalculator*>(active_xp_window->context),
+                    mouse_position_x, mouse_position_y);
+            break;
+
         case WINDOW_TYPE_CONSOLE:
         case WINDOW_TYPE_NONE:
         default:
@@ -51,9 +59,19 @@ static void dispatch_to_active_window(bool left_clicked, bool right_clicked)
     }
 }
 
+// ─── Route keyboard input to the active window ────────────────────────────
+// Called from keyboard.cpp whenever a printable character is produced
+// and the active window is not a console.
+void GUI_dispatch_key(char c)
+{
+    if (!active_xp_window || !active_xp_window->context) return;
+
+    if (active_xp_window->window_type == WINDOW_TYPE_CALC)
+        calc_input(static_cast<XPCalculator*>(active_xp_window->context), c);
+}
+
 bool GUI_input_loop()
 {
-
     bool left_clicked  = mouse_down_left();
     bool right_clicked = mouse_down_right();
 

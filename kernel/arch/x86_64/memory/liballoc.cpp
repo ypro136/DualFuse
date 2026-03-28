@@ -509,60 +509,35 @@ void free(void *ptr)
 
 void* calloc(size_t nobj, size_t size)
 {
-	#if defined(DEBUG_MEMORY)
-    printf("[memory] enter calloc.\n");
-    #endif
-	#if defined(DEBUG_MEMORY)
-    printf("[memory] nobj is : %d, size is : %d \n", nobj, size);
-    #endif
-       int real_size;
-       void *p;
-
-       real_size = nobj * size;
-	   #if defined(DEBUG_MEMORY)
-    printf("[memory] real_size is : %d\n", real_size);
-    #endif
-       
-       p = malloc( real_size );
-	   #if defined(DEBUG_MEMORY)
-    printf("[memory] calloc allocation done at: %lx\n", p);
-    #endif
-
-       liballoc_memset( p  + bootloader.hhdmOffset, 0, real_size );
-	   #if defined(DEBUG_MEMORY)
-    printf("[memory] memset to 0\n");
-    #endif
-
-       return p  + bootloader.hhdmOffset;
+    int real_size = nobj * size;
+    void *p = malloc( real_size );
+    if ( p ) liballoc_memset( p, 0, real_size ); 
+    return p;
 }
 
 
 
-void*   realloc(void *p, size_t size)
+void* realloc(void *p, size_t size)
 {
-	void *ptr;
-	struct boundary_tag *tag;
-	int real_size;
-	
-	if ( size == 0 )
-	{
-		free( p );
-		return NULL;
-	}
-	if ( p == NULL ) return malloc( size );
+    void *ptr;
+    struct boundary_tag *tag;
+    int real_size;
 
-	if ( liballoc_lock != NULL ) liballoc_lock();		// lockit
-		tag = (struct boundary_tag*)((unsigned int)p  + bootloader.hhdmOffset - sizeof( struct boundary_tag ));
-		real_size = tag->size;
-	if ( liballoc_unlock != NULL ) liballoc_unlock();
+    if ( size == 0 )      { free( p ); return NULL; }
+    if ( p == NULL )      return malloc( size );
 
-	if ( real_size > size ) real_size = size;
+    liballoc_lock();
+    tag = (struct boundary_tag*)((unsigned int)p + bootloader.hhdmOffset - sizeof( struct boundary_tag ));
+    real_size = tag->size;
+    liballoc_unlock();
 
-	ptr = malloc( size ) + bootloader.hhdmOffset;
-	liballoc_memcpy( ptr, p, real_size );
-	free( p );
+    if ( real_size > (int)size ) real_size = (int)size;
 
-	return ptr;
+    ptr = malloc( size );        // ← no hhdmOffset, malloc handles it
+    liballoc_memcpy( ptr, p, real_size );
+    free( p );
+
+    return ptr;
 }
 
 // C++ operator new and delete implementations

@@ -8,11 +8,12 @@
 #include <console.h> 
 #include <liballoc.h>
 #include <apic.h>
+#include <GUI_input.h>   // GUI_dispatch_key
 
 #include <stdint.h>
 #include <stdio.h>
 
-// ─── State ─────────────────────────────────────────────────────────────────
+// State
 bool     shift_down = false;
 bool     capsLock   = false;
 char*    kbBuff     = nullptr;
@@ -20,7 +21,6 @@ uint32_t kbCurr     = 0;
 uint32_t kbMax      = 0;
 uint32_t kbTaskId   = 0;
 
-// ─── Special key codes ─────────────────────────────────────────────────────
 const uint32_t UNKNOWN = 0xFFFFFFFF;
 const uint32_t ESC     = 0xFFFFFFFF - 1;
 const uint32_t CTRL    = 0xFFFFFFFF - 2;
@@ -88,15 +88,7 @@ const uint32_t uppercase[128] = {
     UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN
 };
 
-const char sc_ascii[] = {
-    '?','?','1','2','3','4','5','6','7','8','9','0','-','=','?','?',
-    'Q','W','E','R','T','Y','U','I','O','P','[',']','?','?',
-    'A','S','D','F','G','H','J','K','L',';','\'','`','?','\\',
-    'Z','X','C','V','B','N','M',',','.','/',  '?','?','?',' '
-};
-
 static char key_buffer[1024] = {0};
-
 
 static void kb_backspace(char s[])
 {
@@ -107,21 +99,11 @@ static void kb_backspace(char s[])
 static void kb_append(char s[], char c, int max_len)
 {
     int len = strlen(s);
-    if (len < max_len - 1)
-    {
-        s[len]     = c;
-        s[len + 1] = '\0';
-    }
+    if (len < max_len - 1) { s[len] = c; s[len + 1] = '\0'; }
 }
-
-// ─── Initialization ────────────────────────────────────────────────────────
 
 void keyboard_initialize()
 {
-#if defined(DEBUG_KEYBOARD)
-    printf("[keyboard] init\n");
-#endif
-
     shift_down = false;
     capsLock   = false;
     int keyboard_irq = 1;
@@ -130,9 +112,7 @@ void keyboard_initialize()
         keyboard_irq = ioApicRedirect(keyboard_irq, false);
 
     if (isr_initialized)
-    {
         irq_install_handler(1, &keyboard_handler);
-    }
     else
     {
         printf("[keyboard] warning: ISR not initialized, keyboard skipped\n");
@@ -154,91 +134,79 @@ void keyboard_Write(uint16_t port, uint8_t value)
     out_port_byte(port, value);
 }
 
-
 void keyboard_handler(struct interrupt_registers* /*registers*/)
 {
     uint8_t byte      = in_port_byte(0x60);
-    uint8_t scan_code = byte & 0x7F;    // which key
-    uint8_t released  = byte & 0x80;    // 0x80 = key-up
-
-#if defined(DEBUG_KEYBOARD)
-    printf("[keyboard] scan:%d released:%d\n", scan_code, released);
-#endif
+    uint8_t scan_code = byte & 0x7F;
+    uint8_t released  = byte & 0x80;
 
     switch (scan_code)
     {
-        // Ignored keys (function, ESC, CTRL, NUMLCK, SCRLCK, ALT …)
         case 1: case 29: case 56:
         case 59: case 60: case 61: case 62: case 63: case 64:
         case 65: case 66: case 67: case 68: case 87: case 88:
             return;
-
-        case 42:    // Left Shift
+        case 42:
             shift_down = (released == 0);
             return;
-
-        case 58:    // Caps Lock (toggle on key-down only)
-            if (released == 0)
-                capsLock = !capsLock;
+        case 58:
+            if (released == 0) capsLock = !capsLock;
             return;
-
         default:
             break;
     }
 
     if (released != 0) return;
 
+    bool upper = shift_down ^ capsLock;
+    uint32_t mapped = upper ? uppercase[scan_code] : lowercase[scan_code];
+
+    // ── Non-console active window (Calculator etc.) ──────────────────────
+    // Forward the raw character; do NOT touch key_buffer or the console.
+    if (active_xp_window &&
+        active_xp_window->window_type != WINDOW_TYPE_CONSOLE &&
+        active_xp_window->window_type != WINDOW_TYPE_NONE)
+    {
+        if (mapped != UNKNOWN && mapped < 0x80)
+            GUI_dispatch_key((char)mapped);
+        return;
+    }
+
+    // ── Console path (original behaviour) ────────────────────────────────
     if (scan_code == BACKSPACE)
     {
         kb_backspace(key_buffer);
-        // Echo backspace to the active console
-        if (active_console)
-            active_console->print_char('\b');
+        if (active_console) active_console->print_char('\b');
         return;
     }
 
     if (scan_code == ENTER)
     {
-        if (active_console)
-            active_console->print_char('\n');
-
-        // Route the completed line to the shell bound to the active console
+        if (active_console) active_console->print_char('\n');
         if (active_console && active_console->get_shell())
             active_console->get_shell()->execute(key_buffer);
-
         key_buffer[0] = '\0';
         return;
     }
 
-    bool upper = shift_down ^ capsLock;   // XOR: shift inverts caps
-    uint32_t mapped = upper ? uppercase[scan_code] : lowercase[scan_code];
-
-    if (mapped == UNKNOWN || mapped >= 0x80) return;  // non-printable
+    if (mapped == UNKNOWN || mapped >= 0x80) return;
 
     char final_char = (char)mapped;
-
     kb_append(key_buffer, final_char, sizeof(key_buffer));
-    if (active_console)
-        active_console->print_char(final_char);
+    if (active_console) active_console->print_char(final_char);
 }
-
 
 bool keyboard_is_occupied() { return !!kbBuff; }
 
 bool keyboard_task_read(uint32_t taskId, char* buff, uint32_t limit, bool changeTaskState)
 {
     while (keyboard_is_occupied()) {}
-
     Task* task = task_get(taskId);
     if (!task) return false;
-
-    kbBuff    = buff;
-    kbCurr    = 0;
-    kbMax     = limit;
-    kbTaskId  = taskId;
-
-    if (changeTaskState)
-        task->state = TASK_STATE_WAITING_INPUT;
-
+    kbBuff   = buff;
+    kbCurr   = 0;
+    kbMax    = limit;
+    kbTaskId = taskId;
+    if (changeTaskState) task->state = TASK_STATE_WAITING_INPUT;
     return true;
 }
