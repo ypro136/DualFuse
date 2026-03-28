@@ -75,7 +75,6 @@ void isr_initialize() {
 
   remap_pic();
 
-
   // ISR exceptions 0 - 31
   for (int i = 0; i < 48; i++) {
     set_idt_gate(i, (uint64_t)asm_isr_redirect_table[i], 0x8E);
@@ -90,7 +89,7 @@ void isr_initialize() {
 
   isr_initialized = true;
 
-   printf("idt and isr initialized.\n");
+  printf("idt and isr initialized.\n");
 }
 
 
@@ -98,20 +97,17 @@ void handle_task_fault(AsmPassedInterrupt *regs) {
   if (regs->interrupt == 14) {
     uint64_t err_pos;
     asm volatile("movq %%cr2, %0" : "=r"(err_pos));
-    console_initialized = false; // disable console
+    console_initialized = false;
     printf("[isr] Page fault occured at cr2{%lx} rip{%lx}\n", err_pos,
            regs->rip);
   }
   bool last_console_state = console_initialized;
-  console_initialized = false; // disable console
+  console_initialized = false;
   printf("[isr::task] [%c] Killing task{%d} because of %s!\n",
          currentTask->kernel_task ? '-' : 'u', currentTask->id,
          exceptions[regs->interrupt]);
-  console_initialized = last_console_state; // restore console state
-  // printf("at %lx\n", regs->rip);
-  // Halt();
+  console_initialized = last_console_state;
   task_kill(currentTask->id, 139);
-  //schedule((uint64_t)regs);
 }
 
 extern "C" uint64_t handle_syscall_tssrsp(uint64_t rsp) {
@@ -156,35 +152,37 @@ void irq_uninstall_handler(int irq)
 
 void irq_handler(int irq, AsmPassedInterrupt *cpu)
 {
-      #if defined(DEBUG_ISR)
-      printf("[isr] irq_handler(%d)\n", irq);
-      #endif
+  #if defined(DEBUG_ISR)
+  printf("[isr] irq_handler(%d)\n", irq);
+  #endif
   void (*handler)(struct interrupt_registers *registers);
 
-      handler = irq_routines[irq];
+  handler = irq_routines[irq];
 
-      if(handler)
-      {
-        #if defined(DEBUG_ISR)
-        printf("[isr] irq_handler: handler for %d exists. calling....\n", irq);
-        #endif
-        handler((uint64_t)cpu);
-        return;
-      }
-      bool last_console_state = console_initialized;
-      console_initialized = false; // disable console
-      printf("irq %d was called befor it was initalized\n", irq);
-      console_initialized = last_console_state; // restore console state
+  if (handler)
+  {
+    #if defined(DEBUG_ISR)
+    printf("[isr] irq_handler: handler for %d exists. calling....\n", irq);
+    #endif
+    handler((uint64_t)cpu);
+    return;
+  }
+  bool last_console_state = console_initialized;
+  console_initialized = false;
+  printf("irq %d was called befor it was initalized\n", irq);
+  console_initialized = last_console_state;
 }
 
 // pass stack ptr
-extern "C" void handle_interrupt(uint64_t rsp) 
+extern "C" void handle_interrupt(uint64_t rsp)
 {
   #if defined(DEBUG_INTERRUPT)
-    printf("[isr] handle_interrupt\n");
-    #endif
+  printf("[isr] handle_interrupt\n");
+  #endif
+
   AsmPassedInterrupt *cpu = (AsmPassedInterrupt *)rsp;
-  if (cpu->interrupt >= 32 && cpu->interrupt <= 47) 
+
+  if (cpu->interrupt >= 32 && cpu->interrupt <= 47)
   { // IRQ
     if (apic_initialized)
     {
@@ -196,11 +194,12 @@ extern "C" void handle_interrupt(uint64_t rsp)
         out_port_byte(0xA0, 0x20);
       }
       out_port_byte(0x20, 0x20);
-  }
+    }
 
     #if defined(DEBUG_INTERRUPT)
     printf("[isr] handle_interrupt: interrupt:%d\n", 32 - cpu->interrupt);
     #endif
+
     switch (cpu->interrupt) {
     case 32 + 0: // irq0 timer
       irq_handler(0, cpu);
@@ -214,7 +213,7 @@ extern "C" void handle_interrupt(uint64_t rsp)
       irq_handler(1, cpu);
       break;
     }
-    case 32 + 11: // irq11 achi
+    case 32 + 11: // irq11 ahci
       irq_handler(11, cpu);
       break;
     case 32 + 12: // irq12 mouse
@@ -237,46 +236,54 @@ extern "C" void handle_interrupt(uint64_t rsp)
       break;
     }
     }
-  } else if (cpu->interrupt >= 0 && cpu->interrupt <= 31) { // ISR
-    if (currentTask->systemCallInProgress)
+  }
+  else if (cpu->interrupt >= 0 && cpu->interrupt <= 31)
+  { // ISR
+    if (currentTask && currentTask->systemCallInProgress) // null check TODO: fix tasking
     {
       bool last_console_state = console_initialized;
-      console_initialized = false; // disable console
+      console_initialized = false;
       printf("[isr] Happened from system call!\n");
-      console_initialized = last_console_state; // restore console state
+      console_initialized = last_console_state;
     }
 
-    if (!currentTask->systemCallInProgress && tasksInitiated &&
-        currentTask->id != KERNEL_TASK_ID) { // && !currentTask->kernel_task
+    if (currentTask && !currentTask->systemCallInProgress
+        && tasksInitiated && currentTask->id != KERNEL_TASK_ID)
+    {
       handle_task_fault(cpu);
       return;
     }
 
-
-    if (cpu->interrupt == 14) {
-      uint64_t err_pos;
-      asm volatile("movq %%cr2, %0" : "=r"(err_pos));
+    // Print exception details before halting
+    {
       bool last_console_state = console_initialized;
-      console_initialized = false; // disable console
-      printf("[isr] Page fault occured at cr2{%lx} rip{%lx}\n", err_pos,
-             cpu->rip);
-      console_initialized = last_console_state; // restore console state
+      console_initialized = false;
+      if (cpu->interrupt == 14) {
+        uint64_t err_pos;
+        asm volatile("movq %%cr2, %0" : "=r"(err_pos));
+        printf("[isr] Page fault at cr2{%lx} rip{%lx} err{%lx}\n",
+               err_pos, cpu->rip, cpu->error);
+      } else {
+        printf("[isr] Exception %d (%s) at rip{%lx} err{%lx}\n",
+               cpu->interrupt, exceptions[cpu->interrupt],
+               cpu->rip, cpu->error);
+      }
+      console_initialized = last_console_state;
     }
+
     printf(format, exceptions[cpu->interrupt]);
 
     if (cpu->interrupt == 3) {
-      uint64_t err_pos;
-      printf("[isr] dbg : %d\n",cpu->interrupt);
+      printf("[isr] dbg : %d\n", cpu->interrupt);
       dbg_saveregs();
       dbg_main(cpu->interrupt);
       dbg_loadregs();
     }
 
-
-    // if (framebuffer == KERNEL_GFX)
-    //   printf(format, exceptions[cpu->interrupt]);
     Halt();
-  } else if (cpu->interrupt == 0x80) {
+  }
+  else if (cpu->interrupt == 0x80)
+  {
     syscall_handler(cpu);
   }
 }
