@@ -31,10 +31,12 @@ void block_init();
 int  block_read(uint32_t block, uint8_t* buffer);
 int  block_write(uint32_t block, uint8_t* buffer);
 
+const struct limine_file* findModule(const char* name);
+
 int  fs_create(const char* name);
 int  fs_mkdir(const char* name);
-int  fs_write(const char* name, const char* data);
-int  fs_read(const char* name, char* buffer);
+int (fs_write)(const char* name, const char* data);
+int (fs_read)(const char* name, char* buffer);
 int  fs_delete(const char* name);
 void fs_list(void);
 int  fs_cd(const char* name);

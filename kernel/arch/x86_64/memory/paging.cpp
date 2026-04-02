@@ -64,14 +64,15 @@ void virtual_map_region_by_length(uint64_t virt_addr, uint64_t phys_addr,
 
 // Will NOT check for the current task and update it's pagedir (on the struct)!
 void change_page_directory_unsafe(uint64_t *pd) {
-  uint64_t targ = paging_virtual_to_physical((size_t)pd);
-  if (!targ) {
-    printf("[paging] Could not change to pd{%lx}!\n", pd);
-    Halt();
-  }
-  asm volatile("movq %0, %%cr3" ::"r"(targ));
-
-  globalPagedir = pd;
+  printf("[paging] change_page_directory_unsafe: pd=%lx\n", (uint64_t)pd);
+    uint64_t targ = paging_virtual_to_physical((size_t)pd);
+    printf("[paging] physical lookup result: %lx\n", targ);
+    if (!targ) {
+        printf("[paging] Could not change to pd{%lx}!\n", pd);
+        Halt();
+    }
+    asm volatile("movq %0, %%cr3" ::"r"(targ));
+    globalPagedir = pd;
 }
 
 // Used by the scheduler to avoid accessing globalPagedir directly
@@ -175,7 +176,7 @@ size_t paging_virtual_to_physical(size_t virt_addr) {
   if (!globalPagedir)
     return 0;
 
-  if (virt_addr >= HHDMoffset && virt_addr <= (HHDMoffset + bootloader.mmTotal))
+  if (virt_addr >= HHDMoffset && virt_addr < (HHDMoffset + bootloader.mmPhysExtent))
     return virt_addr - HHDMoffset;
 
   size_t virt_addr_init = virt_addr;

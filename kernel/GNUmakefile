@@ -77,7 +77,7 @@ override LDFLAGS := -static -z text -Wl,--no-relax,-Y,$(SYSROOT)/usr/lib,--gc-se
 
 # debuging options -DDEBUG_MEMORY -DDEBUG_ISR -DDEBUG_CONSOLE -DDEBUG_TIMER -DDEBUG_PCI -DDEBUG_TASK -DDEBUG_KEYBOARD -DDEBUG_INTERRUPT -DDEBUG_APIC -DDEBUG_GUI -DDEBUG_FRAMEBUFFER -DDEBUG_MOUSE -DDEBUG_LOOPING
 
-CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -D__is_x86_64 -DLIMINE_API_REVISION=1 -Iinclude	-Iinclude/ -I./include/ 
+CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -D__is_x86_64 -DLIMINE_API_REVISION=1 -Iinclude	-Iinclude/ -I./include/ -DDEBUG_FILE_EXPLORER
 LIBS:=$(LIBS) -lc -lgcc
 
 ARCHDIR=arch/$(ARCH)
@@ -126,12 +126,12 @@ $(OBJS) \
 $(LIBS) 
 
 
-.PHONY: all clean install install-headers install-kernel
+.PHONY: all clean install install-kernel
 .SUFFIXES: .o .c .S .cpp .asm
 
 all: bin/$(OUTPUT).kernel
 
-bin/$(OUTPUT).kernel: install-headers $(OBJS) GNUmakefile
+bin/$(OUTPUT).kernel: .stamp-headers $(OBJS) GNUmakefile
 	echo "LINK_LIST $(LINK_LIST) \n"
 	echo "linking $@"
 	mkdir -p "$$(dirname $@)"
@@ -140,8 +140,8 @@ bin/$(OUTPUT).kernel: install-headers $(OBJS) GNUmakefile
 	@echo "\n"
 	-touch bin/all_dump.txt
 	-touch bin/kernel_main_dump.txt
-	objdump -D bin/DualFuse.kernel >> bin/all_dump.txt
-	objdump -D bin/DualFuse.kernel --start-address=0xffffffff80000000 -M intel | head -n 200 >> bin/kernel_main_dump.txt
+#	objdump -D bin/DualFuse.kernel >> bin/all_dump.txt
+#	objdump -D bin/DualFuse.kernel --start-address=0xffffffff80000000 -M intel | head -n 200 >> bin/kernel_main_dump.txt
 
 obj/crtbegin.o:
 	echo "building crtbegin.o file $<"
@@ -167,15 +167,9 @@ obj/printf.cpp.o:arch/x86_64/drivers/printf.cpp
 	$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) $(KERNEL_LIBS) -DPRINTF_INCLUDE_CONFIG_H=1 2>> $(ERROR_OUT_FILE)
 	@echo "\n"
 
-# obj/malloc.cpp.o:memory/malloc.cpp
-# 	mkdir -p "$$(dirname $@)"
-# 	@echo "$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) $(KERNEL_LIBS) -DHAVE_MMAP=0 -DLACKS_TIME_H=1 -DLACKS_SYS_PARAM_H=1 -LACKS_STRING_H=0 -Dmalloc_getpagesize=4096 -DNO_MALLOC_STATS=1 -DMORECORE_CONTIGUOUS=0 -DUSE_LOCKS=2 \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
-# 	$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) $(KERNEL_LIBS) -DHAVE_MMAP=0 -DLACKS_TIME_H=1 -DLACKS_SYS_PARAM_H=1 -LACKS_STRING_H=0 -Dmalloc_getpagesize=4096 -DNO_MALLOC_STATS=1 -DMORECORE_CONTIGUOUS=0 -DUSE_LOCKS=2 2>> $(ERROR_OUT_FILE)
-# 	@echo "\n"
-
 
 # Compilation rules for *.c files.
-obj/%.c.o: $(ARCHDIR)/%.c GNUmakefile install-headers
+obj/%.c.o: $(ARCHDIR)/%.c GNUmakefile .stamp-headers
 	echo "building c file $<"
 	mkdir -p "$$(dirname $@)"
 	@echo "$(CPP) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
@@ -191,7 +185,7 @@ obj/%.cpp.o: kernel/%.cpp
 	@echo "\n"
 
 # Compilation rules for *.cpp files.
-obj/%.cpp.o: $(ARCHDIR)/%.cpp GNUmakefile install-headers
+obj/%.cpp.o: $(ARCHDIR)/%.cpp GNUmakefile .stamp-headers
 	echo "building cpp file $<"
 	mkdir -p "$$(dirname $@)"
 	@echo "$(CPP) -MMD -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS) \n $(ERROR_OUT_TEXT)" | tee -a $(ERROR_OUT_FILE)
@@ -213,15 +207,38 @@ obj/%.asm.o: $(ARCHDIR)/%.asm GNUmakefile
 	nasm -g -f $(NASM_ARCH) $< -o $@ 2>> $(ERROR_OUT_FILE)
 	@echo "\n"
 
-clean:
+clean: clean_errorout
 	echo "Clean"
 	-rm -f bin/$(OUTPUT).kernel
 	-rm -f $(DESTDIR)$(BOOTDIR)$(OUTPUT).kernel
-#	-rm -rf bin obj
+#	-rm -f .stamp-headers
+	-rm -rf bin
+
+clean_errorout:
 	-rm -f errorout.log
+	-mkdir bin
+	touch errorout.log
 
 
-install: clean install-headers install-kernel
+
+install: clean .stamp-headers install-kernel
+
+# Stamp file: only re-installs headers when the source headers actually change
+.stamp-headers: $(shell find $(ARCH_LIBS_DIR) -name '*.h' 2>/dev/null) GNUmakefile
+	mkdir -p $(DESTDIR)$(INCLUDEDIR)
+	cp -R --preserve=timestamps $(ARCH_LIBS_DIR)/. $(DESTDIR)$(INCLUDEDIR)/.
+	cp -R --preserve=timestamps $(ARCH_LIBS_DIR) $(DESTDIR)$(INCLUDEDIR)/.
+	cp -R --preserve=timestamps $(ARCH_LIBS_DIR)/*/. $(DESTDIR)$(INCLUDEDIR)/.
+	cp -R --preserve=timestamps $(PROJECT_ROOT)/limine/limine.h $(DESTDIR)$(INCLUDEDIR)/limine.h
+	-rm -rf $(DESTDIR)$(INCLUDEDIR)/kernel      # ← -rm -rf
+	-rm -rf $(DESTDIR)$(INCLUDEDIR)/utility
+	-rm -rf $(DESTDIR)$(INCLUDEDIR)/boot
+	-rm -rf $(DESTDIR)$(INCLUDEDIR)/cpu
+	-rm -rf $(DESTDIR)$(INCLUDEDIR)/disk
+	-rm -rf $(DESTDIR)$(INCLUDEDIR)/memory
+	-rm -rf $(DESTDIR)$(INCLUDEDIR)/multitasking
+	-rm -rf $(DESTDIR)$(INCLUDEDIR)/drivers
+	touch .stamp-headers
 
 install-headers:
 	echo "objs $(OBJS) \n"

@@ -6,7 +6,7 @@ set -e # fail globally
 
 mkdir -m=rwx -p $LOG_DIR
 
-. ./clean.sh | tee $LOG_DIR/clean.log
+#. ./clean.sh | tee $LOG_DIR/clean.log
 
 if ! test -f "$PREFIX/bin/${TARGET}-gcc"; then
 	cd $ENVIROMENT_DIR
@@ -15,10 +15,6 @@ if ! test -f "$PREFIX/bin/${TARGET}-gcc"; then
 fi
 
 "$MUSL_DIR/build_musl.sh" --noreplace
-
-# cd $PROJECT_ROOT
-
-# "$PROJECT_ROOT/uacpi.sh"
 
 # exporting the new toolchain
 export LINKER=${TARGET}-ld
@@ -35,6 +31,8 @@ cd $PROJECT_ROOT
 . ./headers_${ARCH}.sh | tee $LOG_DIR/headers.log
 cd $PROJECT_ROOT
 . ./build_${ARCH}.sh | tee $LOG_DIR/build.log
+cd $PROJECT_ROOT
+. ./make_disk.sh | tee $LOG_DIR/make_disk.log
 cd $PROJECT_ROOT
 . ./iso_${ARCH}.sh | tee $LOG_DIR/iso.log
 cd $PROJECT_ROOT

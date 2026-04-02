@@ -380,8 +380,8 @@ void ahci_interrupt_handler(AsmPassedInterrupt *regs)
 {
   PCI *browse = firstPCI;
   #if defined(DEBUG_PCI)
-    //printf("[pci::ahci] ahci_interrupt_handler called\n");
-    #endif
+    printf("[pci::ahci] ahci_interrupt_handler called\n");
+  #endif
   while (browse) {
     if (browse->driver == PCI_DRIVER_AHCI) {
       ahci *ahciPtr = browse->extra;
@@ -473,7 +473,8 @@ bool AHCI_initialize(pci_device *device)
 
   // do a full HBA reset (as per 10.4.3)
   mem->ghc |= (1 << 0);
-  while (mem->ghc & (1 << 0)){}
+  while (mem->ghc & (1 << 0))
+  {}
   #if defined(DEBUG_PCI)
     printf("[pci::ahci] Reset successfully!\n");
     #endif

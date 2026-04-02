@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <limine.h>
+#include <bootloader.h>
 
 fs_t fs;
 int  current_dir_index = -1;  // -1 = root
@@ -50,6 +52,24 @@ static void build_path(int parent_index, const char* name, char* out)
     }
     strncpy(out, parent_path, MAX_PATH);
     strncat(out, name, MAX_PATH - strlen(out) - 1);
+}
+
+// Find a loaded module by its filename suffix
+// e.g. findModule("wallpaper.png") matches "/boot/assets/wallpaper.png"
+const struct limine_file* findModule(const char* name) {
+    if (!bootloader.modules) return nullptr;
+
+    for (uint64_t i = 0; i < bootloader.modules->module_count; i++) {
+        struct limine_file* f = bootloader.modules->modules[i];
+        if (!f || !f->path) continue;
+
+        // Match by suffix — finds "wallpaper.png" inside "/boot/assets/wallpaper.png"
+        size_t plen = strlen(f->path);
+        size_t nlen = strlen(name);
+        if (plen >= nlen && strcmp(f->path + plen - nlen, name) == 0)
+            return f;
+    }
+    return nullptr;
 }
 
 static int find_in_current(const char* name, int is_dir)

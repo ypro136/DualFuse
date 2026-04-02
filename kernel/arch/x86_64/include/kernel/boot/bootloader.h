@@ -22,11 +22,15 @@ typedef struct Bootloader {
 
   struct limine_framebuffer *framebuffer;
 
+  struct limine_module_response* modules;
+
   size_t rsdp;
   
   uint64_t first_entry_base;
 
   uint64_t   mmTotal;
+  uint64_t mmExecTotal;
+  uint64_t mmPhysExtent;
   uint64_t mmEntryCnt;
   LIMINE_PTR(struct limine_memmap_entry **) mmEntries;
 };

@@ -6,6 +6,8 @@
 #include <bootloader.h>
 #include <stdio.h>
 #include <string.h>
+#include <GUI_input.h>
+
 
 
 static bool             hidI2cActive = false;
@@ -330,4 +332,5 @@ void hidI2cTickPoll() {
     if (!hidI2cActive || !hidGlobalBase) return;
 
     hidI2cPoll(hidGlobalBase, hidGlobalAddr, &hidGlobalDesc);
+    GUI_input_loop();
 }

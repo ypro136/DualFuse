@@ -37,6 +37,7 @@
 #include <fram_loop.h>
 
 #include <ramdisk.h>
+#include <fs.h>
 
 
 extern "C" void _init(void);
@@ -63,9 +64,9 @@ extern "C" void kernel_main(void)
         
     pci_initialize(); // Peripheral Component Interconnect non fatal to fail
     
-    // tasks_initialize(); TODO: fix this non fatal to fail
-    // printf("tasks initialized.\n");
-    
+    tasks_initialize(); //TODO: fix this non fatal to fail
+    printf("tasks initialized.\n"); 
+
     syscall_inst_initialize(); // syscalls non fatal to fail TODO: thay should be
     
     syscalls_initialize(); // syscalls non fatal to fail TODO: thay should be
@@ -97,6 +98,10 @@ extern "C" void kernel_main(void)
             printf("[hid] touchpad init failed\n");
     }
     
+    filesystem_mount();
+
+    load_background();
+
     initialize_xp_desktop();
 
     bool should_exit = false;
@@ -104,7 +109,7 @@ extern "C" void kernel_main(void)
     while (!should_exit) 
     {
         frame_loop(render_xp_desktop);
-        should_exit = GUI_input_loop();
+        //should_exit = GUI_input_loop();
     }
     
     // breakpoint; not tested and dose not work

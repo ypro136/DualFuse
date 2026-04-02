@@ -48,6 +48,12 @@ __attribute__((used, section(".limine_requests")))
 static volatile struct limine_rsdp_request limineRsdpReq = {
     .id = LIMINE_RSDP_REQUEST, .revision = 0};
 
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_module_request module_request = {
+    .id = LIMINE_MODULE_REQUEST,
+    .revision = 0
+};
+
 __attribute__((used))
 Bootloader bootloader;
 
@@ -131,14 +137,58 @@ void initialiseBootloaderParser() {
   bootloader.mmEntries = mm_response->entries;
   bootloader.mmEntryCnt = mm_response->entry_count;
 
-  // Total memory
-  bootloader.mmTotal = 0;
-  for (int i = 0; i < mm_response->entry_count; i++) {
-    struct limine_memmap_entry *entry = mm_response->entries[i];
-    // entry->type != LIMINE_MEMMAP_FRAMEBUFFER &&
-    if (entry->type != LIMINE_MEMMAP_RESERVED)
-      bootloader.mmTotal += entry->length;
-  }
+  // Total memory — categorize carefully
+    bootloader.mmTotal    = 0;
+    bootloader.mmExecTotal = 0;
+
+    for (int i = 0; i < mm_response->entry_count; i++) {
+        struct limine_memmap_entry *entry = mm_response->entries[i];
+
+        switch (entry->type) {
+            case LIMINE_MEMMAP_USABLE:
+                bootloader.mmTotal += entry->length;
+                break;
+
+            case LIMINE_MEMMAP_KERNEL_AND_MODULES:
+                // Kernel binary and Limine module buffers live here.
+                // Track separately — your memory manager must never
+                // hand these pages to malloc.
+                bootloader.mmExecTotal += entry->length;
+                break;
+
+            case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
+                // Limine's own data structures (including the module response
+                // and limine_file descriptors themselves) sit here. Safe to
+                // reclaim after you've copied out anything you need, but leave
+                // them alone until after kernel init is complete.
+                bootloader.mmTotal += entry->length;
+                break;
+
+            case LIMINE_MEMMAP_RESERVED:
+            case LIMINE_MEMMAP_ACPI_RECLAIMABLE:
+            case LIMINE_MEMMAP_ACPI_NVS:
+            case LIMINE_MEMMAP_BAD_MEMORY:
+            case LIMINE_MEMMAP_FRAMEBUFFER:
+            default:
+                // Do not count or allocate into any of these.
+                break;
+        }
+    }
+
+    printf("[bootloader] usable: %d MB  exec+modules: %d KB\n",
+        bootloader.mmTotal    / (1024 * 1024),
+        bootloader.mmExecTotal / 1024);
+
+    bootloader.mmPhysExtent = 0;
+    for (uint64_t i = 0; i < bootloader.mmEntryCnt; i++) {
+        struct limine_memmap_entry* e = bootloader.mmEntries[i];
+        uint64_t top = e->base + e->length;
+        if (top > bootloader.mmPhysExtent)
+            bootloader.mmPhysExtent = top;
+    }
+printf("[bootloader] physical extent: %d MB\n",
+    bootloader.mmPhysExtent / (1024 * 1024));
+
     // is their a framebuffer
     if (framebuffer_request.response == NULL
      || framebuffer_request.response->framebuffer_count < 1) {
@@ -164,5 +214,15 @@ void initialiseBootloaderParser() {
     {
         bootloader.rsdp = (size_t)rsdp_response->address - bootloader.hhdmOffset;
     }
+
+    struct limine_module_response* mod_response = module_request.response;
+    if (mod_response != nullptr) {
+        bootloader.modules = mod_response;
+        printf("[bootloader] %d module(s) loaded\n", mod_response->module_count);
+    } else {
+        bootloader.modules = nullptr;
+        printf("[bootloader] no modules loaded\n");
+    }
+
   printf("Bootloader Parser initialized.\n");
 }

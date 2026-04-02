@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "[qemu_wait] Starting QEMU..."
+echo "[qemu_wait] building and Starting QEMU..."
 setsid ./qemu.sh > logs/qemu.log 2>&1 &
 QEMU_PID=$!
 
@@ -16,7 +16,7 @@ TRIES=0
 while ! bash -c 'echo >/dev/tcp/localhost/1234' 2>/dev/null; do
     sleep 0.2
     TRIES=$((TRIES+1))
-    if [ $TRIES -gt 50 ]; then
+    if [ $TRIES -gt 100 ]; then
         echo "[qemu_wait] timeout!"
         exit 1
     fi

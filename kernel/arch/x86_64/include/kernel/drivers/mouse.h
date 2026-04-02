@@ -27,6 +27,8 @@ extern int mouse_position_y;
 extern bool clickedLeft;
 extern bool clickedRight;
 
+
+
 void initiateMouse();
 static inline int apply_mouse_accel(int delta);
 void mouseIrq();

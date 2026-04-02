@@ -154,17 +154,17 @@ void close_xp_window(void* ctx)
     printf("[DEBUG_GUI] close_xp_window: freed, searching for next active\n");
 #endif
 
+    taskbar_sync_windows();
     // Promote the first remaining window to active
     for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++)
     {
         if (window_arr[i] != NULL)
         {
             set_active_xp_window(window_arr[i]);
-            taskbar_sync_windows();
             return;
         }
     }
-
+    
     active_xp_window = NULL;
 #if defined(DEBUG_GUI)
     printf("[DEBUG_GUI] close_xp_window: no windows left\n");

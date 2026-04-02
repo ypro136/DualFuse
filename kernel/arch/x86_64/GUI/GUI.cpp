@@ -16,7 +16,7 @@
 #include <apic.h>
 
 #include <png_loader.h>
-#include <wallpaper_data.h> //image!!! TODO: make achual images
+#include <ramdisk.h>
 
 
 
@@ -24,7 +24,7 @@
 XPTaskbar*     taskbar                           = NULL;
 XPDesktopIcon* desktop_icons[MAX_DESKTOP_ICONS]  = {0};
 
- 
+
 // Console callbacks
 // These live here because they reference Console, which is a GUI.cpp concern.
 // They are passed as function pointers to create_xp_window() and are
@@ -72,15 +72,166 @@ void on_console_icon_click()
 }
 
 //   Taskbar                      
-
+static bool g_start_menu_open = false;
 static void on_start_click(void* /*ctx*/)
 {
-#if defined(DEBUG_GUI)
-    printf("[DEBUG_GUI] on_start_click\n");
-#endif
-    // TODO: open start menu
+    g_start_menu_open = !g_start_menu_open;
+}
+ 
+static int start_menu_x()  { return 2; }
+static int start_menu_y()  { return TASKBAR_Y - (START_MENU_ITEMS * START_MENU_ITEM_HEIGHT) - START_MENU_PADDING * 2; }
+static int start_menu_h()  { return START_MENU_ITEMS * START_MENU_ITEM_HEIGHT + START_MENU_PADDING * 2; }
+
+static StartMenuItem  g_start_items[START_MENU_ITEMS] = {
+    { "Console", 0x000080, on_console_icon_click       },
+    { "Files",   0xFFCC00, on_file_explorer_icon_click },
+    { "Calc",    0x007F00, on_calculator_icon_click    },
+};
+
+static int start_menu_render_y()
+{
+    return start_menu_y() - TASKBAR_HEIGHT;
 }
 
+static int start_menu_render_height()
+{
+    return start_menu_h() + TASKBAR_HEIGHT;
+}
+
+static int start_menu_hovered_item_index = -1;
+void draw_start_menu()
+{
+    if (!g_start_menu_open) return;
+ 
+    int start_menu_position_x = start_menu_x();
+    int start_menu_position_y = start_menu_render_y();
+    int start_menu_width      = START_MENU_WIDTH;
+    int start_menu_height     = start_menu_render_height();
+ 
+    fill_rectangle(start_menu_position_x, start_menu_position_y,
+                   start_menu_width, start_menu_height, XP_BUTTON_FACE);
+
+    draw_beveled_border_thick(start_menu_position_x, start_menu_position_y,
+                              start_menu_width, start_menu_height,
+                              XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE,
+                              XP_BUTTON_SHADOW, true);
+ 
+    draw_gradient(start_menu_position_x + 2, start_menu_position_y + 2,
+                  start_menu_width - 4, 24,
+                  0x0A246A, 0x3A6EA5, false);
+
+    draw_text("DualFuse",
+              start_menu_position_x + 8,
+              start_menu_position_y + 6,
+              0xFFFFFF, 0x0A246A);
+ 
+    for (int item_index = 0; item_index < START_MENU_ITEMS; item_index++)
+    {
+        int item_position_y =
+            start_menu_position_y + 28 + START_MENU_PADDING +
+            item_index * START_MENU_ITEM_HEIGHT;
+
+        bool item_is_hovered =
+            (item_index == start_menu_hovered_item_index);
+
+        if (item_is_hovered)
+        {
+            fill_rectangle(start_menu_position_x + 2,
+                           item_position_y,
+                           start_menu_width - 4,
+                           START_MENU_ITEM_HEIGHT,
+                           0x316AC5);
+        }
+
+        fill_rectangle(start_menu_position_x + START_MENU_PADDING,
+                       item_position_y +
+                       (START_MENU_ITEM_HEIGHT - START_MENU_ICON_SIZE) / 2,
+                       START_MENU_ICON_SIZE,
+                       START_MENU_ICON_SIZE,
+                       g_start_items[item_index].icon_color);
+
+        draw_rect_outline(start_menu_position_x + START_MENU_PADDING,
+                          item_position_y +
+                          (START_MENU_ITEM_HEIGHT - START_MENU_ICON_SIZE) / 2,
+                          START_MENU_ICON_SIZE,
+                          START_MENU_ICON_SIZE,
+                          XP_BUTTON_SHADOW, 1);
+
+        draw_text(g_start_items[item_index].label,
+                  start_menu_position_x + START_MENU_PADDING +
+                  START_MENU_ICON_SIZE + 8,
+                  item_position_y + START_MENU_ITEM_HEIGHT / 2 - 6,
+                  item_is_hovered ? 0xFFFFFF : XP_WINDOW_TEXT,
+                  item_is_hovered ? 0x316AC5 : XP_BUTTON_FACE);
+
+        if (item_index < START_MENU_ITEMS - 1)
+        {
+            draw_hline(start_menu_position_x + 4,
+                       item_position_y + START_MENU_ITEM_HEIGHT - 1,
+                       start_menu_width - 8,
+                       XP_BUTTON_SHADOW);
+        }
+    }
+}
+ 
+
+/* Returns true if the mouse was consumed (inside the menu) */
+bool start_menu_handle_mouse(int mouse_position_x,
+                             int mouse_position_y,
+                             bool left_mouse_clicked)
+{
+    if (!g_start_menu_open) return false;
+
+    int start_menu_position_x = start_menu_x();
+    int start_menu_position_y = start_menu_render_y();
+    int start_menu_width      = START_MENU_WIDTH;
+    int start_menu_height     = start_menu_render_height();
+
+    start_menu_hovered_item_index = -1;
+
+    if (left_mouse_clicked &&
+        (mouse_position_x < start_menu_position_x ||
+         mouse_position_x > start_menu_position_x + start_menu_width ||
+         mouse_position_y < start_menu_position_y ||
+         mouse_position_y > start_menu_position_y + start_menu_height))
+    {
+        g_start_menu_open = false;
+        return false;
+    }
+
+    for (int item_index = 0; item_index < START_MENU_ITEMS; item_index++)
+    {
+        int item_position_y =
+            start_menu_position_y + 28 + START_MENU_PADDING +
+            item_index * START_MENU_ITEM_HEIGHT;
+
+        bool mouse_is_over_item =
+            (mouse_position_x >= start_menu_position_x &&
+             mouse_position_x <= start_menu_position_x + start_menu_width &&
+             mouse_position_y >= item_position_y &&
+             mouse_position_y <= item_position_y + START_MENU_ITEM_HEIGHT);
+
+        if (mouse_is_over_item)
+        {
+            start_menu_hovered_item_index = item_index;
+
+            if (left_mouse_clicked)
+            {
+                g_start_menu_open = false;
+
+                if (g_start_items[item_index].on_click)
+                    g_start_items[item_index].on_click();
+
+                return true;
+            }
+        }
+    }
+
+    return (mouse_position_x >= start_menu_position_x &&
+            mouse_position_x <= start_menu_position_x + start_menu_width &&
+            mouse_position_y >= start_menu_position_y &&
+            mouse_position_y <= start_menu_position_y + start_menu_height);
+}
 static void on_taskbar_window_click(void* ctx)
 {
 #if defined(DEBUG_GUI)
@@ -137,7 +288,7 @@ XPTaskbar* create_taskbar()
 }
 
 void taskbar_sync_windows()
-{
+{ 
     if (!taskbar) return;
 
     // Tear down old per-window buttons
@@ -455,15 +606,32 @@ void initialize_xp_desktop()
     printf("[DEBUG_GUI] initialize_xp_desktop: start\n");
 #endif
 
-    if (!png_load_wallpaper(wallpaper_png, wallpaper_png_len))
-    {
-        printf("[GUI] wallpaper load failed, using gradient fallback\n");
-    }
+    // // Load wallpaper from Limine module if present
+    // const struct limine_file* wallpaper = findModule("wallpaper.png");
+    // if (wallpaper) 
+    // {
+    //     if (png_load_wallpaper((const unsigned char*)wallpaper->address, (unsigned int)wallpaper->size))
+    //     {
+    //         printf("[GUI::png] module wallpaper loaded (%d bytes)\n", wallpaper->size);
+    //     }
+    //     else
+    //     {
+    //         printf("[GUI::png] module wallpaper decode failed trying static wallpaper\n");
+    //         if (!png_load_wallpaper(wallpaper_png, wallpaper_png_len))
+    //         {
+    //             printf("[GUI] static wallpaper load failed, using gradient fallback\n");
+    //         }
+    //     }
+    // } else 
+    // {
+    //     printf("[GUI::png] no wallpaper module found, using gradient fallback\n");
+    // }
+
 
     create_taskbar();
-    create_desktop_icon(20,  15, "Console", 0x000080, on_console_icon_click);
-    create_desktop_icon(20,  70, "Files",   0xFFCC00, on_file_explorer_icon_click);
-    create_desktop_icon(20, 125, "Calc",    0x007F00, on_calculator_icon_click);
+    // create_desktop_icon(20,  15, "Console", 0x000080, on_console_icon_click);
+    // create_desktop_icon(20,  70, "Files",   0xFFCC00, on_file_explorer_icon_click);
+    // create_desktop_icon(20, 125, "Calc",    0x007F00, on_calculator_icon_click);
 
     if (!console_initialized)
     {
@@ -489,7 +657,7 @@ void initialize_xp_desktop()
 );
     register_xp_panel(clock_panel);
 
-    on_console_icon_click();
+    //on_console_icon_click();
 
     taskbar_sync_windows();
 
@@ -516,6 +684,8 @@ void render_xp_desktop()
     draw_all_xp_panels();
 
     draw_taskbar();
+
+    draw_start_menu();
 
     draw_cursor(mouse_position_x, mouse_position_y);
 
