@@ -657,7 +657,7 @@ void initialize_xp_desktop()
 );
     register_xp_panel(clock_panel);
 
-    //on_console_icon_click();
+    on_console_icon_click();
 
     taskbar_sync_windows();
 
@@ -686,7 +686,7 @@ void render_xp_desktop()
     draw_taskbar();
 
     draw_start_menu();
-
+ 
     draw_cursor(mouse_position_x, mouse_position_y);
 
     frame_ready = true;

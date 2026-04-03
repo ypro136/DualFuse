@@ -14,11 +14,19 @@ extern uint64_t kernel_data_start, kernel_data_end;
 extern uint64_t kernel_start, kernel_end;
 
 
+typedef struct log_buffer {
+  char log[32000];
+  int length;
+} log_buffer;
+
+extern log_buffer boot_log;
 
 typedef struct Bootloader {
   uint64_t hhdmOffset;
   uint64_t kernelVirtBase;
   uint64_t kernelPhysBase;
+
+  log_buffer* Boot_log;
 
   struct limine_framebuffer *framebuffer;
 

@@ -45,6 +45,52 @@ bool hidI2cIsActive() { return hidI2cActive; }
 static int hidRawDumpCount = 0;
 #define HID_RAW_DUMP_MAX 0
 
+
+void hid_initialize()
+{
+    uint64_t i2c_virtual_base_address = i2cGetBase();
+    if (i2c_virtual_base_address == 0) { printf("no controller at boot"); return; }
+    printf("  base=%x", i2c_virtual_base_address);
+    if (hidI2cIsActive()) {
+        printf("  HID already active from boot — touchpad running.\n");
+        printf("  vendor=%x\n", hidI2cGetDesc()->wVendorID);
+        printf("  product=%x\n", hidI2cGetDesc()->wProductID);
+        printf("  inputReg=%x\n", hidI2cGetDesc()->wInputRegister);
+        return;
+    }
+    HidI2cDescriptor hid_descriptor;
+    if (hidI2cInit(i2c_virtual_base_address, I2C_ADDR_ELAN_TOUCHPAD, &hid_descriptor) < 0) {
+        printf("hidI2cInit failed\n"); return;
+    }
+    printf("HID ready. Raw report dump (5 reads)...\n");
+    uint8_t  input_register_address_bytes[2] = {
+        (uint8_t)(hid_descriptor.wInputRegister & 0xFF),
+        (uint8_t)(hid_descriptor.wInputRegister >> 8)
+    };
+    uint16_t maximum_input_report_length = hid_descriptor.wMaxInputLength;
+    if (maximum_input_report_length < 4 || maximum_input_report_length > 64)
+        maximum_input_report_length = 32;
+    for (int report_read_index = 0; report_read_index < 5; report_read_index++) {
+        sleep(120);
+        uint8_t report_receive_buffer[64] = {0};
+        int bytes_received = i2cWriteRead(i2c_virtual_base_address,
+                                           input_register_address_bytes, 2,
+                                           report_receive_buffer, maximum_input_report_length);
+        if (bytes_received < 0) { printf("  read error\n"); continue; }
+        uint16_t reported_packet_length = (uint16_t)report_receive_buffer[0]
+                                        | ((uint16_t)report_receive_buffer[1] << 8);
+        printf("  [%d", report_read_index);
+        printf("] id=%x", report_receive_buffer[2]);
+        printf(" len=%d", reported_packet_length);
+        printf(" : ");
+        for (int byte_index = 0; byte_index < bytes_received && byte_index < 12; byte_index++) {
+            if (report_receive_buffer[byte_index] < 0x10) printf("0");
+            printf("%d\n", report_receive_buffer[byte_index]);
+        }
+    }
+    printf("hid done.");
+}
+
 static int hidReadReg(uint64_t base, uint16_t reg, uint8_t* buf, uint16_t len) {
     uint8_t addr[2] = { (uint8_t)(reg & 0xFF), (uint8_t)(reg >> 8) };
     return i2cWriteRead(base, addr, 2, buf, len);

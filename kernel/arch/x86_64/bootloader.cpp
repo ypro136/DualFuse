@@ -56,6 +56,8 @@ static volatile struct limine_module_request module_request = {
 
 __attribute__((used))
 Bootloader bootloader;
+__attribute__((used))
+log_buffer boot_log;
 
 extern "C" void *memcpy(void *dest, const void *src, size_t n) {
     uint8_t *pdest = (uint8_t *)dest;
@@ -110,6 +112,10 @@ extern "C" int memcmp(const void *s1, const void *s2, size_t n) {
   
 
 void initialiseBootloaderParser() {
+
+    bootloader.Boot_log = &boot_log;
+    bootloader.Boot_log->length = 0;
+    bootloader.Boot_log->log[0] = '\0';
     
   if (LIMINE_BASE_REVISION_SUPPORTED && false) // WARNING: this is very wrong
     {

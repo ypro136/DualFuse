@@ -29,6 +29,7 @@ struct TouchReport {
 };
 
 const HidI2cDescriptor* hidI2cGetDesc();
+void hid_initialize();
 
 bool hidI2cIsActive();
 

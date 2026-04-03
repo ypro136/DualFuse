@@ -199,11 +199,24 @@ void Console::draw_rect(int x, int y, int w, int h, int rgb)
     }
 }
 
+static inline void log_putc(char c) {
+    log_buffer* log = bootloader.Boot_log;
+
+    if (!log)
+        return;
+
+    if (log->length < 31999) {
+        log->log[log->length++] = c;
+        log->log[log->length] = '\0';
+    }
+}
+
 //   psfPutC wrapper with bounds check             ─
 // All character rendering goes through here.
 
 void Console::safe_put_char(int charnum, int rel_x, int rel_y, int fg, int bg)
 {
+
     if (!tempframebuffer || !tempframebuffer->address)
         return;
 
@@ -225,7 +238,7 @@ void Console::safe_put_char(int charnum, int rel_x, int rel_y, int fg, int bg)
     psfPutC(charnum, abs_x, abs_y, fg, bg);
 }
 
-//   Scrolling                     ──
+//   Scrolling    
 
 bool Console::scroll_console()
 {
@@ -652,5 +665,8 @@ extern "C" void putchar_(char c)
     {
         printfch(c);
     }
+
     serial_write(c);
+    log_putc(c);
+
 }
