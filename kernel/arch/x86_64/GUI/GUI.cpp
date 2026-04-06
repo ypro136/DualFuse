@@ -16,7 +16,8 @@
 #include <apic.h>
 
 #include <png_loader.h>
-#include <wallpaper_data.h> //image!!! TODO: make achual images
+#include <ramdisk.h>
+#include <fs.h>
 
 
 
@@ -24,13 +25,11 @@
 XPTaskbar*     taskbar                           = NULL;
 XPDesktopIcon* desktop_icons[MAX_DESKTOP_ICONS]  = {0};
 
- 
-// Console callbacks
-// These live here because they reference Console, which is a GUI.cpp concern.
-// They are passed as function pointers to create_xp_window() and are
-// therefore not exported in any header.
- 
+// Store current font metrics for layout
+static int current_font_baseline = 12;   // approximate baseline offset
 
+
+// Console callbacks
 static void Console_draw_frame_wrapper(void* ctx)
 {
 #if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
@@ -53,32 +52,186 @@ static void Console_set_active(void* ctx)
 }
 
 //   Desktop-icon click handlers  
-
 void on_console_icon_click()
 {
     XPWindowCallbacks* cb = (XPWindowCallbacks*)malloc(sizeof(XPWindowCallbacks));
     cb->draw_frame = Console_draw_frame_wrapper;
     cb->on_move    = Console_on_move;
     cb->set_active = Console_set_active;
-    cb->context    = NULL;   // filled in after console creation below
+    cb->context    = NULL;
 
-    XPWindow* window    = create_xp_window(100, 100, screen_width - 200, screen_height - 200, "Kernel Console", cb);
-    Console*  console   = create_console(window);
-    window->context     = (void*)console;
+    XPWindow* window = create_xp_window(100, 100, (50 * (SCREEN_WIDTH / 100)), (70 * (SCREEN_HEIGHT / 100)), "Kernel Console", cb);
+    Console* console = create_console(window);
+    window->context = (void*)console;
     window->window_type = WINDOW_TYPE_CONSOLE;
 
-    // Fire set_active now that context is valid
     set_active_xp_window(window);
 }
 
 //   Taskbar                      
-
+static bool g_start_menu_open = false;
 static void on_start_click(void* /*ctx*/)
 {
-#if defined(DEBUG_GUI)
-    printf("[DEBUG_GUI] on_start_click\n");
-#endif
-    // TODO: open start menu
+    g_start_menu_open = !g_start_menu_open;
+}
+ 
+static int start_menu_x()  { return 2; }
+static int start_menu_y()  { return TASKBAR_Y - (START_MENU_ITEMS * START_MENU_ITEM_HEIGHT) - START_MENU_PADDING * 2; }
+static int start_menu_h()  { return START_MENU_ITEMS * START_MENU_ITEM_HEIGHT + START_MENU_PADDING * 2; }
+
+static StartMenuItem g_start_items[START_MENU_ITEMS] = {
+    { "Console", 0x000080, on_console_icon_click       },
+    { "Files",   0xFFCC00, on_file_explorer_icon_click },
+    { "Calc",    0x007F00, on_calculator_icon_click    },
+};
+
+static int start_menu_render_y()
+{
+    return start_menu_y() - TASKBAR_HEIGHT;
+}
+
+static int start_menu_render_height()
+{
+    return start_menu_h() + TASKBAR_HEIGHT;
+}
+
+static int start_menu_hovered_item_index = -1;
+void draw_start_menu()
+{
+    if (!g_start_menu_open) return;
+ 
+    int start_menu_position_x = start_menu_x();
+    int start_menu_position_y = start_menu_render_y();
+    int start_menu_width      = START_MENU_WIDTH;
+    int start_menu_height     = start_menu_render_height();
+ 
+    fill_rectangle(start_menu_position_x, start_menu_position_y,
+                   start_menu_width, start_menu_height, XP_BUTTON_FACE);
+
+    draw_beveled_border_thick(start_menu_position_x, start_menu_position_y,
+                              start_menu_width, start_menu_height,
+                              XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE,
+                              XP_BUTTON_SHADOW, true);
+ 
+    // Gradient header height: at least 24px, but scaled with font height if available
+    int header_height = (current_font_height > 0) ? (current_font_height + 8) : 24;
+    draw_gradient(start_menu_position_x + 2, start_menu_position_y + 2,
+                  start_menu_width - 4, header_height,
+                  0x0A246A, 0x3A6EA5, false);
+
+    // Center "DualFuse" vertically in header
+    int text_y = start_menu_position_y + 2 + (header_height - current_font_height) / 2;
+    if (text_y < start_menu_position_y + 2) text_y = start_menu_position_y + 2;
+    draw_text("DualFuse",
+              start_menu_position_x + 8,
+              text_y + current_font_height - 4,
+              0xFFFFFF, 0x0A246A);
+ 
+    for (int item_index = 0; item_index < START_MENU_ITEMS; item_index++)
+    {
+        int item_position_y =
+            start_menu_position_y + header_height + START_MENU_PADDING +
+            item_index * START_MENU_ITEM_HEIGHT;
+
+        bool item_is_hovered = (item_index == start_menu_hovered_item_index);
+
+        if (item_is_hovered)
+        {
+            fill_rectangle(start_menu_position_x + 2,
+                           item_position_y,
+                           start_menu_width - 4,
+                           START_MENU_ITEM_HEIGHT,
+                           0x316AC5);
+        }
+
+        fill_rectangle(start_menu_position_x + START_MENU_PADDING,
+                       item_position_y +
+                       (START_MENU_ITEM_HEIGHT - START_MENU_ICON_SIZE) / 2,
+                       START_MENU_ICON_SIZE,
+                       START_MENU_ICON_SIZE,
+                       g_start_items[item_index].icon_color);
+
+        draw_rect_outline(start_menu_position_x + START_MENU_PADDING,
+                          item_position_y +
+                          (START_MENU_ITEM_HEIGHT - START_MENU_ICON_SIZE) / 2,
+                          START_MENU_ICON_SIZE,
+                          START_MENU_ICON_SIZE,
+                          XP_BUTTON_SHADOW, 1);
+
+        // Vertical centering of text using current_font_height
+        int text_vertical_center = item_position_y + (START_MENU_ITEM_HEIGHT - (current_font_height / 2)) / 2;
+        draw_text(g_start_items[item_index].label,
+                  start_menu_position_x + START_MENU_PADDING +
+                  START_MENU_ICON_SIZE + 8,
+                  text_vertical_center,
+                  item_is_hovered ? 0xFFFFFF : XP_WINDOW_TEXT,
+                  item_is_hovered ? 0x316AC5 : XP_BUTTON_FACE);
+
+        if (item_index < START_MENU_ITEMS - 1)
+        {
+            draw_hline(start_menu_position_x + 4,
+                       item_position_y + START_MENU_ITEM_HEIGHT - 1,
+                       start_menu_width - 8,
+                       XP_BUTTON_SHADOW);
+        }
+    }
+}
+
+bool start_menu_handle_mouse(int mouse_position_x,
+                             int mouse_position_y,
+                             bool left_mouse_clicked)
+{
+    if (!g_start_menu_open) return false;
+
+    int start_menu_position_x = start_menu_x();
+    int start_menu_position_y = start_menu_render_y();
+    int start_menu_width      = START_MENU_WIDTH;
+    int start_menu_height     = start_menu_render_height();
+
+    start_menu_hovered_item_index = -1;
+
+    if (left_mouse_clicked &&
+        (mouse_position_x < start_menu_position_x ||
+         mouse_position_x > start_menu_position_x + start_menu_width ||
+         mouse_position_y < start_menu_position_y ||
+         mouse_position_y > start_menu_position_y + start_menu_height))
+    {
+        g_start_menu_open = false;
+        return false;
+    }
+
+    for (int item_index = 0; item_index < START_MENU_ITEMS; item_index++)
+    {
+        int item_position_y =
+            start_menu_position_y + 28 + START_MENU_PADDING +
+            item_index * START_MENU_ITEM_HEIGHT;
+
+        bool mouse_is_over_item =
+            (mouse_position_x >= start_menu_position_x &&
+             mouse_position_x <= start_menu_position_x + start_menu_width &&
+             mouse_position_y >= item_position_y &&
+             mouse_position_y <= item_position_y + START_MENU_ITEM_HEIGHT);
+
+        if (mouse_is_over_item)
+        {
+            start_menu_hovered_item_index = item_index;
+
+            if (left_mouse_clicked)
+            {
+                g_start_menu_open = false;
+
+                if (g_start_items[item_index].on_click)
+                    g_start_items[item_index].on_click();
+
+                return true;
+            }
+        }
+    }
+
+    return (mouse_position_x >= start_menu_position_x &&
+            mouse_position_x <= start_menu_position_x + start_menu_width &&
+            mouse_position_y >= start_menu_position_y &&
+            mouse_position_y <= start_menu_position_y + start_menu_height);
 }
 
 static void on_taskbar_window_click(void* ctx)
@@ -119,9 +272,7 @@ XPTaskbar* create_taskbar()
     tb->height   = TASKBAR_HEIGHT;
     tb->bg_color = 0xC0C0C0;
 
-    tb->start_button = create_xp_button(NULL, 2, TASKBAR_Y + 3,
-                                         60, TASKBAR_HEIGHT - 6,
-                                         "Start", on_start_click);
+    tb->start_button = create_xp_button(NULL, 2, TASKBAR_Y + 3, 60, TASKBAR_HEIGHT - 6, "Start", on_start_click);
     register_xp_button(tb->start_button);
 
     for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++)
@@ -137,7 +288,7 @@ XPTaskbar* create_taskbar()
 }
 
 void taskbar_sync_windows()
-{
+{ 
     if (!taskbar) return;
 
     // Tear down old per-window buttons
@@ -168,12 +319,8 @@ void taskbar_sync_windows()
     {
         if (window_arr[i] == NULL) continue;
 
-        // NULL parent → absolute coordinates
-        XPButton* btn = create_xp_button(NULL, btn_x, btn_y,
-                                          btn_width, btn_height,
-                                          window_arr[i]->title,
-                                          on_taskbar_window_click);
-        btn->window                = window_arr[i];
+        XPButton* btn = create_xp_button(NULL, btn_x, btn_y, btn_width, btn_height, window_arr[i]->title, on_taskbar_window_click);
+        btn->window = window_arr[i];
         taskbar->window_buttons[i] = btn;
 
         register_xp_button(btn);
@@ -213,9 +360,10 @@ void draw_taskbar()
         draw_rect_outline(bx + 5, by + 5, 14, 14, XP_BUTTON_SHADOW, 1);
     }
 
-    //  Clock 
-    const int clock_x = SCREEN_WIDTH - 100;
-    const int clock_y = TASKBAR_Y + 7;
+    //  Clock – vertically center text in the taskbar
+    int clock_x = SCREEN_WIDTH - 100;
+    int clock_y = TASKBAR_Y + (TASKBAR_HEIGHT + (current_font_height / 2)) / 2;
+    if (clock_y < TASKBAR_Y) clock_y = TASKBAR_Y + 2;
 
     uint64_t now     = timerBootUnix + (timerTicks / frequency) + (2 * 3600);
     uint64_t hours24 = (now % 86400) / 3600;
@@ -226,7 +374,6 @@ void draw_taskbar()
     uint64_t hours12   = hours24 % 12;
     if (hours12 == 0) hours12 = 12;
 
-    // Zero-pad a value into buf, always producing exactly 2 digits
     auto pad2 = [](uint64_t val, char* buf) -> char* {
         buf[0] = '0' + (val / 10);
         buf[1] = '0' + (val % 10);
@@ -245,7 +392,6 @@ void draw_taskbar()
 }
 
 //   Desktop background  
-
 void draw_desktop_background()
 {
     #if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
@@ -258,13 +404,11 @@ void draw_desktop_background()
     }
     else
     {
-        // Fallback: original XP-blue gradient
         draw_gradient(0, 0, SCREEN_WIDTH, TASKBAR_Y, 0x008DD5, 0x0078D7, true);
     }
 }
 
 //   Desktop icons                    
-
 XPDesktopIcon* create_desktop_icon(int x, int y, const char* label,
                                     uint32_t icon_color, void (*on_click)(void))
 {
@@ -273,7 +417,7 @@ XPDesktopIcon* create_desktop_icon(int x, int y, const char* label,
 
     icon->x          = x;
     icon->y          = y;
-    icon->size       = 32;
+    icon->size       = (4 * (SCREEN_HEIGHT / 100));
     icon->label      = label;
     icon->icon_color = icon_color;
     icon->pressed    = false;
@@ -329,8 +473,9 @@ void draw_desktop_icon(XPDesktopIcon* icon)
     fill_rectangle(x, y, size, size, bg);
     draw_rect_outline(x, y, size, size, XP_BUTTON_SHADOW, 1);
     fill_rectangle(x + 6, y + 6, size - 12, size - 12, icon->icon_color);
-    draw_text_centered(icon->label, x - 20, y + size + 5, size + 40,
-                       XP_WINDOW_TEXT, 0x008DD5);
+    // Position label below icon, vertically centered around font baseline
+    int label_y = y + size + 5 + ((current_font_height + 4) / 2);
+    draw_text_centered(icon->label, x - 20, label_y, size + 40, XP_WINDOW_TEXT, 0x008DD5);
 }
 
 void draw_all_desktop_icons()
@@ -349,7 +494,7 @@ void desktop_icons_handle_mouse(int mouse_x, int mouse_y, bool clicked)
         XPDesktopIcon* icon = desktop_icons[i];
         if (!icon) continue;
 
-        bool hit     = desktop_icon_hit_test(icon, mouse_x, mouse_y);
+        bool hit = desktop_icon_hit_test(icon, mouse_x, mouse_y);
         icon->hovered = hit;
 
         if (hit && clicked)
@@ -365,7 +510,6 @@ void desktop_icons_handle_mouse(int mouse_x, int mouse_y, bool clicked)
 }
 
 //   Misc widgets        
-
 void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll)
 {
     int track_height = height - 32;
@@ -392,13 +536,12 @@ void draw_scrollbar(int x, int y, int height, int scroll_pos, int max_scroll)
 }
 
 //   Utility                      
-
 static void reverse_string(char* str, int len)
 {
     for (int i = 0; i < len / 2; i++)
     {
-        char tmp        = str[i];
-        str[i]          = str[len - 1 - i];
+        char tmp = str[i];
+        str[i] = str[len - 1 - i];
         str[len - 1 - i] = tmp;
     }
 }
@@ -420,13 +563,13 @@ char* u64toa(uint64_t value, char* str, int base)
 
 static void draw_clock_panel(int x, int y, int /*w*/, int /*h*/, void* /*ctx*/)
 {
-    uint64_t now     = timerBootUnix + (timerTicks / frequency) + (2 * 3600);
+    uint64_t now = timerBootUnix + (timerTicks / frequency) + (2 * 3600);
     uint64_t hours24 = (now % 86400) / 3600;
-    uint64_t minutes =  (now % 3600) / 60;
-    uint64_t seconds =   now % 60;
+    uint64_t minutes = (now % 3600) / 60;
+    uint64_t seconds = now % 60;
 
     const char* period = (hours24 >= 12) ? "PM" : "AM";
-    uint64_t hours12   = hours24 % 12;
+    uint64_t hours12 = hours24 % 12;
     if (hours12 == 0) hours12 = 12;
 
     auto pad2 = [](uint64_t val, char* buf) -> char* {
@@ -446,7 +589,6 @@ static void draw_clock_panel(int x, int y, int /*w*/, int /*h*/, void* /*ctx*/)
 }
 
 //   Desktop lifecycle  
-
 void initialize_xp_desktop()
 {
     frame_ready = false;
@@ -455,41 +597,50 @@ void initialize_xp_desktop()
     printf("[DEBUG_GUI] initialize_xp_desktop: start\n");
 #endif
 
-    if (!png_load_wallpaper(wallpaper_png, wallpaper_png_len))
-    {
-        printf("[GUI] wallpaper load failed, using gradient fallback\n");
-    }
+    load_background();
 
     create_taskbar();
-    create_desktop_icon(20,  15, "Console", 0x000080, on_console_icon_click);
-    create_desktop_icon(20,  70, "Files",   0xFFCC00, on_file_explorer_icon_click);
-    create_desktop_icon(20, 125, "Calc",    0x007F00, on_calculator_icon_click);
 
-    if (!console_initialized)
-    {
-        console = Console(400, 400, 200, 200);
-        console_initialize();
-        console.clear_screen();
-        console.set_bg_color(XP_BACKGROUND);
-        console.set_text_color(XP_WINDOW_TEXT);
-        console.set_visible(false);
-
-#if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] initialize_xp_desktop: console initialized\n");
-#endif
+    // Wait until SSFN is loaded to get correct font height
+    int font_pixel_height = (SCREEN_WIDTH > 1300) ? 20 : 14;
+    init_ssfn();
+    if (load_ssfn("/assets/nato_sans.sfn", font_pixel_height) == 0) {
+        current_font_height = ssfn_get_font_height();
+        // approximate baseline: about 2/3 of font height (adjust as needed)
+        current_font_baseline = current_font_height * 2 / 3;
+    } else {
+        printf("SSFN font load failed, using PSF fallback\n");
+        current_font_height = 16;   // fallback PSF height
+        current_font_baseline = 12;
     }
 
-    XPPanel* clock_panel = create_xp_panel(
-    SCREEN_WIDTH - 100, TASKBAR_Y + 5,
-    80, 14,
-    200, 
-    36,
-    draw_clock_panel,
-    nullptr
-);
-    register_xp_panel(clock_panel);
+    // Desktop icon spacing: icon size + vertical padding + font height
+    int icon_size = (4 * (SCREEN_HEIGHT / 100));
+    int spacing = icon_size + 8 + current_font_height;
+    int temp_y = 15;
+    create_desktop_icon(20, temp_y, "Console", 0x000080, on_console_icon_click);
+    temp_y += spacing;
+    create_desktop_icon(20, temp_y, "Files",   0xFFCC00, on_file_explorer_icon_click);
+    temp_y += spacing;
+    create_desktop_icon(20, temp_y, "Calc",    0x007F00, on_calculator_icon_click);
 
-    on_console_icon_click();
+    console = Console(400, 400, 200, 200);
+    console_initialize();
+    console.clear_screen();
+    console.set_bg_color(XP_BACKGROUND);
+    console.set_text_color(XP_WINDOW_TEXT);
+    console.set_visible(false);
+
+#if defined(DEBUG_GUI)
+    printf("[DEBUG_GUI] initialize_xp_desktop: console initialized\n");
+#endif
+
+    XPPanel* clock_panel = create_xp_panel(
+        SCREEN_WIDTH - 100, TASKBAR_Y + 5,
+        (8 * (SCREEN_WIDTH / 100)), (2 * (screen_height / 100)),
+        200, 36, draw_clock_panel, nullptr
+    );
+    register_xp_panel(clock_panel); 
 
     taskbar_sync_windows();
 
@@ -498,7 +649,7 @@ void initialize_xp_desktop()
 #endif
 
     frame_ready = true;
-    printf("xp desktop initialized.\n");
+    printf(" xp desktop initialized.\n");
 }
 
 void render_xp_desktop()
@@ -506,32 +657,26 @@ void render_xp_desktop()
     frame_ready = false;
 
     draw_desktop_background();
-
     draw_all_desktop_icons();
-
     draw_all_xp_windows_but_active();
-
     draw_active_xp_window();
-
     draw_all_xp_panels();
-
     draw_taskbar();
-
+    draw_start_menu();
     draw_cursor(mouse_position_x, mouse_position_y);
 
     frame_ready = true;
 }
 
 //   Debug   
-
 #if defined(DEBUG_GUI)
 static int dbg_frame_counter = 0;
 
 void direct_clear_screen_dbg()
 {
-    struct limine_framebuffer* fb   = bootloader.framebuffer;
-    uint32_t*                  addr = (uint32_t*)fb->address;
-    size_t pixel_count              = fb->pitch / 4 * fb->height;
+    struct limine_framebuffer* fb = bootloader.framebuffer;
+    uint32_t* addr = (uint32_t*)fb->address;
+    size_t pixel_count = fb->pitch / 4 * fb->height;
 
     dbg_frame_counter++;
     switch (dbg_frame_counter % 3)

@@ -6,9 +6,13 @@
 #include <timer.h>
 #include <utility.h>
 #include <linux_event_codes.h>
+#include <GUI_input.h>
+
 
 // PS/2 mouse driver, should work with USB mice too
  
+
+
 
 /* Global variable definition */
 DevInputEvent *mouseEvent = nullptr;
@@ -151,7 +155,10 @@ void mouseIrq() {
 
   mouseCycle++;
   if (mouseCycle > 2)
+  {
     mouseCycle = 0;
+    GUI_input_loop();
+  }
 }
 
 void bitmapset(uint8_t *map, size_t toSet) {

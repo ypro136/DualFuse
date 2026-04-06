@@ -9,5 +9,10 @@
 #include <bootloader.h>
 #include <mouse.h>
 
+bool mouse_down_left();
+bool mouse_up_left();
+bool mouse_down_right();
+bool mouse_up_right();
+
 bool GUI_input_loop();
 void GUI_dispatch_key(char c);

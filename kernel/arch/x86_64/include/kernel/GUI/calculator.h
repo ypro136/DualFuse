@@ -15,8 +15,8 @@
 //   width  = COLS*(BTN_W+PAD) + PAD            = 4*54+6  = 222
 //   height = DISPLAY_H + PAD + ROWS*(BTN_H+PAD)+ PAD
 //          = 40 + 6 + 5*46 + 6                 = 282
-#define CALC_CLIENT_W    222
-#define CALC_CLIENT_H    282
+#define CALC_CLIENT_W    (20 * (SCREEN_WIDTH / 100))
+#define CALC_CLIENT_H    (35 * (SCREEN_HEIGHT / 100))
 
 // Window size (client + chrome)
 #define CALC_WIN_W  (CALC_CLIENT_W + 2 * WINDOW_BORDER_WIDTH)

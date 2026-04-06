@@ -24,8 +24,9 @@ XPDesktopIcon* pressed_icon       = NULL;
 bool mouse_down_left()  { return  clickedLeft && !old_clickedLeft;  }
 bool mouse_up_left()    { return !clickedLeft &&  old_clickedLeft;  }
 bool mouse_down_right() { return  clickedRight && !old_clickedRight; }
+bool mouse_up_right()    { return !clickedRight &&  old_clickedRight;  }
 
-void mouse_update()
+static void mouse_update()
 {
     old_clickedLeft  = clickedLeft;
     old_clickedRight = clickedRight;
@@ -74,6 +75,12 @@ bool GUI_input_loop()
 {
     bool left_clicked  = mouse_down_left();
     bool right_clicked = mouse_down_right();
+
+    if (start_menu_handle_mouse(mouse_position_x, mouse_position_y, left_clicked))
+    {
+        mouse_update();
+        return should_exit;
+    }
 
     if (left_clicked)
     {

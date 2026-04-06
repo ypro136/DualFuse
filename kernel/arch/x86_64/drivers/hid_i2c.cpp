@@ -6,6 +6,8 @@
 #include <bootloader.h>
 #include <stdio.h>
 #include <string.h>
+#include <GUI_input.h>
+
 
 
 static bool             hidI2cActive = false;
@@ -42,6 +44,52 @@ bool hidI2cIsActive() { return hidI2cActive; }
  * so we can verify byte layout against the rdesc on real hardware.      */
 static int hidRawDumpCount = 0;
 #define HID_RAW_DUMP_MAX 0
+
+
+void hid_initialize()
+{
+    uint64_t i2c_virtual_base_address = i2cGetBase();
+    if (i2c_virtual_base_address == 0) { printf("[HID] warning: no I2C controller at boot\n"); return; }
+    printf("  base=%x", i2c_virtual_base_address);
+    if (hidI2cIsActive()) {
+        printf("  HID already active from boot — touchpad running.\n");
+        printf("  vendor=%x\n", hidI2cGetDesc()->wVendorID);
+        printf("  product=%x\n", hidI2cGetDesc()->wProductID);
+        printf("  inputReg=%x\n", hidI2cGetDesc()->wInputRegister);
+        return;
+    }
+    HidI2cDescriptor hid_descriptor;
+    if (hidI2cInit(i2c_virtual_base_address, I2C_ADDR_ELAN_TOUCHPAD, &hid_descriptor) < 0) {
+        printf("hidI2cInit failed\n"); return;
+    }
+    printf("HID ready. Raw report dump (5 reads)...\n");
+    uint8_t  input_register_address_bytes[2] = {
+        (uint8_t)(hid_descriptor.wInputRegister & 0xFF),
+        (uint8_t)(hid_descriptor.wInputRegister >> 8)
+    };
+    uint16_t maximum_input_report_length = hid_descriptor.wMaxInputLength;
+    if (maximum_input_report_length < 4 || maximum_input_report_length > 64)
+        maximum_input_report_length = 32;
+    for (int report_read_index = 0; report_read_index < 5; report_read_index++) {
+        sleep(120);
+        uint8_t report_receive_buffer[64] = {0};
+        int bytes_received = i2cWriteRead(i2c_virtual_base_address,
+                                           input_register_address_bytes, 2,
+                                           report_receive_buffer, maximum_input_report_length);
+        if (bytes_received < 0) { printf("  read error\n"); continue; }
+        uint16_t reported_packet_length = (uint16_t)report_receive_buffer[0]
+                                        | ((uint16_t)report_receive_buffer[1] << 8);
+        printf("  [%d", report_read_index);
+        printf("] id=%x", report_receive_buffer[2]);
+        printf(" len=%d", reported_packet_length);
+        printf(" : ");
+        for (int byte_index = 0; byte_index < bytes_received && byte_index < 12; byte_index++) {
+            if (report_receive_buffer[byte_index] < 0x10) printf("0");
+            printf("%d ", report_receive_buffer[byte_index]);
+        }
+    }
+    printf("hid done.");
+}
 
 static int hidReadReg(uint64_t base, uint16_t reg, uint8_t* buf, uint16_t len) {
     uint8_t addr[2] = { (uint8_t)(reg & 0xFF), (uint8_t)(reg >> 8) };
@@ -81,7 +129,7 @@ int hidI2cGetDescriptor(uint64_t base, uint8_t addr,
         memset(buf, 0, sizeof(buf));
         if (attempt > 0) {
             printf("[hid] descriptor retry %d\n", attempt);
-            sleep(2);
+            sleep(20);
         }
         ok = hidReadReg(base, HID_DESC_REG, buf, 30);
     }
@@ -102,8 +150,8 @@ int hidI2cGetDescriptor(uint64_t base, uint8_t addr,
            out->wVendorID, out->wProductID, out->wVersionID);
 
     if (out->wHIDDescLength < 18 || out->wHIDDescLength > 30) {
-        printf("[hid] descriptor length suspicious: %u\n", out->wHIDDescLength);
-        return -1;
+        printf("[hid] warning: descriptor length suspicious: %u\n", out->wHIDDescLength);
+        //return -1;
     }
     return 0;
 }
@@ -112,67 +160,112 @@ int hidI2cReset(uint64_t base, uint8_t addr,
                 const HidI2cDescriptor* desc) {
     (void)addr;
 
+    // Helper for retrying I2C commands with delay
+    #define RETRY_MAX 5
+    #define RETRY_DELAY_MS 20
+
     /* Flush any stale TX abort state before issuing commands */
     i2cWrite(base, DW_IC_ENABLE, 0);
-    sleep(1);
+    sleep(10);
     i2cRead(base, DW_IC_CLR_TX_ABRT);
     i2cRead(base, DW_IC_CLR_INTR);
     i2cWrite(base, DW_IC_ENABLE, 1);
-    sleep(1);
+    sleep(10);
 
-    /* SET_POWER ON - spec §7.2.2
-     * Frame: [cmdReg_lo][cmdReg_hi][0x08][0x00]                        */
-    if (hidWriteCmd(base, desc->wCommandRegister,
-                    HID_OP_SET_POWER, HID_POWER_ON) < 0) {
-        printf("[hid] SET_POWER ON failed\n");
+    /* SET_POWER ON - retry up to RETRY_MAX times */
+    int power_ok = 0;
+    for (int attempt = 0; attempt < RETRY_MAX; attempt++) {
+        if (hidWriteCmd(base, desc->wCommandRegister,
+                        HID_OP_SET_POWER, HID_POWER_ON) >= 0) {
+            power_ok = 1;
+            break;
+        }
+        printf("[hid] SET_POWER ON attempt %d failed, retrying...\n", attempt+1);
+        sleep(RETRY_DELAY_MS);
+    }
+    if (!power_ok) {
+        printf("[hid] SET_POWER ON failed after %d attempts\n", RETRY_MAX);
         return -1;
     }
-    sleep(2);
+    sleep(20);  // device needs settling time after power-on
 
-    /* RESET - spec §7.2.1
-     * Frame: [cmdReg_lo][cmdReg_hi][0x01][0x00]
-     * NOTE: for ELAN devices do NOT send another SET_POWER after RESET.
-     * Linux quirk QUIRK_RESET_ON_RESUME documents this.                */
-    if (hidWriteCmd(base, desc->wCommandRegister,
-                    HID_OP_RESET, 0x00) < 0) {
-        printf("[hid] RESET failed\n");
+    /* RESET - retry up to RETRY_MAX times */
+    int reset_ok = 0;
+    for (int attempt = 0; attempt < RETRY_MAX; attempt++) {
+        if (hidWriteCmd(base, desc->wCommandRegister,
+                        HID_OP_RESET, 0x00) >= 0) {
+            reset_ok = 1;
+            break;
+        }
+        printf("[hid] RESET attempt %d failed, retrying...\n", attempt+1);
+        sleep(RETRY_DELAY_MS);
+    }
+    if (!reset_ok) {
+        printf("[hid] RESET failed after %d attempts\n", RETRY_MAX);
         return -1;
     }
 
     /* Spec §7.2.1.2: after RESET the device asserts its interrupt line
      * and sends exactly two zero bytes {0x00, 0x00} as a sentinel.
-     * This MUST be drained before any real report read or the first
-     * report will be garbage and subsequent reads may desync.           */
-    sleep(10);
-    uint8_t sentinel[2] = { 0xFF, 0xFF };
+     * This MUST be drained before any real report read. */
+    sleep(50);  // give device time to produce sentinel
+
+    uint8_t sentinel[2];
     uint8_t inputReg[2] = { (uint8_t)(desc->wInputRegister & 0xFF),
                              (uint8_t)(desc->wInputRegister >> 8) };
-    i2cWriteRead(base, inputReg, 2, sentinel, 2);
-    printf("[hid] sentinel: %02x %02x%s\n",
-           sentinel[0], sentinel[1],
-           (sentinel[0] == 0x00 && sentinel[1] == 0x00) ? " (OK)" : " (unexpected - non-fatal)");
 
+    int sentinel_ok = 0;
+    for (int attempt = 0; attempt < RETRY_MAX; attempt++) {
+        sentinel[0] = 0xFF;
+        sentinel[1] = 0xFF;
+        i2cWriteRead(base, inputReg, 2, sentinel, 2);
+        printf("[hid] sentinel attempt %d: %02x %02x\n", attempt+1, sentinel[0], sentinel[1]);
+
+        if (sentinel[0] == 0x00 && sentinel[1] == 0x00) {
+            printf("[hid] sentinel OK after %d attempts\n", attempt+1);
+            sentinel_ok = 1;
+            break;
+        }
+        if (attempt < RETRY_MAX - 1) {
+            sleep(RETRY_DELAY_MS);
+        }
+    }
+    if (!sentinel_ok) {
+        printf("[hid] sentinel failed after %d attempts (last read: %02x %02x)\n",
+               RETRY_MAX, sentinel[0], sentinel[1]);
+        // non-fatal? We'll continue but warn.
+    }
+
+    /* SET_REPORT mode – this command is usually reliable, but retry if needed */
     uint8_t setMode[6];
-    setMode[0] = (uint8_t)(desc->wCommandRegister & 0xFF);  // 0x05
-    setMode[1] = (uint8_t)(desc->wCommandRegister >> 8);    // 0x00
+    setMode[0] = (uint8_t)(desc->wCommandRegister & 0xFF);
+    setMode[1] = (uint8_t)(desc->wCommandRegister >> 8);
     setMode[2] = 0x03;   // SET_REPORT opcode
     setMode[3] = 0x03;   // report type: Feature (0x03) | report ID: 0x00 → = 0x03
-    setMode[4] = (uint8_t)(desc->wDataRegister & 0xFF);     // 0x06
-    setMode[5] = (uint8_t)(desc->wDataRegister >> 8);       // 0x00
-    i2cSend(base, setMode, 6);
-    sleep(2);
-    printf("[hid] SET_REPORT mode cmd sent\n");
+    setMode[4] = (uint8_t)(desc->wDataRegister & 0xFF);
+    setMode[5] = (uint8_t)(desc->wDataRegister >> 8);
 
-    /* NOTE: the setAbs command (writing vendor reg 0x0300) has been removed.
-     * This device (ELAN 04F3:3282 on MSI Modern 14) is operated by Linux's
-     * hid-multitouch driver in standard HID mode - it natively produces
-     * report ID 0x04 multitouch reports. The proprietary absolute mode
-     * command was incorrect for this device and also toggled DW_IC_ENABLE
-     * mid-sequence which corrupts the FIFO state.                       */
+    int setmode_ok = 0;
+    for (int attempt = 0; attempt < RETRY_MAX; attempt++) {
+        if (i2cSend(base, setMode, 6) == 0) {
+            setmode_ok = 1;
+            break;
+        }
+        printf("[hid] SET_REPORT mode attempt %d failed, retrying...\n", attempt+1);
+        sleep(RETRY_DELAY_MS);
+    }
+    if (!setmode_ok) {
+        printf("[hid] SET_REPORT mode failed after %d attempts\n", RETRY_MAX);
+        // non-fatal, device may still work
+    } else {
+        printf("[hid] SET_REPORT mode cmd sent\n");
+    }
+    sleep(20);
+
     memset(hidLastReport, 0, sizeof(hidLastReport));
     hidLastReportLen = 0;
-    
-    hidRawDumpCount = 0;   /* reset dump counter so next init gets fresh dumps */
+    hidRawDumpCount = 0;
+
     printf("[hid] reset complete\n");
     return 0;
 }
@@ -330,4 +423,5 @@ void hidI2cTickPoll() {
     if (!hidI2cActive || !hidGlobalBase) return;
 
     hidI2cPoll(hidGlobalBase, hidGlobalAddr, &hidGlobalDesc);
+    GUI_input_loop();
 }
