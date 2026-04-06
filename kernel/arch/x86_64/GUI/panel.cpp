@@ -111,7 +111,5 @@ void draw_xp_panel(XPPanel* panel)
 
     //  Content 
     if (panel->draw_content)
-        panel->draw_content(cur_x + 4, cur_y + 4,
-                            cur_w  - 8, cur_h  - 8,
-                            panel->context);
+        panel->draw_content(cur_x + 4, cur_y + 4, cur_w  - 8, cur_h  - 8, panel->context);
 }

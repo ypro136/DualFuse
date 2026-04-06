@@ -10,6 +10,5 @@ cd $ENVIROMENT_DIR
 #make clean
 cd $PROJECT_ROOT
 
-#rm -rf sysroot
-rm -rf isodir
+rm -rf isodir 
 rm -rf DualFuse.iso

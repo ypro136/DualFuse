@@ -9,6 +9,14 @@
 #include <button.h>     
 #include <window.h>     
 
+
+#define START_MENU_WIDTH  (13 * (SCREEN_WIDTH / 100))
+#define START_MENU_ITEMS  3
+
+#define START_MENU_ITEM_HEIGHT  36
+#define START_MENU_ICON_SIZE    20
+#define START_MENU_PADDING       8
+
 //   Taskbar                      
 struct XPTaskbar {
     int       y, height;
@@ -28,10 +36,18 @@ typedef struct {
     void      (*on_click)(void);
 } XPDesktopIcon;
 
+struct StartMenuItem {
+    const char* label;
+    uint32_t    icon_color;
+    void        (*on_click)(void);
+};
+
 extern XPDesktopIcon* desktop_icons[MAX_DESKTOP_ICONS];
 
 //   Input loop (implemented in GUI_input.cpp)          ──
 extern bool GUI_input_loop();
+
+bool start_menu_handle_mouse(int mouse_x, int mouse_y, bool clicked);
 
 //   Desktop lifecycle                  ──
 void initialize_xp_desktop();
