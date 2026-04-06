@@ -87,6 +87,49 @@ void load_background()
 }
 
 /* -----------------------------------------------------------------------
+ * load_ssfn_font
+ * Reads an entire .sfn font file into a malloc'd buffer.
+ * Returns pointer to buffer (must be freed later) or NULL on error.
+ * ----------------------------------------------------------------------- */
+uint8_t* load_ssfn_font(const char *path, uint32_t *out_size)
+{
+#if defined(DEBUG_SSFN)
+    printf("[DEBUG_SSFN] load_ssfn_font: opening %s\n", path);
+#endif
+    FIL fp;
+    FRESULT res = f_open(&fp, path, FA_READ);
+    if (res != FR_OK) {
+        printf("[fs] Failed to open font file %s\n", path);
+        return NULL;
+    }
+
+    uint32_t size = f_size(&fp);
+    uint8_t *buf = (uint8_t*)malloc(size);
+    if (!buf) {
+        printf("[fs] Out of memory for font (%u bytes)\n", size);
+        f_close(&fp);
+        return NULL;
+    }
+
+    UINT br;
+    res = f_read(&fp, buf, size, &br);
+    f_close(&fp);
+
+    if (res != FR_OK || br != size) {
+        printf("[fs] Failed to read font file %s\n", path);
+        free(buf);
+        return NULL;
+    }
+
+    if (out_size) *out_size = size;
+    printf("[fs] Loaded font %s (%u bytes)\n", path, size);
+#if defined(DEBUG_SSFN)
+    printf("[DEBUG_SSFN] load_ssfn_font: success, buffer=%p, size=%u\n", (void*)buf, size);
+#endif
+    return buf;
+}
+
+/* -----------------------------------------------------------------------
  * fs_read_file
  * Read an entire file into buf. Returns bytes read or -1 on error.
  * ----------------------------------------------------------------------- */

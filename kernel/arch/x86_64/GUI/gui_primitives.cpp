@@ -271,57 +271,25 @@ void draw_beveled_border_thick(int x, int y, int width, int height,
     }
 }
 
-void draw_text(const char* text, int x, int y, uint32_t color, uint32_t bg_color) {
-#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-    printf("[DEBUG_GUI] draw_text at (%d,%d) color=0x%06X\n", x, y, color);
-#endif
-    if (!text) {
-#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-        printf("[DEBUG_GUI] draw_text: text pointer is NULL\n");
-#endif
-        return;
-    }
-    if (!console_initialized)
-    {
-        return;
-    }
+void draw_text(const char* text, int x, int y, uint32_t color, uint32_t bg_color)
+{
+    if (!text) return;
     int char_x = x;
-    const char* p = text;
-    int char_count = 0;
-    
-    while (*p != '\0') 
-    {
-#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-        printf("[DEBUG_GUI] drawing char %d: '%c' (0x%02X) at x=%d, y=%d\n", char_count, *p, (unsigned char)*p, char_x, y);
-#endif
-        psfPutC(*p, (uint32_t)char_x, (uint32_t)y, color, bg_color);
-#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-        printf("[DEBUG_GUI] char %d drawn successfully\n", char_count);
-#endif
-        char_x += 8;
-        p++;
-        char_count++;
+    for (const char* p = text; *p; p++) {
+        uint32_t advance = psfPutC(*p, char_x, y, color, bg_color);
+        char_x += advance;   // accurate for both SSFN and PSF
     }
-#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-    printf("[DEBUG_GUI] draw_text complete - drew %d characters\n", char_count);
-#endif
 }
 
 
+
 void draw_text_centered(const char* text, int x, int y, int width, uint32_t color, uint32_t bg_color) {
-    int text_len = 0;
-    const char* p = text;
-    while (*p) {
-        text_len++;
-        p++;
-    }
-    
-    int text_pixel_width = text_len * 8;  // 8 pixels per character
-    int start_x = x + (width - text_pixel_width) / 2;
-    #if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-        printf("[DEBUG_GUI] draw_text_centered ready to draw text\n");
-    #endif 
-    draw_text(text,  clamp(start_x, 0, screen_width), clamp(y, 0, screen_height), color, bg_color);
+    if (!text) return;
+
+    int text_width = get_text_width(text);
+    int start_x = x + (width - text_width) / 2;
+
+    draw_text(text, clamp(start_x, 0, screen_width), clamp(y, 0, screen_height), color, bg_color);
 }
 
  

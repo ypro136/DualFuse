@@ -94,19 +94,22 @@ void isr_initialize() {
 
 
 void handle_task_fault(AsmPassedInterrupt *regs) {
+  bool last_console_state;
   if (regs->interrupt == 14) {
     uint64_t err_pos;
     asm volatile("movq %%cr2, %0" : "=r"(err_pos));
-    console_initialized = false;
+    last_console_state = console_is_output_enabled();
+    console_set_output_enabled(false);
     printf("[isr] Page fault occured at cr2{%lx} rip{%lx}\n", err_pos,
            regs->rip);
+    console_set_output_enabled(last_console_state);
   }
-  bool last_console_state = console_initialized;
-  console_initialized = false;
+  last_console_state = console_is_output_enabled();
+  console_set_output_enabled(false);
   printf("[isr::task] [%c] Killing task{%d} because of %s!\n",
          currentTask->kernel_task ? '-' : 'u', currentTask->id,
          exceptions[regs->interrupt]);
-  console_initialized = last_console_state;
+  console_set_output_enabled(last_console_state);
   task_kill(currentTask->id, 139);
 }
 
@@ -167,10 +170,10 @@ void irq_handler(int irq, AsmPassedInterrupt *cpu)
     handler((uint64_t)cpu);
     return;
   }
-  bool last_console_state = console_initialized;
-  console_initialized = false;
+bool last_console_state = console_is_output_enabled();
+console_set_output_enabled(false);
   printf("irq %d was called befor it was initalized\n", irq);
-  console_initialized = last_console_state;
+console_set_output_enabled(last_console_state);
 }
 
 // pass stack ptr
@@ -241,10 +244,10 @@ extern "C" void handle_interrupt(uint64_t rsp)
   { // ISR
     if (currentTask && currentTask->systemCallInProgress) // null check TODO: fix tasking
     {
-      bool last_console_state = console_initialized;
-      console_initialized = false;
+      bool last_console_state = console_is_output_enabled();
+      console_set_output_enabled(false);
       printf("[isr] Happened from system call!\n");
-      console_initialized = last_console_state;
+      console_set_output_enabled(last_console_state);
     }
 
     if (currentTask && !currentTask->systemCallInProgress
@@ -256,8 +259,8 @@ extern "C" void handle_interrupt(uint64_t rsp)
 
     // Print exception details before halting
     {
-      bool last_console_state = console_initialized;
-      console_initialized = false;
+      bool last_console_state = console_is_output_enabled();
+      console_set_output_enabled(false);
       if (cpu->interrupt == 14) {
         uint64_t err_pos;
         asm volatile("movq %%cr2, %0" : "=r"(err_pos));
@@ -268,7 +271,7 @@ extern "C" void handle_interrupt(uint64_t rsp)
                cpu->interrupt, exceptions[cpu->interrupt],
                cpu->rip, cpu->error);
       }
-      console_initialized = last_console_state;
+      console_set_output_enabled(last_console_state);
     }
 
     printf(format, exceptions[cpu->interrupt]);

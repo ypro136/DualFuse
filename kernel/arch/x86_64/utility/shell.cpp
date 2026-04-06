@@ -208,6 +208,39 @@ void Shell::cmd_mount()
     else { print("mount failed: "); println(fs_strerr((FRESULT)mount_error_code)); }
 }
 
+static const char* format_file_size(uint32_t size)
+{
+    static char buffer[16];
+    
+    if (size < 1024) {
+        snprintf(buffer, sizeof(buffer), "%u B", size);
+    } else if (size < 1024 * 1024) {
+        uint32_t kb = size / 1024;
+        uint32_t remainder = size % 1024;
+        uint32_t tenths = (remainder * 10) / 1024;   // 0‑9
+        snprintf(buffer, sizeof(buffer), "%u.%u KB", kb, tenths);
+    } else if (size < 1024 * 1024 * 1024) {
+        uint32_t mb = size / (1024 * 1024);
+        uint32_t remainder = size % (1024 * 1024);
+        uint32_t tenths = (remainder * 10) / (1024 * 1024);
+        snprintf(buffer, sizeof(buffer), "%u.%u MB", mb, tenths);
+    } else {
+        uint32_t gb = size / (1024 * 1024 * 1024);
+        uint32_t remainder = size % (1024 * 1024 * 1024);
+        uint32_t tenths = (remainder * 10) / (1024 * 1024 * 1024);
+        snprintf(buffer, sizeof(buffer), "%u.%u GB", gb, tenths);
+    }
+    return buffer;
+}
+
+static void print_right_aligned_str(Shell* shell, const char* str, int width)
+{
+    int len = strlen(str);
+    for (int i = len; i < width; i++)
+        shell->print(" ");
+    shell->print(str);
+}
+
 void Shell::cmd_ls()
 {
     DIR     directory_handle;
@@ -227,8 +260,9 @@ void Shell::cmd_ls()
         if (entry_is_directory) {
             print("  <DIR>           ");
         } else {
+            const char* size_str = format_file_size(directory_entry_info.fsize);
             print("  ");
-            print_right_aligned_size(this, directory_entry_info.fsize, 12);
+            print_right_aligned_str(this, size_str, 10);  // width 10 characters
             print("  ");
         }
         println(directory_entry_info.fname);
@@ -754,7 +788,7 @@ void Shell::cmd_i2chid()
     char value_string_buffer[64];
     println("=== I2CHID: HID init ===");
     uint64_t i2c_virtual_base_address = i2cGetBase();
-    if (i2c_virtual_base_address == 0) { println("no controller at boot"); return; }
+    if (i2c_virtual_base_address == 0) { println("no controller at boot\n"); return; }
     print("  base=0x"); u64toa(i2c_virtual_base_address, value_string_buffer, 16); println(value_string_buffer);
     if (hidI2cIsActive()) {
         println("  HID already active from boot — touchpad running.");
@@ -818,7 +852,7 @@ void Shell::cmd_i2cpoll()
     if (maximum_input_report_length < 4 || maximum_input_report_length > 64)
         maximum_input_report_length = 32;
     for (int poll_iteration_index = 0; poll_iteration_index < 30; poll_iteration_index++) {
-        sleep(2);
+        sleep(100);
         uint8_t report_receive_buffer[64] = {0};
         int bytes_received = i2cWriteRead(i2c_virtual_base_address,
                                            input_register_address_bytes, 2,

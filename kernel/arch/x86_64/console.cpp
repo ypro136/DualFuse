@@ -5,33 +5,38 @@
 #include <serial.h>
 #include <gui_primitives.h>
 #include <liballoc.h>
-
-
 #include <utility.h>
 #include <spinlock.h>
 #include <psf.h>
 #include <shell.h>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-// Global instance
 Console console;
-
 Console* console_arr[MAX_NUM_OF_CONSOLES] = {0};
 Console* active_console;
-
-// Legacy globals for C compatibility
-int _bg_color = 0xC0C0C0;
-int textcolor = 0x000000;
-bool console_initialized = false;
+static bool g_console_output_enabled = true;
 
 static Spinlock LOCK_CONSOLE = ATOMIC_FLAG_INIT;
 
-//   Helpers                      ─
+// Fallback PSF header in case the embedded font fails to load
+static PSF1Header fallback_psf_header = {
+    .magic = PSF1_MAGIC,
+    .mode = PSF1_MODE512,
+    .height = 16
+};
 
-// Clamp integer to [lo, hi]
+bool console_is_output_enabled(void)
+{
+    return g_console_output_enabled;
+}
+
+void console_set_output_enabled(bool enabled)
+{
+    g_console_output_enabled = enabled;
+}
+
 static inline int clamp_int(int v, int lo, int hi)
 {
     if (v < lo) return lo;
@@ -39,15 +44,12 @@ static inline int clamp_int(int v, int lo, int hi)
     return v;
 }
 
-// Is a pixel coordinate inside the screen entirely?
 static inline bool screen_pixel_valid(int x, int y)
 {
     return (x >= 0 && y >= 0 &&
             (uint32_t)x < screen_width &&
             (uint32_t)y < screen_height);
 }
-
-//   Constructor                     
 
 Console::Console(uint32_t width, uint32_t height, uint32_t start_x, uint32_t start_y)
     : _bg_color(0xC0C0C0),
@@ -65,61 +67,23 @@ Console::Console(uint32_t width, uint32_t height, uint32_t start_x, uint32_t sta
       screen_width_char(0),
       framebuffer(nullptr)
 {
-    memset(is_char, 0, sizeof(is_char));
-    title[0] = '\0';
     shell = new Shell(this);
 }
 
-//   Position Helpers                   ─
-
-void Console::increment_cursor_x() { cursor_position_x += CHAR_WIDTH; }
-
-void Console::decrement_cursor_x()
-{
-    if (cursor_position_x >= (uint32_t)CHAR_WIDTH)
-        cursor_position_x -= CHAR_WIDTH;
-    else
-        cursor_position_x = 0;
-}
-
-void Console::increment_cursor_y() { cursor_position_y += CHAR_HEIGHT; }
-
-void Console::decrement_cursor_y()
-{
-    if (cursor_position_y >= (uint32_t)CHAR_HEIGHT)
-        cursor_position_y -= CHAR_HEIGHT;
-    else
-        cursor_position_y = 0;
-}
-
-void Console::advance_line()
-{
-    cursor_position_x = CHAR_WIDTH;
-    increment_cursor_y();
-}
-
-void Console::move_to_line_start()
-{
-    cursor_position_x = CHAR_WIDTH;
-}
-
-//   Cursor clamping                   ──
-
-// Call this after ANY cursor change to keep it inside the window
 void Console::clamp_cursor()
 {
+    // Use psf if available, otherwise fallback height
+    uint32_t font_height = (psf ? psf->height : 16);
     uint32_t min_x = CHAR_WIDTH;
     uint32_t min_y = (uint32_t)(border_thickness + 2);
     uint32_t max_x = (window_width  >= (uint32_t)CHAR_WIDTH)  ? (window_width  - CHAR_WIDTH)  : 0;
-    uint32_t max_y = (window_height >= (uint32_t)CHAR_HEIGHT) ? (window_height - CHAR_HEIGHT) : 0;
+    uint32_t max_y = (window_height >= font_height) ? (window_height - font_height) : 0;
 
     if (cursor_position_x < min_x) cursor_position_x = min_x;
     if (cursor_position_x > max_x) cursor_position_x = max_x;
     if (cursor_position_y < min_y) cursor_position_y = min_y;
     if (cursor_position_y > max_y) cursor_position_y = max_y;
 }
-
-//   Buffer                      ──
 
 void Console::buffer_character(char c)
 {
@@ -144,26 +108,20 @@ void Console::flush_buffer()
 
 void Console::draw_frame()
 {
-    if (!is_initialized)
-        return;
+    if (!is_initialized) return;
     spinlock_acquire(&LOCK_CONSOLE);
     flush_buffer();
     update_cursor();
     spinlock_release(&LOCK_CONSOLE);
 }
 
-//   draw_rect                     ──
-// Coordinates are RELATIVE to the window origin.
-// We clamp to both the window rectangle AND the screen rectangle.
-
 void Console::draw_rect(int x, int y, int w, int h, int rgb)
 {
     if (!tempframebuffer || !tempframebuffer->address || screen_width == 0 || screen_height == 0)
         return;
-    if (w <= 0 || h <= 0)
-        return;
+    if (w <= 0 || h <= 0) return;
 
-    int abs_x = window_x + x;   // window_x is now int32_t, no wrap
+    int abs_x = window_x + x;
     int abs_y = window_y + y;
 
     int x0 = clamp_int(abs_x,     0, (int)screen_width);
@@ -171,7 +129,6 @@ void Console::draw_rect(int x, int y, int w, int h, int rgb)
     int x1 = clamp_int(abs_x + w, 0, (int)screen_width);
     int y1 = clamp_int(abs_y + h, 0, (int)screen_height);
 
-    // Also clamp to window
     int wx0 = clamp_int(window_x,                        0, (int)screen_width);
     int wy0 = clamp_int(window_y,                        0, (int)screen_height);
     int wx1 = clamp_int(window_x + (int)window_width,    0, (int)screen_width);
@@ -184,8 +141,7 @@ void Console::draw_rect(int x, int y, int w, int h, int rgb)
 
     int clamped_w = x1 - x0;
     int clamped_h = y1 - y0;
-    if (clamped_w <= 0 || clamped_h <= 0)
-        return;
+    if (clamped_w <= 0 || clamped_h <= 0) return;
 
     uint32_t bpp  = tempframebuffer->pitch / screen_width;
     uint8_t* base = (uint8_t*)tempframebuffer->address;
@@ -201,73 +157,64 @@ void Console::draw_rect(int x, int y, int w, int h, int rgb)
 
 static inline void log_putc(char c) {
     log_buffer* log = bootloader.Boot_log;
-
-    if (!log)
-        return;
-
+    if (!log) return;
     if (log->length < 31999) {
         log->log[log->length++] = c;
         log->log[log->length] = '\0';
     }
 }
 
-//   psfPutC wrapper with bounds check             ─
-// All character rendering goes through here.
-
 void Console::safe_put_char(int charnum, int rel_x, int rel_y, int fg, int bg)
 {
-
-    if (!tempframebuffer || !tempframebuffer->address)
-        return;
+    if (!tempframebuffer || !tempframebuffer->address) return;
 
     int abs_x = (int)window_x + rel_x;
     int abs_y = (int)window_y + rel_y;
 
-    // Skip if completely off screen
     if (abs_x + CHAR_WIDTH  <= 0) return;
     if (abs_y + CHAR_HEIGHT <= 0) return;
     if ((uint32_t)abs_x >= screen_width)  return;
     if ((uint32_t)abs_y >= screen_height) return;
-
-    // Skip if completely outside window
     if (abs_x + CHAR_WIDTH  <= (int)window_x) return;
     if (abs_y + CHAR_HEIGHT <= (int)window_y) return;
     if ((uint32_t)abs_x >= window_x + window_width)  return;
     if ((uint32_t)abs_y >= window_y + window_height) return;
 
-    psfPutC(charnum, abs_x, abs_y, fg, bg);
+    // Use PSF directly (no SSFN) to keep console layout consistent
+    psfPutCScaled(charnum, abs_x, abs_y, fg, bg, 1);
 }
-
-//   Scrolling    
 
 bool Console::scroll_console()
 {
     if (!tempframebuffer || !tempframebuffer->address || screen_width == 0)
         return false;
-    if (!(cursor_position_y >= (window_height - CHAR_HEIGHT)))
+
+    uint32_t font_height = (psf ? psf->height : 16);
+    // Scroll when cursor is on the second‑last line (one line early)
+    if (cursor_position_y < window_height - (font_height * 2))
         return false;
 
     uint32_t bpp  = tempframebuffer->pitch / screen_width;
     uint8_t* base = (uint8_t*)tempframebuffer->address;
 
-    for (uint32_t row = CHAR_HEIGHT; row < window_height; row++)
+    uint32_t text_top    = border_thickness + 2;
+    uint32_t text_bottom = window_height - border_thickness;
+
+    for (uint32_t row = text_top + font_height; row < text_bottom; row++)
     {
         int src_abs_y  = window_y + (int)row;
-        int dest_abs_y = window_y + (int)row - CHAR_HEIGHT;
+        int dest_abs_y = window_y + (int)row - font_height;
 
-        // Skip rows outside screen vertically
         if (src_abs_y  < 0 || (uint32_t)src_abs_y  >= screen_height) continue;
         if (dest_abs_y < 0 || (uint32_t)dest_abs_y >= screen_height) continue;
 
-        // Clamp horizontal copy to screen bounds
         int copy_x_start = window_x;
         int copy_x_end   = window_x + (int)window_width;
 
         if (copy_x_start < 0)          copy_x_start = 0;
-        if (copy_x_end   < 0)          continue;  // entire row off screen left
-        if ((uint32_t)copy_x_end > screen_width)
-            copy_x_end = (int)screen_width;
-        if (copy_x_start >= copy_x_end) continue;  // nothing to copy
+        if (copy_x_end   < 0)          continue;
+        if ((uint32_t)copy_x_end > screen_width) copy_x_end = (int)screen_width;
+        if (copy_x_start >= copy_x_end) continue;
 
         int copy_width = copy_x_end - copy_x_start;
 
@@ -279,19 +226,21 @@ bool Console::scroll_console()
         memcpy(dest, src, (size_t)copy_width * (size_t)bpp);
     }
 
-    draw_rect(0, window_height - CHAR_HEIGHT, window_width, CHAR_HEIGHT, _bg_color);
+    draw_rect(0, text_bottom - font_height, window_width, font_height, _bg_color);
 
-    draw_box(0, 0, window_width, border_thickness, border_color);
-    draw_box(0, 0, border_thickness, window_height, border_color);
-    draw_box(window_width - border_thickness, 0, border_thickness, window_height, border_color);
+    draw_rect(0, 0, window_width, border_thickness, border_color);
+    draw_rect(0, 0, border_thickness, window_height, border_color);
+    draw_rect(window_width - border_thickness, 0, border_thickness, window_height, border_color);
+    draw_rect(0, window_height - border_thickness, window_width, border_thickness, border_color);
 
-    draw_title();
-    decrement_cursor_y();
+    if (cursor_position_y >= font_height)
+        cursor_position_y -= font_height;
+    else
+        cursor_position_y = text_top;
+
     clamp_cursor();
     return true;
 }
-
-//   Public Interface                   ─
 
 void Console::initialize()
 {
@@ -299,37 +248,28 @@ void Console::initialize()
     cursor_position_y = border_thickness + 2;
     screen_width_char = window_width / CHAR_WIDTH;
 
-    bool PSF_state = psfLoadDefaults();
+    // Load the embedded PSF font; if it fails, set psf to a fallback
+    if (!psfLoadDefaults()) {
+        // Fallback to dummy header (the font data is not actually loaded,
+        // but psfPutCScaled will check psf->height and fail gracefully)
+        psf = &fallback_psf_header;
+        printf("[console] Warning: default PSF font load failed, using fallback\n");
+    }
 
-#if defined(DEBUG_CONSOLE)
-    if (PSF_state)
-        printf("[console] PSF font loaded successfully\n");
-    else
-        printf("[console:error] Failed to load PSF font\n");
-
-    printf("[console] window=(%u,%u) size=%ux%u\n", window_x, window_y, window_width, window_height);
-    printf("[console] screen=%ux%u pitch=%u\n", screen_width, screen_height, tempframebuffer ? tempframebuffer->pitch : 0);
-#endif
-
-    draw_title();
     if (!shell)
-       shell = new Shell(this);
+        shell = new Shell(this);
 
     buffer.write_index = 0;
     memset(buffer.characters, 0, sizeof(buffer.characters));
     buffer.lock = ATOMIC_FLAG_INIT;
 
     is_initialized = true;
-
     set_visible(true);
 }
 
 void Console::clear_screen()
 {
-    if(!is_visible())
-    {
-        return;
-    }
+    if(!is_visible()) return;
     buffer.write_index = 0;
     memset(buffer.characters, 0, CONSOLE_BUFFER_SIZE);
 
@@ -338,12 +278,10 @@ void Console::clear_screen()
     clamp_cursor();
 
     draw_rect(0, 0, window_width, window_height, _bg_color);
-    draw_box(0, 0, window_width, window_height,  _bg_color);
-    draw_box(0, 0, window_width, border_thickness, border_color);
-    draw_box(0, 0, border_thickness, window_height, border_color);
-    draw_box(window_width - border_thickness, 0, border_thickness, window_height, border_color);
+    draw_rect(0, 0, window_width, border_thickness, border_color);
+    draw_rect(0, 0, border_thickness, window_height, border_color);
+    draw_rect(window_width - border_thickness, 0, border_thickness, window_height, border_color);
 
-    draw_title();
     update_cursor();
 }
 
@@ -367,73 +305,49 @@ void Console::set_cursor_y(uint32_t y)
     update_cursor();
 }
 
-void Console::set_title(const char* t)
-{
-    if (!t) return;
-    strncpy(title, t, sizeof(title) - 1);
-    title[sizeof(title) - 1] = '\0';
-    if (is_initialized)
-        draw_title();
-}
-
-void Console::draw_title()
-{
-    if(!is_visible())
-    {
-        return;
-    }
-    if (!title[0]) return;
-    uint32_t tx = border_thickness + 4;
-    uint32_t ty = 0;
-    for (size_t i = 0; title[i] != '\0'; ++i)
-        safe_put_char(title[i], tx + (i * CHAR_WIDTH), ty - 8, textcolor, _bg_color);
-}
-
 void Console::erase_cursor()
 {
-    if(!is_visible())
-    {
-        return;
-    }
+    if(!is_visible()) return;
     if (cursorHidden) return;
-    draw_rect(cursor_position_x, cursor_position_y, CHAR_WIDTH, CHAR_HEIGHT, _bg_color);
+    uint32_t font_height = (psf ? psf->height : 16);
+    draw_rect(cursor_position_x, cursor_position_y, CHAR_WIDTH, font_height, _bg_color);
 }
 
 void Console::update_cursor()
 {
-    if(!is_visible())
-    {
-        return;
-    }
+    if(!is_visible()) return;
     if (cursorHidden) return;
 
-    if (cursor_position_x >= window_width - CHAR_WIDTH)
+    uint32_t font_width = CHAR_WIDTH;
+    uint32_t font_height = (psf ? psf->height : 16);
+
+    if (cursor_position_x >= window_width - font_width)
     {
         bool scrolled = scroll_console();
         if (!scrolled)
-            increment_cursor_y();
-        move_to_line_start();
+        {
+            cursor_position_x = font_width;
+            cursor_position_y += font_height;
+            clamp_cursor();
+        }
     }
 
     clamp_cursor();
-    draw_rect(cursor_position_x, cursor_position_y, CHAR_WIDTH, CHAR_HEIGHT, textcolor);
+    draw_rect(cursor_position_x, cursor_position_y, font_width, font_height, textcolor);
 }
 
 void Console::draw_character(int charnum)
 {
-    if (!charnum)
-        return;
+    if (!charnum) return;
+    if(!is_visible()) return;
 
-    if(!is_visible())
-    {
-        return;
-    }
+    uint32_t font_width = CHAR_WIDTH;
+    uint32_t font_height = (psf ? psf->height : 16);
 
-    // Wrap if past right edge
-    if (cursor_position_x > (window_width - CHAR_WIDTH * 2))
+    if (cursor_position_x > (window_width - font_width * 2))
     {
-        move_to_line_start();
-        increment_cursor_y();
+        cursor_position_x = font_width;
+        cursor_position_y += font_height;
         clamp_cursor();
     }
 
@@ -442,21 +356,19 @@ void Console::draw_character(int charnum)
     switch (charnum)
     {
     case -1:
-        draw_rect(cursor_position_x, cursor_position_y, CHAR_WIDTH, CHAR_HEIGHT, _bg_color);
-        increment_cursor_x();
+        draw_rect(cursor_position_x, cursor_position_y, font_width, font_height, _bg_color);
+        cursor_position_x += font_width;
         break;
 
     case '\n':
         erase_cursor();
-        if (cursor_position_x / CHAR_WIDTH < 200 && cursor_position_y / CHAR_HEIGHT < 200)
-            is_char[cursor_position_x / CHAR_WIDTH][cursor_position_y / CHAR_HEIGHT] = 0;
-        move_to_line_start();
-        increment_cursor_y();
+        cursor_position_x = font_width;
+        cursor_position_y += font_height;
         break;
 
     case 0xd:
         erase_cursor();
-        move_to_line_start();
+        cursor_position_x = font_width;
         break;
 
     case 0xf:
@@ -464,47 +376,40 @@ void Console::draw_character(int charnum)
 
     case '\b':
         erase_cursor();
-        do
-        {
-            if (cursor_position_x < (uint32_t)CHAR_WIDTH)
+        do {
+            if (cursor_position_x < font_width)
             {
-                if (cursor_position_y >= (uint32_t)CHAR_HEIGHT)
+                if (cursor_position_y >= font_height)
                 {
-                    decrement_cursor_y();
-                    cursor_position_x = (screen_width_char - 2) * CHAR_WIDTH;
+                    cursor_position_y -= font_height;
+                    cursor_position_x = (screen_width_char - 2) * font_width;
                 }
                 else
-                    break; // Already at top-left, nothing to backspace
+                    break;
             }
             else
             {
-                decrement_cursor_x();
+                cursor_position_x -= font_width;
             }
-        } while (cursor_position_x / CHAR_WIDTH < 200 &&
-                 cursor_position_y / CHAR_HEIGHT < 200 &&
-                 is_char[cursor_position_x / CHAR_WIDTH][cursor_position_y / CHAR_HEIGHT] == 0);
-        draw_rect(cursor_position_x, cursor_position_y, CHAR_WIDTH, CHAR_HEIGHT, _bg_color);
+        } while (0);
+        draw_rect(cursor_position_x, cursor_position_y, font_width, font_height, _bg_color);
         break;
 
     case '\t':
         for (int i = 0; i < 4; i++)
             draw_character(' ');
-        return; // update_cursor called recursively
+        return;
 
     case ' ':
         erase_cursor();
         safe_put_char(charnum, cursor_position_x, cursor_position_y, textcolor, _bg_color);
-        if (cursor_position_x / CHAR_WIDTH < 200 && cursor_position_y / CHAR_HEIGHT < 200)
-            is_char[cursor_position_x / CHAR_WIDTH][cursor_position_y / CHAR_HEIGHT] = 0;
-        increment_cursor_x();
+        cursor_position_x += font_width;
         break;
 
     default:
         erase_cursor();
         safe_put_char(charnum, cursor_position_x, cursor_position_y, textcolor, _bg_color);
-        if (cursor_position_x / CHAR_WIDTH < 200 && cursor_position_y / CHAR_HEIGHT < 200)
-            is_char[cursor_position_x / CHAR_WIDTH][cursor_position_y / CHAR_HEIGHT] = 1;
-        increment_cursor_x();
+        cursor_position_x += font_width;
         break;
     }
 
@@ -517,11 +422,6 @@ void Console::print_char(char character)
     spinlock_acquire(&LOCK_CONSOLE);
     buffer_character(character);
     spinlock_release(&LOCK_CONSOLE);
-}
-
-void Console::draw_box(int x, int y, int w, int h, int rgb)
-{
-    draw_rect(x, y, w, h, rgb);
 }
 
 void Console::set_window_size(uint32_t width, uint32_t height)
@@ -547,56 +447,21 @@ void Console::set_window_position(int32_t x, int32_t y)
 
 Console* create_console(XPWindow* window)
 {
-#if defined(DEBUG_CONSOLE)
-    printf("[DEBUG_CONSOLE] create_console: window ptr:%p x:%d y:%d width:%d height:%d\n",window, window->x, window->y, window->width, window->height);
-#endif
-
-    Console* temp_console = new Console(window->width, window->height - TITLE_BAR_HEIGHT,window->x, window->y + TITLE_BAR_HEIGHT);
-#if defined(DEBUG_CONSOLE)
-    printf("[DEBUG_CONSOLE] create_console: Console() ptr:%p\n", temp_console);
-#endif
-
+    Console* temp_console = new Console(window->width, window->height - TITLE_BAR_HEIGHT,
+                                        window->x, window->y + TITLE_BAR_HEIGHT);
     temp_console->initialize();
-#if defined(DEBUG_CONSOLE)
-    printf("[DEBUG_CONSOLE] create_console: initialized\n");
-#endif
-
     temp_console->clear_screen();
-#if defined(DEBUG_CONSOLE)
-    printf("[DEBUG_CONSOLE] create_console: screen cleared\n");
-#endif
-
     temp_console->set_bg_color(XP_BACKGROUND);
-#if defined(DEBUG_CONSOLE)
-    printf("[DEBUG_CONSOLE] create_console: bg_color set to XP_BACKGROUND\n");
-#endif
-
     temp_console->set_text_color(XP_WINDOW_TEXT);
-#if defined(DEBUG_CONSOLE)
-    printf("[DEBUG_CONSOLE] create_console: text_color set to XP_WINDOW_TEXT\n");
-#endif
 
-    bool slot_found = false;
     for (int i = 0; i < MAX_NUM_OF_CONSOLES; i++)
     {
         if (console_arr[i] == NULL)
         {
             console_arr[i] = temp_console;
-            slot_found = true;
-#if defined(DEBUG_CONSOLE)
-            printf("[DEBUG_CONSOLE] create_console: registered in console_arr slot:%d\n", i);
-#endif
             break;
         }
     }
-
-#if defined(DEBUG_CONSOLE)
-    if (!slot_found)
-        printf("[DEBUG_CONSOLE] create_console: console_arr is FULL, console not registered!\n");
-
-    printf("[DEBUG_CONSOLE] create_console: done, returning ptr:%p\n", temp_console);
-#endif
-
     return temp_console;
 }
 
@@ -616,57 +481,43 @@ void destroy_console(Console* c)
     delete c;
 }
 
-
-//   Legacy C API                    ──
-
 void console_initialize()
 {
     console.initialize();
-    console_initialized = console.is_ready();
     active_console = &console;
-    _bg_color = 0xC0C0C0;
-    textcolor = 0x000000;
 }
 
 void drawCharacter(int charnum)    { console.draw_character(charnum); }
-void changeBg(int rgb)             { console.set_bg_color(rgb); _bg_color = rgb; }
-void changeTextColor(int rgb)      { console.set_text_color(rgb); textcolor = rgb; }
+void changeBg(int rgb)             { console.set_bg_color(rgb); }
+void changeTextColor(int rgb)      { console.set_text_color(rgb); }
 uint32_t getConsoleX()             { return console.get_cursor_x(); }
 uint32_t getConsoleY()             { return console.get_cursor_y(); }
 void setConsoleX(uint32_t x)       { console.set_cursor_x(x); }
 void setConsoleY(uint32_t y)       { console.set_cursor_y(y); }
-void eraseBull()                   { }
-void updateBull()                  { }
 void clear_screen()                { console.clear_screen(); }
 
-void printfch(char character) { 
-    console.print_char(character); 
-    active_console->print_char(character);
+void printfch(char character) {
+    console.print_char(character);
+    if (active_console) active_console->print_char(character);
 }
 
-extern "C" void console_draw_frame()
+void console_buffer_char(char c)   { console.buffer_character(c); }
+
+void set_window_size(uint32_t width, uint32_t height) { console.set_window_size(width, height); }
+
+void putchar_(char c)
 {
-    if (console_initialized && tempframebuffer && psf &&
-        tempframebuffer->address && screen_width != 0)
-    {
-        console.draw_frame();
+    if (!g_console_output_enabled) {
+        serial_write(c);
+        log_putc(c);
+        return;
     }
-}
 
-extern "C" void console_buffer_char(char c)
-{
-    console.buffer_character(c);
-}
-
-extern "C" void putchar_(char c)
-{
-    if (console_initialized && tempframebuffer && psf &&
+    if (console.is_ready() && tempframebuffer && psf &&
         tempframebuffer->address && screen_width != 0)
     {
         printfch(c);
     }
-
     serial_write(c);
     log_putc(c);
-
 }

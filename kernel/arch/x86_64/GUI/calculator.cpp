@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <shell.h>
+#include <psf.h>
 
 // ─── Button grid definition ──────────────────────────────────────────────────
 //
@@ -207,10 +208,12 @@ void calc_draw_frame(XPCalculator* calc)
     draw_beveled_border_thick(cx, cy, CALC_CLIENT_W, CALC_DISPLAY_H,
                               0x808080, 0xF0F0F0, 0xFFFFFF, false);  // inset
 
-    // Right-align the display text
-    int text_w = calc_strlen(calc->display) * 8;
+    // Right-align the display text using actual pixel width
+    int text_w = get_text_width(calc->display);
     int text_x = cx + CALC_CLIENT_W - text_w - 8;
-    int text_y = cy + (CALC_DISPLAY_H - 12) / 2;
+    int font_h = ssfn_get_font_height();
+    if (font_h == 0) font_h = 16;  // fallback
+    int text_y = cy + (CALC_DISPLAY_H - font_h) / 2;
     draw_text(calc->display, text_x, text_y,
               calc->error ? 0xCC0000 : 0x000000,
               0xFFFFFF);
@@ -242,9 +245,9 @@ void calc_draw_frame(XPCalculator* calc)
         draw_beveled_border_thick(bx, by, bw, bh,
                                   XP_BUTTON_HIGHLIGHT, face, XP_BUTTON_SHADOW, true);
 
-        // Centre label
-        draw_text_centered(b.label, bx, by + (bh - 12) / 2, bw,
-                           XP_WINDOW_TEXT, face);
+        // Centre label vertically using actual font height
+        int label_y = by + (bh - font_h) / 2;
+        draw_text_centered(b.label, bx, label_y + ((bh - current_font_height) / 2), bw, XP_WINDOW_TEXT, face);
     }
 }
 

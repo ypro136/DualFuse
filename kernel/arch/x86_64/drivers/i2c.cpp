@@ -441,7 +441,7 @@ void i2cInit(uint64_t virtBase, uint8_t targetAddr) {
 
     i2cWrite(virtBase, DW_IC_ENABLE, 1);
 
-    sleep(6);
+    sleep(20);
 
     printf("[i2c] init done: target=0x%02x CON=0x%x STATUS=0x%x\n",
            targetAddr,
@@ -465,7 +465,7 @@ int i2cProbeAck(uint64_t virtBase) {
         return -1;
     }
 
-    sleep(1);
+    sleep(10);
 
     uint32_t abrt = i2cRead(virtBase, DW_IC_TX_ABRT_SOURCE);
     i2cRead(virtBase, DW_IC_CLR_TX_ABRT);
@@ -513,6 +513,7 @@ void i2cInitialize()
         printf("[i2c] initialize: no touchpad ACK (r=%d)\n", ack);
         i2cWrite(res.virtBase, DW_IC_ENABLE, 0);
     }
+    printf(" i2c initialized.\n");
 }
 
 int i2cSend(uint64_t base, const uint8_t* data, uint32_t len) {

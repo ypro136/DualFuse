@@ -94,22 +94,19 @@ extern "C" void kernel_main(void)
     i2cInitialize();
 
     // Auto-init HID layer if I2C controller was found
-    if (i2cGetBase() != 0) { 
-        static HidI2cDescriptor bootDesc;
-        if (hidI2cInit(i2cGetBase(), I2C_ADDR_ELAN_TOUCHPAD, &bootDesc) == 0)
-            printf("[hid] touchpad ready\n");
-        else
-            printf("[hid] touchpad init failed\n");
-    }
-
+    // if (i2cGetBase() != 0) { 
+    //     static HidI2cDescriptor bootDesc;
+    //     if (hidI2cInit(i2cGetBase(), I2C_ADDR_ELAN_TOUCHPAD, &bootDesc) == 0)
+    //         printf("[hid] touchpad ready\n");
+    //     else
+    //         printf("[hid] touchpad init failed\n");
+    // }
     
     filesystem_mount();
     
-    load_background();
-    
     initialize_xp_desktop();
     
-    hid_initialize();
+    hid_initialize(); // keep me here i2c need time in between
 
     FRESULT res;
     FIL fp;
@@ -142,7 +139,7 @@ extern "C" void kernel_main(void)
         //should_exit = GUI_input_loop();
     }
     
-    // breakpoint; not tested and dose not work
+    // breakpoint; tested and dose not work
 	
     for (;;) {}
 }

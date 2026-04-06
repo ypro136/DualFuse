@@ -3,12 +3,15 @@
 
 #include <cstdint>
 
- 
 // EXTERNAL DEPENDENCIES
  
 // You must provide these functions:
 extern void draw_pixel(int x, int y, uint32_t rgb);
-extern void psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color);
+extern uint32_t psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
  
 // BASIC UTILITY FUNCTIONS
@@ -84,5 +87,9 @@ static const uint32_t XP_TITLE_BAR = 0x000080;       // Dark blue
 static const uint32_t XP_TITLE_TEXT = 0xFFFFFF;      // White
 static const uint32_t XP_WINDOW_TEXT = 0x000000;     // Black
 static const uint32_t XP_TASKBAR = 0xC0C0C0;         // Light gray
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // GUI_PRIMITIVES_H

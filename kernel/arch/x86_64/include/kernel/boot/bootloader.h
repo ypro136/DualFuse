@@ -15,7 +15,7 @@ extern uint64_t kernel_start, kernel_end;
 
 
 typedef struct log_buffer {
-  char log[32000];
+  char log[320000];
   int length;
 } log_buffer;
 

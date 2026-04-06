@@ -47,6 +47,8 @@ void load_background();
  * ----------------------------------------------------------------------- */
 long fs_read_file(const char *path, void *buf, unsigned long buf_size);
 
+uint8_t* load_ssfn_font(const char *path, uint32_t *out_size);
+
 /* -----------------------------------------------------------------------
  * Convenience: check if a path exists
  * Returns 1 if exists, 0 if not.

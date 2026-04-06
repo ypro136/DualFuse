@@ -10,7 +10,7 @@
 #include <window.h>     
 
 
-#define START_MENU_WIDTH  160
+#define START_MENU_WIDTH  (13 * (SCREEN_WIDTH / 100))
 #define START_MENU_ITEMS  3
 
 #define START_MENU_ITEM_HEIGHT  36

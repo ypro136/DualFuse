@@ -143,24 +143,22 @@ static void draw_classic_toolbar(XPFileExplorer* explorer)
     int w = explorer_client_area_width(explorer);
 
     fill_rectangle(x, y, w, FE_TOOLBAR_HEIGHT, 0xC0C0C0);
-    draw_beveled_border_thick(x, y, w, FE_TOOLBAR_HEIGHT,
-                              0xFFFFFF, 0xC0C0C0, 0x808080, true);
+    draw_beveled_border_thick(x, y, w, FE_TOOLBAR_HEIGHT,0xFFFFFF, 0xC0C0C0, 0x808080, true);
 
     uint32_t text_color = (explorer->back_depth > 0) ? 0x000000 : 0x808080;
-    draw_text("Back", x + 10, y + 8, text_color, 0xC0C0C0);
+    draw_text("Back", x + 10, y + 4 + current_font_height, text_color, 0xC0C0C0);
 }
 
 static void draw_classic_addressbar(XPFileExplorer* explorer)
 {
     int x = explorer_client_area_x(explorer);
-    int y = explorer_addressbar_y(explorer);
+    int y = explorer_addressbar_y(explorer) + 4;
     int w = explorer_client_area_width(explorer);
 
     fill_rectangle(x, y, w, FE_ADDRESSBAR_HEIGHT, 0xFFFFFF);
-    draw_beveled_border_thick(x, y, w, FE_ADDRESSBAR_HEIGHT,
-                              0x808080, 0xFFFFFF, 0xFFFFFF, false);
+    draw_beveled_border_thick(x, y, w, FE_ADDRESSBAR_HEIGHT, 0x808080, 0xFFFFFF, 0xFFFFFF, false);
 
-    draw_text(explorer->current_path, x + 6, y + 6, 0x000000, 0xFFFFFF);
+    draw_text(explorer->current_path, x + 6, y + (current_font_height), 0x000000, 0xFFFFFF);
 }
 
 static void draw_classic_icon(XPFileExplorer* explorer, int index, int x, int y)
@@ -185,7 +183,7 @@ static void draw_classic_icon(XPFileExplorer* explorer, int index, int x, int y)
     draw_text_centered(
         explorer->visible_names[index],
         x - 10,
-        y + FE_ICON_SIZE + 4,
+        y + FE_ICON_SIZE + ((current_font_height + 6) / 2),
         FE_ICON_SIZE + 20,
         selected ? 0xFFFFFF : 0x000000,
         selected ? 0x316AC5 : 0xC0C0C0
@@ -205,7 +203,7 @@ static void draw_menu(int x, int y, int w, int item_h,
         if (i == hovered)
             fill_rectangle(x + 1, iy, w - 2, item_h, 0x316AC5);
 
-        draw_text(labels[i], x + 8, iy + 4,
+        draw_text(labels[i], x + 8, iy + current_font_height,
                   i == hovered ? 0xFFFFFF : 0x000000,
                   i == hovered ? 0x316AC5 : 0xF0F0F0);
     }
@@ -221,12 +219,16 @@ void file_explorer_draw_frame(XPFileExplorer* explorer)
     int content_x = explorer_client_area_x(explorer);
     int content_y = explorer_content_y(explorer);
     int content_w = explorer_client_area_width(explorer);
-    int content_h = explorer_client_area_height(explorer);
+    int content_h = explorer_client_area_height(explorer) - (FE_ADDRESSBAR_HEIGHT + FE_TOOLBAR_HEIGHT);
 
     fill_rectangle(content_x, content_y, content_w, content_h, 0xC0C0C0);
 
+    // Get current font height (fallback to 16 if SSFN not loaded)
+    int font_height = ssfn_get_font_height();
+    if (font_height == 0) font_height = 16;
+
     int cell_w = FE_ICON_SIZE + FE_ICON_SPACING_X;
-    int cell_h = FE_ICON_SIZE + FE_ICON_SPACING_Y + 12;
+    int cell_h = FE_ICON_SIZE + FE_ICON_SPACING_Y + font_height + 4;   // +4 for extra padding
 
     for (int i = 0; i < explorer->visible_count; i++)
     {
@@ -234,7 +236,7 @@ void file_explorer_draw_frame(XPFileExplorer* explorer)
         int row = i / FE_ICON_COLUMNS;
 
         int ix = content_x + FE_ICON_SPACING_X + col * cell_w;
-        int iy = content_y + row * cell_h - explorer->scroll_offset;
+        int iy = content_y + 6 + row * cell_h - explorer->scroll_offset;
 
         draw_classic_icon(explorer, i, ix, iy);
     }
@@ -533,7 +535,7 @@ void on_file_explorer_icon_click()
     callbacks->set_active = file_explorer_set_active;
     callbacks->context = nullptr;
 
-    XPWindow* window = create_xp_window(120, 100, 600, 450, "File Explorer", callbacks);
+    XPWindow* window = create_xp_window(120, 100, (46 * (SCREEN_WIDTH / 100)), (56 * (SCREEN_HEIGHT / 100)), "File Explorer", callbacks);
     window->window_type = WINDOW_TYPE_EXPLORER;
 
     XPFileExplorer* explorer = create_file_explorer(window);
