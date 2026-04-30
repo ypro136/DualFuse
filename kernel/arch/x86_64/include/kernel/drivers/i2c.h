@@ -91,7 +91,7 @@
 /* -------------------------------------------------------------------------
  * Intel PCH I2C PCI identifiers - Alder Lake (MSI Modern 14)
  *
- * Bus 0, Device 0x15 (21), Functions 0–3.
+ * Bus 0, Device 0x15 (21), Functions 0-3.
  * All four controllers share the same vendor ID; device IDs are sequential.
  *
  *   0x51E8  I2C0  PCI 00:15.0  ← most likely touchpad host
@@ -109,7 +109,7 @@
 
 /* PCI slot for all Intel PCH I2C controllers on Alder Lake */
 #define I2C_PCH_PCI_BUS             0
-#define I2C_PCH_PCI_DEVICE          0x15    /* slots 0x15.0 – 0x15.3 */
+#define I2C_PCH_PCI_DEVICE          0x15    /* slots 0x15.0 - 0x15.3 */
 
 /* -------------------------------------------------------------------------
  * Known touchpad I2C addresses (7-bit)
@@ -148,7 +148,7 @@
 
 struct I2cBaseResult {
     uint64_t virtBase;      /* MMIO virtual address (hhdmOffset applied), 0 = not found */
-    uint8_t  pciFunction;   /* PCI function number found (0–3), or 0xFF if via DSDT     */
+    uint8_t  pciFunction;   /* PCI function number found (0-3), or 0xFF if via DSDT     */
     bool     foundViaPci;   /* true = PCI path, false = DSDT fallback                   */
 };
 
@@ -160,7 +160,7 @@ struct I2cBaseResult {
  * controller that matches a known device ID.
  *
  * Strategy:
- *   1. PCI scan - bus 0, device 0x15, functions 0–3.  If vendor==0x8086 and
+ *   1. PCI scan - bus 0, device 0x15, functions 0-3.  If vendor==0x8086 and
  *      device ID is in the Alder Lake set, read BAR0 as the 64-bit physical
  *      base and apply hhdmOffset.
  *   2. DSDT byte scan fallback - scan raw DSDT bytes for known _HID strings

@@ -50,7 +50,6 @@ extern "C" void kernel_main(void);
 extern "C" void kernel_main(void) 
 {
     _init(); // lib c software dependent fatal to fail
-
     
     serial_initialize(0x3f8); // serial output(for debuging) non fatal to fail
     
@@ -77,9 +76,9 @@ extern "C" void kernel_main(void)
     
     initiateSSE(); // Streaming SIMD Extensions non fatal to fail
     
-    block_init();
+    block_init(); 
     
-    acpiInit();// TODO: this is very minimal
+    acpiInit(); // TODO: this is very minimal
     printf("acpi initialized.\n");
     
     initiateAPIC();
@@ -92,15 +91,6 @@ extern "C" void kernel_main(void)
     printf("mouse initialized.\n");
 
     i2cInitialize();
-
-    // Auto-init HID layer if I2C controller was found
-    // if (i2cGetBase() != 0) { 
-    //     static HidI2cDescriptor bootDesc;
-    //     if (hidI2cInit(i2cGetBase(), I2C_ADDR_ELAN_TOUCHPAD, &bootDesc) == 0)
-    //         printf("[hid] touchpad ready\n");
-    //     else
-    //         printf("[hid] touchpad init failed\n");
-    // }
     
     filesystem_mount();
     

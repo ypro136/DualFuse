@@ -10,6 +10,7 @@
 #include <panel.h>
 #include <file_explorer.h>
 #include <calculator.h>
+#include <text_editor.h>
 
 bool should_exit      = false;
 bool old_clickedLeft  = false;
@@ -24,7 +25,7 @@ XPDesktopIcon* pressed_icon       = NULL;
 bool mouse_down_left()  { return  clickedLeft && !old_clickedLeft;  }
 bool mouse_up_left()    { return !clickedLeft &&  old_clickedLeft;  }
 bool mouse_down_right() { return  clickedRight && !old_clickedRight; }
-bool mouse_up_right()    { return !clickedRight &&  old_clickedRight;  }
+bool mouse_up_right()   { return !clickedRight &&  old_clickedRight; }
 
 static void mouse_update()
 {
@@ -32,7 +33,6 @@ static void mouse_update()
     old_clickedRight = clickedRight;
 }
 
-// ─── Route mouse events to the active window's content ────────────────────
 static void dispatch_to_active_window(bool left_clicked, bool right_clicked)
 {
     if (!active_xp_window || !active_xp_window->context) return;
@@ -53,6 +53,13 @@ static void dispatch_to_active_window(bool left_clicked, bool right_clicked)
                     mouse_position_x, mouse_position_y);
             break;
 
+        case WINDOW_TYPE_TEXT_EDITOR:
+            text_editor_handle_mouse(
+                static_cast<XPTextEditor*>(active_xp_window->context),
+                mouse_position_x, mouse_position_y,
+                left_clicked, right_clicked);
+            break;
+
         case WINDOW_TYPE_CONSOLE:
         case WINDOW_TYPE_NONE:
         default:
@@ -60,15 +67,14 @@ static void dispatch_to_active_window(bool left_clicked, bool right_clicked)
     }
 }
 
-// ─── Route keyboard input to the active window ────────────────────────────
-// Called from keyboard.cpp whenever a printable character is produced
-// and the active window is not a console.
 void GUI_dispatch_key(char c)
 {
     if (!active_xp_window || !active_xp_window->context) return;
 
     if (active_xp_window->window_type == WINDOW_TYPE_CALC)
         calc_input(static_cast<XPCalculator*>(active_xp_window->context), c);
+    else if (active_xp_window->window_type == WINDOW_TYPE_TEXT_EDITOR)
+        text_editor_handle_key_input(static_cast<XPTextEditor*>(active_xp_window->context), c);
 }
 
 bool GUI_input_loop()

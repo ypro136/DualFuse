@@ -9,7 +9,7 @@ struct XPPanel {
     int lift;
 
     bool hovered;
-    int  lerp_t;           // 0–256 fixed point (256 = fully expanded)
+    int  lerp_t;           // 0-256 fixed point (256 = fully expanded)
 
     void (*draw_content)(int x, int y, int w, int h, void* ctx);
     void* context;

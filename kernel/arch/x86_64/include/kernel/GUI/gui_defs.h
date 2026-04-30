@@ -1,7 +1,7 @@
 #pragma once
 
 //   Layout                      ─
-#define TASKBAR_HEIGHT          (4 * (SCREEN_HEIGHT / 100))
+#define TASKBAR_HEIGHT          ((current_font_height * 2) + 4)// (5 * (SCREEN_HEIGHT / 100))
 #define TASKBAR_Y               (SCREEN_HEIGHT - TASKBAR_HEIGHT)
 #define TITLE_BAR_HEIGHT        (3 * (SCREEN_HEIGHT / 100))
 #define WINDOW_BORDER_WIDTH     4
