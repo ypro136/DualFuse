@@ -142,23 +142,6 @@ void unload_ssfn(void) {
     }
 }
 
-// bool psfLoadFromFile(char *path) {
-//   OpenFile *dir = fsKernelOpen(path, O_RDONLY, 0);
-//   if (!dir)
-//     return false;
-
-//   uint32_t filesize = fsGetFilesize(dir);
-//   uint8_t *out = (uint8_t *)malloc(filesize);
-
-//   fsRead(dir, out, fsGetFilesize(dir));
-//   fsKernelClose(dir);
-
-//   bool res = psfLoad(out);
-//   if (!res)
-//     free(out);
-
-//   return res;
-// }
 int ssfn_get_font_height(void) {
     return current_font_height;
 }
@@ -177,7 +160,7 @@ static int get_text_width(const char* text) {
         if (ssfn_bbox(&g_ssfn_ctx, text, &width, &height, &left, &top) == SSFN_OK) {
             return width;
         }
-        // fallback – should not happen if font is valid
+        // fallback - should not happen if font is valid
         return 8 * scale * (int)strlen(text);
     } else {
         // PSF fallback: monospaced 8 pixels per character (scaled)
@@ -203,6 +186,63 @@ void draw_text_ssfn(int x, int y, uint32_t fg_color, uint32_t bg_color, const ch
         int ret = ssfn_render(&g_ssfn_ctx, &buf, single);
         if (ret <= 0) break;
     }
+}
+void ssfnPutCScaled(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color, uint32_t scale)
+{
+    if (!ssfn_is_loaded()) {
+        // Fallback to PSF scaling if SSFN not loaded
+        psfPutCScaled(c, x, y, rgb, bg_color, scale);
+        return;
+    }
+    if (scale < 1) scale = 1;
+
+    // Get the bounding box of the character at the current font size
+    char str[2] = {c, '\0'};
+    int width, height, left, top;
+    if (ssfn_bbox(&g_ssfn_ctx, str, &width, &height, &left, &top) != SSFN_OK) {
+        // Fallback: draw a rectangle
+        fill_rectangle(x, y, 8 * scale, current_font_height * scale, bg_color);
+        return;
+    }
+
+    // Allocate a temporary buffer for the original glyph
+    int buf_size = width * height * sizeof(uint32_t);
+    uint32_t* temp_buf = (uint32_t*)malloc(buf_size);
+    if (!temp_buf) return;
+
+    // Fill with background color (transparent or solid)
+    for (int i = 0; i < width * height; i++)
+        temp_buf[i] = bg_color;
+
+    // Render the character into the temporary buffer
+    ssfn_buf_t temp_ssfn_buf = {
+        .ptr = (uint8_t*)temp_buf,
+        .w = width,
+        .h = height,
+        .p = width * sizeof(uint32_t),
+        .x = 0,
+        .y = 0,
+        .fg = (rgb & 0x00FFFFFF) | 0xFF000000,
+        .bg = (bg_color & 0x00FFFFFF) | 0xFF000000
+    };
+    ssfn_render(&g_ssfn_ctx, &temp_ssfn_buf, str);
+
+    // Draw scaled version to the screen
+    for (int row = 0; row < height; row++) {
+        for (int col = 0; col < width; col++) {
+            uint32_t pixel = temp_buf[row * width + col];
+            // Skip fully transparent (alpha=0) or background color (optional)
+            if ((pixel >> 24) == 0) continue;
+            // Draw a scaled block
+            for (uint32_t dy = 0; dy < scale; dy++) {
+                for (uint32_t dx = 0; dx < scale; dx++) {
+                    draw_pixel(x + col * scale + dx, y + row * scale + dy, pixel & 0x00FFFFFF);
+                }
+            }
+        }
+    }
+
+    free(temp_buf);
 }
 
 void psfPutCScaled(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color, uint32_t scale)

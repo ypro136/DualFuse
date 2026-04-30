@@ -31,7 +31,7 @@
  * 3: Heap buffer
  * Use 1 until you have a heap. */
 #define FF_USE_LFN          1
-#define FF_MAX_LFN          255     /* Max LFN length (1–255) */
+#define FF_MAX_LFN          255     /* Max LFN length (1-255) */
 
 /* FF_LFN_UNICODE
  * 0: ANSI/OEM   1: UTF-16   2: UTF-8   3: UTF-32

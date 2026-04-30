@@ -161,14 +161,19 @@ void keyboard_handler(struct interrupt_registers* /*registers*/)
     bool upper = shift_down ^ capsLock;
     uint32_t mapped = upper ? uppercase[scan_code] : lowercase[scan_code];
 
-    // ── Non-console active window (Calculator etc.) ──────────────────────
-    // Forward the raw character; do NOT touch key_buffer or the console.
     if (active_xp_window &&
         active_xp_window->window_type != WINDOW_TYPE_CONSOLE &&
         active_xp_window->window_type != WINDOW_TYPE_NONE)
     {
-        if (mapped != UNKNOWN && mapped < 0x80)
-            GUI_dispatch_key((char)mapped);
+        char dispatch_character = 0;
+        if      (mapped == UP)    dispatch_character = '\x01';
+        else if (mapped == DOWN)  dispatch_character = '\x02';
+        else if (mapped == LEFT)  dispatch_character = '\x03';
+        else if (mapped == RIGHT) dispatch_character = '\x04';
+        else if (mapped != UNKNOWN && mapped < 0x80) dispatch_character = (char)mapped;
+
+        if (dispatch_character)
+            GUI_dispatch_key(dispatch_character);
         return;
     }
 

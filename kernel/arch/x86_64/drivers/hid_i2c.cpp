@@ -236,7 +236,7 @@ int hidI2cReset(uint64_t base, uint8_t addr,
         // non-fatal? We'll continue but warn.
     }
 
-    /* SET_REPORT mode – this command is usually reliable, but retry if needed */
+    /* SET_REPORT mode - this command is usually reliable, but retry if needed */
     uint8_t setMode[6];
     setMode[0] = (uint8_t)(desc->wCommandRegister & 0xFF);
     setMode[1] = (uint8_t)(desc->wCommandRegister >> 8);

@@ -14,6 +14,8 @@
 #include <file_explorer.h>
 #include <calculator.h>
 #include <apic.h>
+#include <icons.h>
+
 
 #include <png_loader.h>
 #include <ramdisk.h>
@@ -76,8 +78,8 @@ static void on_start_click(void* /*ctx*/)
 }
  
 static int start_menu_x()  { return 2; }
-static int start_menu_y()  { return TASKBAR_Y - (START_MENU_ITEMS * START_MENU_ITEM_HEIGHT) - START_MENU_PADDING * 2; }
-static int start_menu_h()  { return START_MENU_ITEMS * START_MENU_ITEM_HEIGHT + START_MENU_PADDING * 2; }
+static int start_menu_y()  { return TASKBAR_Y - (START_MENU_ITEMS * START_MENU_ITEM_HEIGHT) - START_MENU_PADDING * START_MENU_ITEMS; }
+static int start_menu_h()  { return START_MENU_ITEMS * START_MENU_ITEM_HEIGHT + START_MENU_PADDING * START_MENU_ITEMS; }
 
 static StartMenuItem g_start_items[START_MENU_ITEMS] = {
     { "Console", 0x000080, on_console_icon_click       },
@@ -113,20 +115,32 @@ void draw_start_menu()
                               XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE,
                               XP_BUTTON_SHADOW, true);
  
-    // Gradient header height: at least 24px, but scaled with font height if available
-    int header_height = (current_font_height > 0) ? (current_font_height + 8) : 24;
+    // Determine header height
+    int header_height;
+    if (logo_image.resized_data) {
+        header_height = logo_image.resized_height + 8;   // add padding
+    } else {
+        header_height = (current_font_height > 0) ? (current_font_height + 8) : 24;
+    }
     draw_gradient(start_menu_position_x + 2, start_menu_position_y + 2,
                   start_menu_width - 4, header_height,
                   0x0A246A, 0x3A6EA5, false);
 
-    // Center "DualFuse" vertically in header
-    int text_y = start_menu_position_y + 2 + (header_height - current_font_height) / 2;
-    if (text_y < start_menu_position_y + 2) text_y = start_menu_position_y + 2;
-    draw_text("DualFuse",
-              start_menu_position_x + 8,
-              text_y + current_font_height - 4,
-              0xFFFFFF, 0x0A246A);
+    // Draw logo or fallback text
+    if (logo_image.resized_data) {
+        int logo_x = start_menu_position_x + (start_menu_width - logo_image.resized_width) - ((start_menu_width - logo_image.resized_width) / 2);
+        int logo_y = start_menu_position_y + (header_height - logo_image.resized_height) - ((header_height - logo_image.resized_height) / 2);
+        image_draw(&logo_image, logo_x, logo_y, logo_image.resized_width, logo_image.resized_height);
+    } else {
+        int text_y = start_menu_position_y + 2 + (header_height - current_font_height) / 2;
+        if (text_y < start_menu_position_y + 2) text_y = start_menu_position_y + 2;
+        draw_text("DualFuse",
+                  start_menu_position_x + 8,
+                  text_y + current_font_height - 4,
+                  0xFFFFFF, 0x0A246A);
+    }
  
+    // Rest of the menu items (unchanged)
     for (int item_index = 0; item_index < START_MENU_ITEMS; item_index++)
     {
         int item_position_y =
@@ -144,25 +158,28 @@ void draw_start_menu()
                            0x316AC5);
         }
 
-        fill_rectangle(start_menu_position_x + START_MENU_PADDING,
-                       item_position_y +
-                       (START_MENU_ITEM_HEIGHT - START_MENU_ICON_SIZE) / 2,
-                       START_MENU_ICON_SIZE,
-                       START_MENU_ICON_SIZE,
-                       g_start_items[item_index].icon_color);
+        int icon_x = start_menu_position_x + START_MENU_PADDING;
+        int icon_y = item_position_y + (START_MENU_ITEM_HEIGHT - START_MENU_ICON_SIZE) / 2;
 
-        draw_rect_outline(start_menu_position_x + START_MENU_PADDING,
-                          item_position_y +
-                          (START_MENU_ITEM_HEIGHT - START_MENU_ICON_SIZE) / 2,
-                          START_MENU_ICON_SIZE,
-                          START_MENU_ICON_SIZE,
-                          XP_BUTTON_SHADOW, 1);
+        Image* icon = NULL;
+        switch (item_index) {
+            case 0: icon = &terminal_icon; break;
+            case 1: icon = &folder_icon; break;
+            case 2: icon = &calculator_icon; break;
+        }
 
-        // Vertical centering of text using current_font_height
-        int text_vertical_center = item_position_y + (START_MENU_ITEM_HEIGHT - (current_font_height / 2)) / 2;
+        if (icon && icon->resized_data) {
+            image_draw(icon, icon_x, icon_y, START_MENU_ICON_SIZE, START_MENU_ICON_SIZE);
+        } else {
+            fill_rectangle(icon_x, icon_y, START_MENU_ICON_SIZE, START_MENU_ICON_SIZE,
+                           g_start_items[item_index].icon_color);
+            draw_rect_outline(icon_x, icon_y, START_MENU_ICON_SIZE, START_MENU_ICON_SIZE,
+                              XP_BUTTON_SHADOW, 1);
+        }
+
+        int text_vertical_center = item_position_y + (START_MENU_ITEM_HEIGHT - (current_font_height / 2)) / 2 + current_font_height / 2;
         draw_text(g_start_items[item_index].label,
-                  start_menu_position_x + START_MENU_PADDING +
-                  START_MENU_ICON_SIZE + 8,
+                  start_menu_position_x + START_MENU_PADDING + START_MENU_ICON_SIZE + 8,
                   text_vertical_center,
                   item_is_hovered ? 0xFFFFFF : XP_WINDOW_TEXT,
                   item_is_hovered ? 0x316AC5 : XP_BUTTON_FACE);
@@ -198,12 +215,19 @@ bool start_menu_handle_mouse(int mouse_position_x,
     {
         g_start_menu_open = false;
         return false;
+    } 
+
+    int header_height;
+    if (logo_image.resized_data) {
+        header_height = logo_image.resized_height + 8;   // add padding
+    } else {
+        header_height = (current_font_height > 0) ? (current_font_height + 8) : 24;
     }
 
     for (int item_index = 0; item_index < START_MENU_ITEMS; item_index++)
     {
         int item_position_y =
-            start_menu_position_y + 28 + START_MENU_PADDING +
+            start_menu_position_y + header_height + START_MENU_PADDING +
             item_index * START_MENU_ITEM_HEIGHT;
 
         bool mouse_is_over_item =
@@ -272,7 +296,7 @@ XPTaskbar* create_taskbar()
     tb->height   = TASKBAR_HEIGHT;
     tb->bg_color = 0xC0C0C0;
 
-    tb->start_button = create_xp_button(NULL, 2, TASKBAR_Y + 3, 60, TASKBAR_HEIGHT - 6, "Start", on_start_click);
+    tb->start_button = create_xp_button(NULL, 2, TASKBAR_Y + 3, (7 * (SCREEN_WIDTH / 100)), TASKBAR_HEIGHT - 6, "Start", on_start_click);
     register_xp_button(tb->start_button);
 
     for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++)
@@ -310,9 +334,9 @@ void taskbar_sync_windows()
         taskbar->window_buttons[i] = NULL;
     }
 
-    int btn_x      = 2 + 60 + 10;   // right of the Start button
+    int btn_x      = taskbar->start_button->x + taskbar->start_button->width + 10;   // right of the Start button
     int btn_y      = TASKBAR_Y + 4;
-    int btn_width  = 150;
+    int btn_width  = 13 * (SCREEN_WIDTH / 100); // width based on screen size
     int btn_height = TASKBAR_HEIGHT - 8;
 
     for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++)
@@ -357,21 +381,48 @@ void draw_taskbar()
 
         int bx = taskbar->window_buttons[i]->x;
         int by = taskbar->window_buttons[i]->y;
-        draw_rect_outline(bx + 5, by + 5, 14, 14, XP_BUTTON_SHADOW, 1);
+
+        // Choose icon based on window type
+        Image* icon = NULL;
+        if (window_arr[i]) {
+            switch (window_arr[i]->window_type) {
+                case WINDOW_TYPE_CONSOLE:
+                    icon = &terminal_icon;
+                    break;
+                case WINDOW_TYPE_CALC:
+                    icon = &calculator_icon;
+                    break;
+                case WINDOW_TYPE_EXPLORER:
+                    icon = &folder_icon;
+                    break;
+                default:
+                    icon = &file_icon;
+                    break;
+            }
+        }
+        int icon_size = (current_font_height / 4) * 5;
+        int icon_y = by + (taskbar->window_buttons[i]->height - icon_size) / 2;
+
+        if (icon && icon->resized_data) {
+            // Draw the 14×14 icon (matches the previous rectangle size)
+            image_draw(icon, bx + 5, icon_y, icon_size, icon_size);
+        } else {
+            // Fallback rectangle
+            draw_rect_outline(bx + 5, icon_y, icon_size, icon_size, XP_BUTTON_SHADOW, 1);
+        }
     }
 
-    //  Clock – vertically center text in the taskbar
-    int clock_x = SCREEN_WIDTH - 100;
-    int clock_y = TASKBAR_Y + (TASKBAR_HEIGHT + (current_font_height / 2)) / 2;
-    if (clock_y < TASKBAR_Y) clock_y = TASKBAR_Y + 2;
+    // Clock - right-aligned, using font width
+    int clock_y = TASKBAR_Y + (TASKBAR_HEIGHT / 2) + (current_font_height / 3);
+    //if (clock_y < TASKBAR_Y) clock_y = TASKBAR_Y + 2;
 
-    uint64_t now     = timerBootUnix + (timerTicks / frequency) + (2 * 3600);
+    uint64_t now = timerBootUnix + (timerTicks / frequency) + (2 * 3600);
     uint64_t hours24 = (now % 86400) / 3600;
-    uint64_t minutes =  (now % 3600) / 60;
-    uint64_t seconds =   now % 60;
+    uint64_t minutes = (now % 3600) / 60;
+    uint64_t seconds = now % 60;
 
     const char* period = (hours24 >= 12) ? "PM" : "AM";
-    uint64_t hours12   = hours24 % 12;
+    uint64_t hours12 = hours24 % 12;
     if (hours12 == 0) hours12 = 12;
 
     auto pad2 = [](uint64_t val, char* buf) -> char* {
@@ -382,13 +433,15 @@ void draw_taskbar()
     };
 
     char hbuf[4], mbuf[4], sbuf[4];
+    char time_str[32];
+    snprintf(time_str, sizeof(time_str), "%s:%s:%s %s",
+            pad2(hours12, hbuf), pad2(minutes, mbuf), pad2(seconds, sbuf), period);
 
-    draw_text(pad2(hours12,  hbuf), clock_x,      clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(":",                   clock_x + 16, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(pad2(minutes,  mbuf), clock_x + 24, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(":",                   clock_x + 40, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(pad2(seconds,  sbuf), clock_x + 48, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(period,                clock_x + 64, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
+    int total_width = get_text_width(time_str);
+    int clock_x = SCREEN_WIDTH - total_width - 10;   // 10px right margin
+    if (clock_x < 0) clock_x = SCREEN_WIDTH - 100;   // fallback
+
+    draw_text(time_str, clock_x, clock_y, XP_WINDOW_TEXT, 0xA0A0A0);
 }
 
 //   Desktop background  
@@ -462,18 +515,29 @@ void draw_desktop_icon(XPDesktopIcon* icon)
 {
     if (!icon || !icon->label) return;
 
-    int x    = icon->x;
-    int y    = icon->y;
+    int x = icon->x;
+    int y = icon->y;
     int size = icon->size;
 
     uint32_t bg = icon->pressed ? XP_BUTTON_SHADOW
                 : icon->hovered ? XP_BUTTON_FACE
                 :                 XP_BUTTON_HIGHLIGHT;
 
-    fill_rectangle(x, y, size, size, bg);
-    draw_rect_outline(x, y, size, size, XP_BUTTON_SHADOW, 1);
-    fill_rectangle(x + 6, y + 6, size - 12, size - 12, icon->icon_color);
-    // Position label below icon, vertically centered around font baseline
+    //fill_rectangle(x, y, size, size, bg);
+    //draw_rect_outline(x, y, size, size, XP_BUTTON_SHADOW, 1);
+
+    // Draw icon based on label
+    if (strcmp(icon->label, "Console") == 0 && terminal_icon.resized_data) {
+        image_draw(&terminal_icon, x, y, size, size);
+    } else if (strcmp(icon->label, "Calc") == 0 && calculator_icon.resized_data) {
+        image_draw(&calculator_icon, x, y, size, size);
+    } else if (strcmp(icon->label, "Files") == 0 && folder_icon.resized_data) {
+        image_draw(&folder_icon, x, y, size, size);
+    } else {
+        // fallback colored rectangle
+        fill_rectangle(x + 6, y + 6, size - 12, size - 12, icon->icon_color);
+    }
+
     int label_y = y + size + 5 + ((current_font_height + 4) / 2);
     draw_text_centered(icon->label, x - 20, label_y, size + 40, XP_WINDOW_TEXT, 0x008DD5);
 }
@@ -561,8 +625,9 @@ char* u64toa(uint64_t value, char* str, int base)
     return str;
 }
 
-static void draw_clock_panel(int x, int y, int /*w*/, int /*h*/, void* /*ctx*/)
+static void draw_clock_panel(int x, int y, int w, int h, void* /*ctx*/)
 {
+    // Format the time string
     uint64_t now = timerBootUnix + (timerTicks / frequency) + (2 * 3600);
     uint64_t hours24 = (now % 86400) / 3600;
     uint64_t minutes = (now % 3600) / 60;
@@ -580,12 +645,35 @@ static void draw_clock_panel(int x, int y, int /*w*/, int /*h*/, void* /*ctx*/)
     };
 
     char hbuf[4], mbuf[4], sbuf[4];
-    draw_text(pad2(hours12, hbuf), x,      y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(":",                  x + 16, y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(pad2(minutes, mbuf), x + 24, y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(":",                  x + 40, y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(pad2(seconds, sbuf), x + 48, y, XP_WINDOW_TEXT, 0xA0A0A0);
-    draw_text(period,               x + 64, y, XP_WINDOW_TEXT, 0xA0A0A0);
+    char time_str[32];
+    snprintf(time_str, sizeof(time_str), "%s:%s:%s %s",
+             pad2(hours12, hbuf), pad2(minutes, mbuf), pad2(seconds, sbuf), period);
+
+    // Compute 1.5x font height using integer arithmetic (no floats)
+    int normal_height = current_font_height;
+    int scaled_height = (normal_height * 3) / 2;   // 1.5 = 3/2
+    if (scaled_height < 1) scaled_height = 1;
+
+    // Temporarily select the larger font size
+    int ret = ssfn_select(&g_ssfn_ctx, SSFN_FAMILY_ANY, NULL,
+                          SSFN_STYLE_REGULAR, scaled_height);
+
+    // Measure the scaled text width
+    int text_width = get_text_width(time_str);
+    int text_height = scaled_height;   // actual rendered height
+
+    int text_x = x + (w - text_width) / 2;
+    int text_y = y + (h + text_height) / 2;
+
+    if (text_x < x) text_x = x;
+    if (text_y < y) text_y = y;
+
+    // Draw the whole string using SSFN (which now uses the larger size)
+    draw_text_ssfn(text_x, text_y,(XP_WINDOW_TEXT & 0x00FFFFFF) | 0xFF000000,(0xA0A0A0 & 0x00FFFFFF) | 0xFF000000,time_str);
+
+    // Restore the original font size
+    ssfn_select(&g_ssfn_ctx, SSFN_FAMILY_ANY, NULL,
+                SSFN_STYLE_REGULAR, normal_height);
 }
 
 //   Desktop lifecycle  
@@ -599,10 +687,10 @@ void initialize_xp_desktop()
 
     load_background();
 
-    create_taskbar();
+    load_all_icons();
 
     // Wait until SSFN is loaded to get correct font height
-    int font_pixel_height = (SCREEN_WIDTH > 1300) ? 20 : 14;
+    int font_pixel_height = (SCREEN_WIDTH > 1300) ? 20 : 16;
     init_ssfn();
     if (load_ssfn("/assets/nato_sans.sfn", font_pixel_height) == 0) {
         current_font_height = ssfn_get_font_height();
@@ -614,6 +702,8 @@ void initialize_xp_desktop()
         current_font_baseline = 12;
     }
 
+    create_taskbar();
+     
     // Desktop icon spacing: icon size + vertical padding + font height
     int icon_size = (4 * (SCREEN_HEIGHT / 100));
     int spacing = icon_size + 8 + current_font_height;
@@ -633,14 +723,20 @@ void initialize_xp_desktop()
 
 #if defined(DEBUG_GUI)
     printf("[DEBUG_GUI] initialize_xp_desktop: console initialized\n");
-#endif
+#endif 
+
+    int panel_w = 10 * (SCREEN_WIDTH / 100);
+    int panel_h = 4 * (SCREEN_HEIGHT / 100);
+    int panel_x = SCREEN_WIDTH - panel_w - 10;           // right‑aligned with 10px margin
+    int panel_y = TASKBAR_Y - panel_h - 5;              // just above the taskbar
 
     XPPanel* clock_panel = create_xp_panel(
-        SCREEN_WIDTH - 100, TASKBAR_Y + 5,
-        (8 * (SCREEN_WIDTH / 100)), (2 * (screen_height / 100)),
-        200, 36, draw_clock_panel, nullptr
+        panel_x, panel_y,
+        panel_w, panel_h,
+        120, 6,           // scale to 120% on hover, lift 6 pixels
+        draw_clock_panel, nullptr
     );
-    register_xp_panel(clock_panel); 
+    register_xp_panel(clock_panel);
 
     taskbar_sync_windows();
 

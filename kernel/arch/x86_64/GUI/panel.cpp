@@ -95,7 +95,7 @@ void draw_xp_panel(XPPanel* panel)
     if (panel->lerp_t <= 0)
         return;
 
-    int t = panel->lerp_t;  // 0–256
+    int t = panel->lerp_t;  // 0-256
 
     int cur_w = lerp_int(panel->anchor_w, (panel->anchor_w * panel->expand_scale_pct) / 100, t);
     int cur_h = lerp_int(panel->anchor_h, (panel->anchor_h * panel->expand_scale_pct) / 100, t);
