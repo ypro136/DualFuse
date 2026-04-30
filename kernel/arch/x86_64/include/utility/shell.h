@@ -38,6 +38,7 @@ private:
     void cmd_start(int argument_count, char* argument_vector[]);
     void cmd_grep(int argc, char* argv[]);
     void cmd_calc(int argc, char* argv[]);
+    void cmd_edit(int argument_count, char* argument_vector[]);
 
     void cmd_madt();
     void cmd_i2c();

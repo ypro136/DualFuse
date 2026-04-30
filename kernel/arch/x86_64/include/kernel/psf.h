@@ -44,6 +44,9 @@ int  load_ssfn(const char *font_path, int pixel_height);
 int get_text_width(const char* text);
 int ssfn_get_font_height(void);
 
+void ssfnPutCScaled(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color, uint32_t scale);
+
+
 void psfPutCScaled(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color, uint32_t scale);
 uint32_t psfPutC(char c, uint32_t x, uint32_t y, uint32_t rgb, uint32_t bg_color);
 

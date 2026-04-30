@@ -8,9 +8,8 @@
 #define FE_BACK_HISTORY      32
 
 #define FE_ICON_SIZE        48
-#define FE_ICON_SPACING_X   48
 #define FE_ICON_SPACING_Y   20
-#define FE_ICON_COLUMNS     5
+#define FE_ICON_COLUMNS     4
 #define FE_TOOLBAR_HEIGHT   28
 #define FE_ADDRESSBAR_HEIGHT 24
 

@@ -18,6 +18,7 @@
 #include <task.h>
 #include <fs.h>
 #include <png_loader.h>
+#include <text_editor.h>
 
 #ifndef MAX_PATH
 #define MAX_PATH 256
@@ -91,13 +92,13 @@ void Shell::execute(char* input_command_line)
     else if (strcmp(argument_vector[0], "ECHO")    == 0) cmd_echo(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "INFO")    == 0) cmd_info();
     else if (strcmp(argument_vector[0], "PAGE")    == 0) cmd_page();
-    else if (strcmp(argument_vector[0], "MK")      == 0) cmd_mk(argument_count, argument_vector);
+    else if (strcmp(argument_vector[0], "CREATE")  == 0) cmd_mk(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "CAT")     == 0) cmd_cat(argument_count, argument_vector);
-    else if (strcmp(argument_vector[0], "LS")      == 0) cmd_ls();
-    else if (strcmp(argument_vector[0], "RM")      == 0) cmd_rm(argument_count, argument_vector);
+    else if (strcmp(argument_vector[0], "LIST")    == 0) cmd_ls();
+    else if (strcmp(argument_vector[0], "REMOVE")  == 0) cmd_rm(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "END")     == 0) cmd_end();
     else if (strcmp(argument_vector[0], "MKDIR")   == 0) cmd_mkdir(argument_count, argument_vector);
-    else if (strcmp(argument_vector[0], "CD")      == 0) cmd_cd(argument_count, argument_vector);
+    else if (strcmp(argument_vector[0], "enter")   == 0) cmd_cd(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "PWD")     == 0) cmd_pwd();
     else if (strcmp(argument_vector[0], "SEARCH")  == 0) cmd_search(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "START")   == 0) cmd_start(argument_count, argument_vector);
@@ -111,6 +112,7 @@ void Shell::execute(char* input_command_line)
     else if (strcmp(argument_vector[0], "KILL")    == 0) cmd_kill(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "BG")      == 0) cmd_bg();
     else if (strcmp(argument_vector[0], "MOUNT")   == 0) cmd_mount();
+    else if (strcmp(argument_vector[0], "EDIT")    == 0) cmd_edit(argument_count, argument_vector);
     else { print("Unknown command: "); println(argument_vector[0]); }
 }
 
@@ -176,14 +178,26 @@ static void print_right_aligned_size(Shell* shell_instance,
 void Shell::cmd_help()
 {
     println("Commands:");
-    println("  CLEAR ECHO INFO PAGE END HELP");
-    println("  MK <file> <content>  CAT <file>  RM <file>  MKDIR <dir>");
-    println("  LS  CD <dir>  PWD  SEARCH <term>  START <file>");
-    println("  CALC <n> <op> <n> [<op> <n> ...]  ops: + - * / %");
-    println("  MADT  I2C  I2CHID  I2CPOLL");
-    println("  TASKS  SPAWN  KILL <id>");
-    println("  BG     - load wallpaper module, fallback to static, fallback to gradient");
-    println("  MOUNT  - mount the FAT32 disk.img loaded as a Limine module");
+    println("  HELP                     - Show this help message");
+    println("  CLEAR                    - Clear the console screen");
+    println("  ECHO <text>              - Print the given text");
+    println("  INFO                     - Display system information");
+    println("  PAGE                     - Show memory paging information");
+    println("  CREATE <file> <content>  - Create a new file with the given content");
+    println("  CAT <file>               - Display the contents of a file");
+    println("  LIST                     - List files in the current directory");
+    println("  REMOVE <file>            - Delete a file");
+    println("  END                      - Exit the shell");
+    println("  MKDIR <dir>              - Create a new directory");
+    println("  CD <dir>                 - Change current working directory");
+    println("  PWD                      - Print current working directory");
+    println("  SEARCH <term>            - Search for files containing the term");
+    println("  START <file>             - Launch an executable or open a file");
+    println("  CALC <n> <op> <n> ...    - Calculate expression (ops: + - * / %)");
+    println("  TASKS                    - List running tasks");
+    println("  SPAWN                    - Create a new shell task");
+    println("  KILL <id>                - Terminate a task by its ID");
+    println("  EDIT [file]              - Open text editor (optional: load file path)");
 }
 
 void Shell::cmd_mount()
@@ -750,6 +764,22 @@ void Shell::cmd_madt()
         }
         entry_scan_pointer += entry_header->length;
     }
+}
+
+void Shell::cmd_edit(int argument_count, char* argument_vector[])
+{
+    const char* target_file_path = (argument_count >= 2) ? argument_vector[1] : nullptr;
+
+    char absolute_path_buffer[MAX_PATH];
+    absolute_path_buffer[0] = '\0';
+
+    if (target_file_path)
+    {
+        build_absolute_path(target_file_path, absolute_path_buffer, MAX_PATH);
+        target_file_path = absolute_path_buffer;
+    }
+
+    text_editor_open_window(target_file_path);
 }
 
 void Shell::cmd_clear()  { console->clear_screen(); }

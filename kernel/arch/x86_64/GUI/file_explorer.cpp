@@ -10,8 +10,21 @@
 #include <string.h>
 #include <ramdisk.h>
 #include <timer.h>
+#include <image_viewer.h>
+#include <icons.h>
+
 
 #define MAX_NAME_ATTEMPTS 100
+
+static int strcasecmp(const char* a, const char* b) {
+    for (; *a && *b; a++, b++) {
+        char ca = *a, cb = *b;
+        if (ca >= 'A' && ca <= 'Z') ca += 'a' - 'A';
+        if (cb >= 'A' && cb <= 'Z') cb += 'a' - 'A';
+        if (ca != cb) return ca - cb;
+    }
+    return *a - *b;
+}
 
 static void int_to_str(int num, char* buf)
 {
@@ -65,6 +78,11 @@ static int explorer_client_area_width(XPFileExplorer* explorer)
 static int explorer_client_area_height(XPFileExplorer* explorer)
 {
     return explorer->window->height - TITLE_BAR_HEIGHT - 2 * WINDOW_BORDER_WIDTH;
+}
+
+static bool is_png_file(const char* filename) {
+    const char* dot = strrchr(filename, '.');
+    return (dot && strcasecmp(dot, ".png") == 0);
 }
 
 // --- Directory listing using FatFs ---
@@ -140,7 +158,7 @@ static void draw_classic_toolbar(XPFileExplorer* explorer)
 {
     int x = explorer_client_area_x(explorer);
     int y = explorer_toolbar_y(explorer);
-    int w = explorer_client_area_width(explorer);
+    int w = explorer_client_area_width(explorer) / 10;
 
     fill_rectangle(x, y, w, FE_TOOLBAR_HEIGHT, 0xC0C0C0);
     draw_beveled_border_thick(x, y, w, FE_TOOLBAR_HEIGHT,0xFFFFFF, 0xC0C0C0, 0x808080, true);
@@ -166,18 +184,26 @@ static void draw_classic_icon(XPFileExplorer* explorer, int index, int x, int y)
     bool selected = (index == explorer->selected_index);
     uint32_t background_color = selected ? 0x316AC5 : 0xC0C0C0;
 
-    fill_rectangle(x, y, FE_ICON_SIZE, FE_ICON_SIZE, background_color);
-    draw_rect_outline(x, y, FE_ICON_SIZE, FE_ICON_SIZE, 0x808080, 1);
+    //fill_rectangle(x, y, FE_ICON_SIZE, FE_ICON_SIZE, background_color);
+    //draw_rect_outline(x, y, FE_ICON_SIZE, FE_ICON_SIZE, 0x808080, 1);
 
-    if (explorer->visible_is_directory[index])
-    {
-        fill_rectangle(x + 10, y + 18, 28, 18, 0xFFCC00);
-        draw_rect_outline(x + 10, y + 18, 28, 18, 0xAA8800, 1);
-    }
-    else
-    {
-        fill_rectangle(x + 12, y + 10, 24, 28, 0xFFFFFF);
-        draw_rect_outline(x + 12, y + 10, 24, 28, 0x808080, 1);
+    // Draw icon
+    if (explorer->visible_is_directory[index]) {
+        if (folder_icon.resized_data) {
+            image_draw(&folder_icon, x, y, FE_ICON_SIZE, FE_ICON_SIZE);
+        } else {
+            // fallback: yellow rectangle
+            fill_rectangle(x + 10, y + 18, 28, 18, 0xFFCC00);
+            draw_rect_outline(x + 10, y + 18, 28, 18, 0xAA8800, 1);
+        }
+    } else {
+        if (file_icon.resized_data) {
+            image_draw(&file_icon, x, y, FE_ICON_SIZE, FE_ICON_SIZE);
+        } else {
+            // fallback: white rectangle
+            fill_rectangle(x + 12, y + 10, 24, 28, 0xFFFFFF);
+            draw_rect_outline(x + 12, y + 10, 24, 28, 0x808080, 1);
+        }
     }
 
     draw_text_centered(
@@ -227,7 +253,7 @@ void file_explorer_draw_frame(XPFileExplorer* explorer)
     int font_height = ssfn_get_font_height();
     if (font_height == 0) font_height = 16;
 
-    int cell_w = FE_ICON_SIZE + FE_ICON_SPACING_X;
+    int cell_w = FE_ICON_SIZE + (explorer->window->width - (FE_ICON_COLUMNS * FE_ICON_SIZE)) / (FE_ICON_COLUMNS + 1);
     int cell_h = FE_ICON_SIZE + FE_ICON_SPACING_Y + font_height + 4;   // +4 for extra padding
 
     for (int i = 0; i < explorer->visible_count; i++)
@@ -235,7 +261,7 @@ void file_explorer_draw_frame(XPFileExplorer* explorer)
         int col = i % FE_ICON_COLUMNS;
         int row = i / FE_ICON_COLUMNS;
 
-        int ix = content_x + FE_ICON_SPACING_X + col * cell_w;
+        int ix = content_x + (explorer->window->width - (FE_ICON_COLUMNS * FE_ICON_SIZE)) / (FE_ICON_COLUMNS + 1) + col * cell_w;
         int iy = content_y + 6 + row * cell_h - explorer->scroll_offset;
 
         draw_classic_icon(explorer, i, ix, iy);
@@ -284,14 +310,14 @@ static int slot_at(XPFileExplorer* explorer, int mx, int my)
 {
     int content_x = explorer_client_area_x(explorer);
     int content_y = explorer_content_y(explorer);
-    int cell_w = FE_ICON_SIZE + FE_ICON_SPACING_X;
+    int cell_w = FE_ICON_SIZE + (explorer->window->width - (FE_ICON_COLUMNS * FE_ICON_SIZE)) / (FE_ICON_COLUMNS + 1);
     int cell_h = FE_ICON_SIZE + FE_ICON_SPACING_Y + 12;
 
     for (int i = 0; i < explorer->visible_count; i++)
     {
         int col = i % FE_ICON_COLUMNS;
         int row = i / FE_ICON_COLUMNS;
-        int ix = content_x + FE_ICON_SPACING_X + col * cell_w;
+        int ix = content_x + (explorer->window->width - (FE_ICON_COLUMNS * FE_ICON_SIZE)) / (FE_ICON_COLUMNS + 1) + col * cell_w;
         int iy = content_y + row * cell_h - explorer->scroll_offset;
 
         if (mx >= ix && mx <= ix + FE_ICON_SIZE &&
@@ -322,16 +348,23 @@ static void execute_context_menu(XPFileExplorer* explorer, int item)
             }
             else
             {
-                fs_start(full_path, nullptr);
+                if (is_png_file(explorer->visible_names[explorer->ctx_target_slot]))
+                    open_image_in_viewer(full_path);
+                else
+                    fs_start(full_path, nullptr);
             }
             break;
         case 1: // Start (launch)
             if (!explorer->visible_is_directory[explorer->ctx_target_slot])
-                fs_start(full_path, nullptr);
+            {
+                if (is_png_file(explorer->visible_names[explorer->ctx_target_slot]))
+                    open_image_in_viewer(full_path);
+                else
+                    fs_start(full_path, nullptr);
+            }
             break;
         case 2: // Delete
-            // You can implement deletion using FatFs unlink/rmdir
-            // Example: f_unlink(full_path);
+            // f_unlink(full_path); // optional
             break;
     }
 }
@@ -510,7 +543,10 @@ void fe_handle_mouse(XPFileExplorer* explorer,
             if (strcmp(full_path, "/") != 0)
                 strcat(full_path, "/");
             strcat(full_path, explorer->visible_names[slot]);
-            fs_start(full_path, nullptr);
+            if (is_png_file(explorer->visible_names[slot]))
+                {open_image_in_viewer(full_path);}
+            else
+                {fs_start(full_path, nullptr);}
         }
     }
 }
