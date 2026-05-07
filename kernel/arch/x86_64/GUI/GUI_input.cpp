@@ -11,6 +11,8 @@
 #include <file_explorer.h>
 #include <calculator.h>
 #include <text_editor.h>
+#include <image_viewer.h>
+#include <task_manager.h>
 
 bool should_exit      = false;
 bool old_clickedLeft  = false;
@@ -60,6 +62,20 @@ static void dispatch_to_active_window(bool left_clicked, bool right_clicked)
                 left_clicked, right_clicked);
             break;
 
+        case WINDOW_TYPE_IMAGE_VIEWER:
+            image_viewer_handle_mouse(
+                active_xp_window->context,
+                mouse_position_x, mouse_position_y,
+                left_clicked, right_clicked);
+            break;
+
+        case WINDOW_TYPE_TASK_MANAGER:
+            task_manager_handle_mouse(
+                static_cast<TaskManagerState*>(active_xp_window->context),
+                mouse_position_x, mouse_position_y,
+                left_clicked, right_clicked);
+            break;
+
         case WINDOW_TYPE_CONSOLE:
         case WINDOW_TYPE_NONE:
         default:
@@ -75,6 +91,8 @@ void GUI_dispatch_key(char c)
         calc_input(static_cast<XPCalculator*>(active_xp_window->context), c);
     else if (active_xp_window->window_type == WINDOW_TYPE_TEXT_EDITOR)
         text_editor_handle_key_input(static_cast<XPTextEditor*>(active_xp_window->context), c);
+    else if (active_xp_window->window_type == WINDOW_TYPE_TASK_MANAGER)
+        task_manager_handle_keyboard(static_cast<TaskManagerState*>(active_xp_window->context), c);
 }
 
 bool GUI_input_loop()
@@ -210,8 +228,8 @@ bool GUI_input_loop()
                     fired_icon->on_click();
                 }
             }
-        }
-    }
+        } 
+    } 
 
     if (clickedLeft && grabbed_window != NULL)
     {

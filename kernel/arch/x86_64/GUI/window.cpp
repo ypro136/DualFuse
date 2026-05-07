@@ -4,6 +4,7 @@
 #include <framebufferutil.h>
 #include <psf.h>
 #include <liballoc.h>
+#include <image_viewer.h>
 
 // taskbar_sync_windows() is declared in GUI.h - forward-declare here
 // to avoid a circular include (GUI.h → window.h → GUI.h).
@@ -111,65 +112,52 @@ XPWindow* create_xp_window(int x, int y, int width, int height,
 
 void close_xp_window(void* ctx)
 {
-#if defined(DEBUG_GUI)
+    #if defined(DEBUG_GUI)
     printf("[DEBUG_GUI] close_xp_window: ctx:%p\n", ctx);
-#endif
-
+    #endif
+ 
     XPWindow* window = (XPWindow*)ctx;
-    if (!window)
-    {
-#if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] close_xp_window: window is NULL, aborting\n");
-#endif
-        return;
-    }
-
-    // Remove from global array
-    for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++)
-    {
-        if (window_arr[i] == window)
-        {
+    if (!window) return;
+ 
+    for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++) {
+        if (window_arr[i] == window) {
             window_arr[i] = NULL;
-#if defined(DEBUG_GUI)
-            printf("[DEBUG_GUI] close_xp_window: removed from window_arr slot:%d\n", i);
-#endif
             break;
         }
     }
-
-    // Free title-bar buttons
-    for (int i = 0; i < MAX_NUM_OF_BUTTONS_FOR_WINDOWS; i++)
-    {
-        if (window->buttons[i] != NULL)
-        {
+ 
+    for (int i = 0; i < MAX_NUM_OF_BUTTONS_FOR_WINDOWS; i++) {
+        if (window->buttons[i] != NULL) {
             free(window->buttons[i]);
             window->buttons[i] = NULL;
         }
     }
-
-    free(window->context);
+ 
+    if (window->context) {
+        switch (window->window_type) {
+            case WINDOW_TYPE_IMAGE_VIEWER:
+                destroy_image_viewer((XPImageViewer*)window->context);
+                break;
+            default:
+                free(window->context);
+                break;
+        }
+    }
+ 
     free(window);
-
-#if defined(DEBUG_GUI)
-    printf("[DEBUG_GUI] close_xp_window: freed, searching for next active\n");
-#endif
-
+ 
     taskbar_sync_windows();
-    // Promote the first remaining window to active
-    for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++)
-    {
-        if (window_arr[i] != NULL)
-        {
+ 
+    for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++) {
+        if (window_arr[i] != NULL) {
             set_active_xp_window(window_arr[i]);
             return;
         }
     }
-    
+ 
     active_xp_window = NULL;
-#if defined(DEBUG_GUI)
-    printf("[DEBUG_GUI] close_xp_window: no windows left\n");
-#endif
 }
+
 
 void maximize_xp_window(void* ctx)
 {

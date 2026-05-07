@@ -15,6 +15,7 @@
 #include <calculator.h>
 #include <apic.h>
 #include <icons.h>
+#include <task_manager.h>
 
 
 #include <png_loader.h>
@@ -85,6 +86,7 @@ static StartMenuItem g_start_items[START_MENU_ITEMS] = {
     { "Console", 0x000080, on_console_icon_click       },
     { "Files",   0xFFCC00, on_file_explorer_icon_click },
     { "Calc",    0x007F00, on_calculator_icon_click    },
+    { "Tasks",   0x007F7F, on_task_manager_icon_click },
 };
 
 static int start_menu_render_y()
@@ -115,10 +117,9 @@ void draw_start_menu()
                               XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE,
                               XP_BUTTON_SHADOW, true);
  
-    // Determine header height
     int header_height;
     if (logo_image.resized_data) {
-        header_height = logo_image.resized_height + 8;   // add padding
+        header_height = logo_image.resized_height + 8;
     } else {
         header_height = (current_font_height > 0) ? (current_font_height + 8) : 24;
     }
@@ -126,7 +127,6 @@ void draw_start_menu()
                   start_menu_width - 4, header_height,
                   0x0A246A, 0x3A6EA5, false);
 
-    // Draw logo or fallback text
     if (logo_image.resized_data) {
         int logo_x = start_menu_position_x + (start_menu_width - logo_image.resized_width) - ((start_menu_width - logo_image.resized_width) / 2);
         int logo_y = start_menu_position_y + (header_height - logo_image.resized_height) - ((header_height - logo_image.resized_height) / 2);
@@ -140,7 +140,6 @@ void draw_start_menu()
                   0xFFFFFF, 0x0A246A);
     }
  
-    // Rest of the menu items (unchanged)
     for (int item_index = 0; item_index < START_MENU_ITEMS; item_index++)
     {
         int item_position_y =
@@ -163,9 +162,10 @@ void draw_start_menu()
 
         Image* icon = NULL;
         switch (item_index) {
-            case 0: icon = &terminal_icon; break;
-            case 1: icon = &folder_icon; break;
-            case 2: icon = &calculator_icon; break;
+            case 0: icon = &terminal_icon;    break;
+            case 1: icon = &folder_icon;      break;
+            case 2: icon = &calculator_icon;  break;
+            case 3:                           break;
         }
 
         if (icon && icon->resized_data) {
@@ -395,6 +395,9 @@ void draw_taskbar()
                 case WINDOW_TYPE_EXPLORER:
                     icon = &folder_icon;
                     break;
+                case WINDOW_TYPE_TASK_MANAGER:
+                    icon = &file_icon;
+                    break;
                 default:
                     icon = &file_icon;
                     break;
@@ -533,6 +536,8 @@ void draw_desktop_icon(XPDesktopIcon* icon)
         image_draw(&calculator_icon, x, y, size, size);
     } else if (strcmp(icon->label, "Files") == 0 && folder_icon.resized_data) {
         image_draw(&folder_icon, x, y, size, size);
+    } else if (strcmp(icon->label, "Tasks") == 0) {
+        fill_rectangle(x + 6, y + 6, size - 12, size - 12, 0x007F7F);
     } else {
         // fallback colored rectangle
         fill_rectangle(x + 6, y + 6, size - 12, size - 12, icon->icon_color);
@@ -540,7 +545,7 @@ void draw_desktop_icon(XPDesktopIcon* icon)
 
     int label_y = y + size + 5 + ((current_font_height + 4) / 2);
     draw_text_centered(icon->label, x - 20, label_y, size + 40, XP_WINDOW_TEXT, 0x008DD5);
-}
+} 
 
 void draw_all_desktop_icons()
 {
@@ -623,7 +628,7 @@ char* u64toa(uint64_t value, char* str, int base)
     str[i] = '\0';
     reverse_string(str, i);
     return str;
-}
+} 
 
 static void draw_clock_panel(int x, int y, int w, int h, void* /*ctx*/)
 {
@@ -713,6 +718,9 @@ void initialize_xp_desktop()
     create_desktop_icon(20, temp_y, "Files",   0xFFCC00, on_file_explorer_icon_click);
     temp_y += spacing;
     create_desktop_icon(20, temp_y, "Calc",    0x007F00, on_calculator_icon_click);
+    temp_y += spacing;
+    create_desktop_icon(20, temp_y, "Tasks", 0x007F7F, on_task_manager_icon_click);
+
 
     console = Console(400, 400, 200, 200);
     console_initialize();

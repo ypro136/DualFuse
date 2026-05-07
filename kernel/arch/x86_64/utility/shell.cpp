@@ -20,6 +20,8 @@
 #include <png_loader.h>
 #include <text_editor.h>
 
+#include <memtest.h>
+
 #ifndef MAX_PATH
 #define MAX_PATH 256
 #endif
@@ -113,6 +115,7 @@ void Shell::execute(char* input_command_line)
     else if (strcmp(argument_vector[0], "BG")      == 0) cmd_bg();
     else if (strcmp(argument_vector[0], "MOUNT")   == 0) cmd_mount();
     else if (strcmp(argument_vector[0], "EDIT")    == 0) cmd_edit(argument_count, argument_vector);
+    else if (strcmp(argument_vector[0], "MEMTEST") == 0) cmd_memtest();
     else { print("Unknown command: "); println(argument_vector[0]); }
 }
 
@@ -198,6 +201,7 @@ void Shell::cmd_help()
     println("  SPAWN                    - Create a new shell task");
     println("  KILL <id>                - Terminate a task by its ID");
     println("  EDIT [file]              - Open text editor (optional: load file path)");
+    println("  MEMTEST                  - Stress test heap allocator");
 }
 
 void Shell::cmd_mount()
@@ -911,4 +915,9 @@ void Shell::cmd_i2cpoll()
         }
     }
     println("poll done.");
+}
+
+void Shell::cmd_memtest()
+{
+    ::cmd_memtest();
 }

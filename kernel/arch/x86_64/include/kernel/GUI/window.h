@@ -11,6 +11,7 @@ enum XPWindowType {
     WINDOW_TYPE_CALC         = 3,
     WINDOW_TYPE_IMAGE_VIEWER = 4,
     WINDOW_TYPE_TEXT_EDITOR  = 5,
+    WINDOW_TYPE_TASK_MANAGER = 6,
 };
 
 typedef struct {

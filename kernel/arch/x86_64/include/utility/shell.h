@@ -17,7 +17,7 @@ public:
 
     void print(const char* s);
     void println(const char* s);
- 
+
 private:
     Console* console;
 
@@ -39,6 +39,7 @@ private:
     void cmd_grep(int argc, char* argv[]);
     void cmd_calc(int argc, char* argv[]);
     void cmd_edit(int argument_count, char* argument_vector[]);
+    void cmd_memtest();
 
     void cmd_madt();
     void cmd_i2c();
@@ -54,6 +55,4 @@ private:
 
     static int  tokenize(char* input, char* argv[], int max_args);
     static void str_toupper(char* s);
-
-
 };

@@ -9,6 +9,10 @@
 
 #include <stdio.h>
 
+uint64_t physical_used_blocks_count  = 0;
+uint64_t physical_total_blocks_count = 0;
+
+
 
 
 void physical_memory_manager_initialize(uint64_t memory_map_Total, uint64_t memory_map_entry_count, struct limine_memmap_entry** memory_map_entries, uint64_t hhdmOffset) 
@@ -86,6 +90,17 @@ void physical_memory_manager_initialize(uint64_t memory_map_Total, uint64_t memo
 
   // bitmap_dump_blocks(bitmap);
   bitmap->ready = true;
+
+    physical_total_blocks_count = physical.BitmapSizeInBlocks;
+    physical_used_blocks_count  = 0;
+    for (uint64_t bitmap_byte_index = 0; bitmap_byte_index < physical.BitmapSizeInBytes; bitmap_byte_index++) {
+        uint8_t bitmap_byte = physical.Bitmap[bitmap_byte_index];
+        while (bitmap_byte) {
+            physical_used_blocks_count += (bitmap_byte & 1);
+            bitmap_byte >>= 1;
+        }
+    }
+
 }
 
 uint64_t physical_allocate(int pages) {
@@ -96,11 +111,17 @@ uint64_t physical_allocate(int pages) {
     Halt();
   }
 
+  physical_used_blocks_count += (uint64_t)pages;
+
   return phys;
 }
 
 void physical_free(uint64_t ptr, int pages) 
 {
+  if (physical_used_blocks_count >= (uint64_t)pages)
+  {
+    physical_used_blocks_count -= (uint64_t)pages;
+  }
 
   mark_region(&physical, (void *)ptr, pages * BLOCK_SIZE, 0);
 }
