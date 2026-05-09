@@ -19,6 +19,8 @@
 #include <fs.h>
 #include <png_loader.h>
 #include <text_editor.h>
+#include <scheduler.h>
+#include <gdt.h>
 
 #include <memtest.h>
 
@@ -116,6 +118,7 @@ void Shell::execute(char* input_command_line)
     else if (strcmp(argument_vector[0], "MOUNT")   == 0) cmd_mount();
     else if (strcmp(argument_vector[0], "EDIT")    == 0) cmd_edit(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "MEMTEST") == 0) cmd_memtest();
+    else if (strcmp(argument_vector[0], "SCHED") == 0) cmd_scheduler_toggle(argument_vector[1]);
     else { print("Unknown command: "); println(argument_vector[0]); }
 }
 
@@ -202,7 +205,22 @@ void Shell::cmd_help()
     println("  KILL <id>                - Terminate a task by its ID");
     println("  EDIT [file]              - Open text editor (optional: load file path)");
     println("  MEMTEST                  - Stress test heap allocator");
+    println("  SCHEDULER                - Toggle scheduler status");
 }
+
+void Shell::cmd_scheduler_toggle(const char* argument) {
+    if (strcmp(argument, "ON") == 0 || strcmp(argument, "on") == 0) {
+        gdt_update_tss_rsp0(currentTask->whileTssRsp);
+        scheduler_enabled = true;
+        printf("scheduler: enabled\n");
+    } else if (strcmp(argument, "OFF") == 0 || strcmp(argument, "off") == 0) {
+        scheduler_enabled = false;
+        printf("scheduler: disabled\n");
+    } else {
+        printf("scheduler: %s\n", scheduler_enabled ? "enabled" : "disabled");
+    }
+}
+
 
 void Shell::cmd_mount()
 {

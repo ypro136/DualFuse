@@ -33,6 +33,7 @@
 #include <apic.h>
 #include <i2c.h>
 #include <hid_i2c.h>
+#include <scheduler.h>
 
 #include <GUI.h>
 #include <fram_loop.h>
@@ -49,36 +50,36 @@ extern "C" void kernel_main(void);
 
 extern "C" void kernel_main(void) 
 {
-    _init(); // lib c software dependent fatal to fail
+    _init();
     
-    serial_initialize(0x3f8); // serial output(for debuging) non fatal to fail
+    serial_initialize(0x3f8);
     
-    initialiseBootloaderParser(); // parser for limine bootloder fatal to fail
+    initialiseBootloaderParser();
 
-	gdt_initialize(); // global discriptor table fatal to fail
+    gdt_initialize();
 
-    paging_initialize(); // paging non fatal to fail
+    paging_initialize();
     
-    isr_initialize(); // Interrupt Service Routines fatal to fail
+    isr_initialize();
     
-	memory_initialize(); // memory managment fatal to fail
+    memory_initialize();
 
-    framebuffer_initialize(); // framebuffer non fatal to fail
+    framebuffer_initialize();
         
-    pci_initialize(); // Peripheral Component Interconnect non fatal to fail
+    pci_initialize();
     
-    tasks_initialize(); //TODO: fix this non fatal to fail
+    tasks_initialize();
     printf("tasks initialized.\n"); 
 
-    syscall_inst_initialize(); // syscalls non fatal to fail TODO: thay should be
+    syscall_inst_initialize();
     
-    syscalls_initialize(); // syscalls non fatal to fail TODO: thay should be
+    syscalls_initialize();
     
-    initiateSSE(); // Streaming SIMD Extensions non fatal to fail
+    initiateSSE();
     
     block_init(); 
     
-    acpiInit(); // TODO: this is very minimal
+    acpiInit();
     printf("acpi initialized.\n");
     
     initiateAPIC();
@@ -96,7 +97,7 @@ extern "C" void kernel_main(void)
     
     initialize_xp_desktop();
     
-    hid_initialize(); // keep me here i2c need time in between
+    hid_initialize();
 
     FRESULT res;
     FIL fp;
@@ -105,7 +106,6 @@ extern "C" void kernel_main(void)
     if (res != FR_OK) {
         printf("Failed to create /boot.log: %d\n", res);
     } else {
-        // Write the boot log
         FRESULT write_result = f_write(&fp,
                                     bootloader.Boot_log->log,
                                     bootloader.Boot_log->length,
@@ -120,17 +120,16 @@ extern "C" void kernel_main(void)
         f_close(&fp);
     }
     bootloader.Boot_log = NULL;
+
+    gdt_update_tss_rsp0(currentTask->whileTssRsp);
+    scheduler_enabled = true;
+    printf("scheduler enabled.\n");
     
     bool should_exit = false;
-    int loop_count = 0;
     while (!should_exit) 
     {
         frame_loop(render_xp_desktop);
-        //should_exit = GUI_input_loop();
     }
-    
-    // breakpoint; tested and dose not work
 	
     for (;;) {}
-}
-
+} 

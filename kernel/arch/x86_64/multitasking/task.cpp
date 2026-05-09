@@ -144,8 +144,10 @@ Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir
   LinkedListInit(&target->dsSysIntr, sizeof(TaskSysInterrupted));
 
   memset(target->fpuenv, 0, 512);
-  ((uint16_t *)target->fpuenv)[0] = 0x37f;
+  ((uint16_t *)target->fpuenv)[0] = 0x37f;           // FCW at offset 0
+  *(uint32_t *)(&target->fpuenv[24]) = 0x1f80;        // MXCSR at offset 24 in fxsave area
   target->mxcsr = 0x1f80;
+
 
   task_attach_def_termios(target);
 

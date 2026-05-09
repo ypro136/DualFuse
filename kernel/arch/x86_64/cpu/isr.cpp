@@ -4,7 +4,7 @@
 
 #include <syscalls.h>
 #include <console.h>
-//#include <schedule.h>
+#include <scheduler.h>
 #include <task.h>
 #include <dbg.h>
 #include <apic.h>
@@ -75,15 +75,12 @@ void isr_initialize() {
 
   remap_pic();
 
-  // ISR exceptions 0 - 31
   for (int i = 0; i < 48; i++) {
     set_idt_gate(i, (uint64_t)asm_isr_redirect_table[i], 0x8E);
   }
 
-  // Syscalls having DPL 3
   set_idt_gate(0x80, (uint64_t)isr128, 0xEE);
 
-  // Finalize
   set_idt();
   asm volatile("sti");
 
@@ -155,41 +152,30 @@ void irq_uninstall_handler(int irq)
 
 void irq_handler(int irq, AsmPassedInterrupt *cpu)
 {
-  #if defined(DEBUG_ISR)
-  printf("[isr] irq_handler(%d)\n", irq);
-  #endif
   void (*handler)(struct interrupt_registers *registers);
 
   handler = irq_routines[irq];
 
   if (handler)
   {
-    #if defined(DEBUG_ISR)
-    printf("[isr] irq_handler: handler for %d exists. calling....\n", irq);
-    #endif
     handler((uint64_t)cpu);
     return;
   }
-bool last_console_state = console_is_output_enabled();
-console_set_output_enabled(false);
+  bool last_console_state = console_is_output_enabled();
+  console_set_output_enabled(false);
   printf("irq %d was called befor it was initalized\n", irq);
-console_set_output_enabled(last_console_state);
+  console_set_output_enabled(last_console_state);
 }
 
-// pass stack ptr
 extern "C" void handle_interrupt(uint64_t rsp)
 {
-  #if defined(DEBUG_INTERRUPT)
-  printf("[isr] handle_interrupt\n");
-  #endif
-
   AsmPassedInterrupt *cpu = (AsmPassedInterrupt *)rsp;
 
   if (cpu->interrupt >= 32 && cpu->interrupt <= 47)
-  { // IRQ
+  {
     if (apic_initialized)
     {
-      apicWrite(0xB0, 0);   // LAPIC EOI
+      apicWrite(0xB0, 0);
     }
     else
     {
@@ -199,35 +185,25 @@ extern "C" void handle_interrupt(uint64_t rsp)
       out_port_byte(0x20, 0x20);
     }
 
-    #if defined(DEBUG_INTERRUPT)
-    printf("[isr] handle_interrupt: interrupt:%d\n", 32 - cpu->interrupt);
-    #endif
-
     switch (cpu->interrupt) {
-    case 32 + 0: // irq0 timer
+    case 32 + 0:
       irq_handler(0, cpu);
+      schedule(cpu);
       break;
 
-    case 32 + 1: // irq1 keyboard
-    {
-      #if defined(DEBUG_KEYBOARD)
-      printf("[keyboard::isr] irq 1 called calling irq_handler to call keyboard\n");
-      #endif
+    case 32 + 1:
       irq_handler(1, cpu);
       break;
-    }
-    case 32 + 11: // irq11 ahci
+
+    case 32 + 11:
       irq_handler(11, cpu);
       break;
-    case 32 + 12: // irq12 mouse
-    {
-      #if defined(DEBUG_MOUSE)
-      printf("[mousee::isr] irq 12 called calling irq_handler to call mouse\n");
-      #endif
+
+    case 32 + 12:
       irq_handler(12, cpu);
       break;
-    }
-    default: { // execute other handlers
+
+    default: {
       irqHandler *browse = firstIrqHandler;
       while (browse) {
         if (browse->id == (cpu->interrupt - 32)) {
@@ -241,8 +217,8 @@ extern "C" void handle_interrupt(uint64_t rsp)
     }
   }
   else if (cpu->interrupt >= 0 && cpu->interrupt <= 31)
-  { // ISR
-    if (currentTask && currentTask->systemCallInProgress) // null check TODO: fix tasking
+  {
+    if (currentTask && currentTask->systemCallInProgress)
     {
       bool last_console_state = console_is_output_enabled();
       console_set_output_enabled(false);
@@ -257,7 +233,6 @@ extern "C" void handle_interrupt(uint64_t rsp)
       return;
     }
 
-    // Print exception details before halting
     {
       bool last_console_state = console_is_output_enabled();
       console_set_output_enabled(false);

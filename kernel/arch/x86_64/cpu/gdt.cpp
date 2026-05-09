@@ -1,9 +1,8 @@
- #include <types.h>
+#include <types.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 
 #include <gdt.h>
 
@@ -13,6 +12,10 @@ static GDTPtr     gdtr;
 static TSSPtr     tss;
 
 TSSPtr *tssPtr = &tss;
+
+void gdt_update_tss_rsp0(uint64_t kernel_stack_top) {
+    tssPtr->rsp0 = kernel_stack_top;
+}
 
 void gdt_load_tss(TSSPtr *tss) {
   size_t addr = (size_t)tss;
@@ -69,38 +72,20 @@ void encode_tss_entry(uint16_t length, uint8_t flags)
 }
 
 int gdt_initialize() {
-  // Null descriptor. (0)
   encode_gdt_entry(0, 0, 0, 0);
-
-  // Kernel code 16. (8)
   encode_gdt_entry(1, 0xffff, 0b10011010, 0b00000000);
-
-  // Kernel data 16. (16)
   encode_gdt_entry(2, 0xffff, 0b10010010, 0b00000000);
-
-  // Kernel code 32. (24)
   encode_gdt_entry(3, 0xffff, 0b10011010, 0b11001111);
-
-  // Kernel data 32. (32)
   encode_gdt_entry(4, 0xffff, 0b10010010, 0b11001111);
-
-  // Kernel code 64. (40)
   encode_gdt_entry(5, 0, 0b10011010, 0b00100000);
-
-  // Kernel data 64. (48)
   encode_gdt_entry(6, 0, 0b10010010, 0);
 
-  // SYSENTER
-  gdt.descriptors[7] = (GDTEntry){0}; // (56)
-  gdt.descriptors[8] = (GDTEntry){0}; // (64)
+  gdt.descriptors[7] = (GDTEntry){0};
+  gdt.descriptors[8] = (GDTEntry){0};
 
-  // User code 64. (72)
   encode_gdt_entry(10, 0, 0b11111010, 0b00100000);
-
-  // User data 64. (80)
   encode_gdt_entry(9, 0, 0b11110010, 0);
 
-  // TSS. (88)
   encode_tss_entry(104, 0b10001001);
 
   gdtr.limit = sizeof(GDTEntries) - 1;
