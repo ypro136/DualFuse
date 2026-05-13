@@ -1,6 +1,7 @@
 #include <idt.h>
 #include <isr.h>
 #include <timer.h>
+#include <gdt.h>
 
 #include <syscalls.h>
 #include <console.h>
@@ -124,17 +125,13 @@ extern "C" uint64_t handle_syscall_tssrsp(uint64_t rsp) {
 }
 
 extern "C" uint64_t handle_tssrsp(uint64_t rsp) {
-  if (!tasksInitiated)
-    return rsp;
-
-  AsmPassedInterrupt *cpu = (AsmPassedInterrupt *)rsp;
-
-  AsmPassedInterrupt *iretqRsp =
-      (AsmPassedInterrupt *)(currentTask->whileTssRsp -
-                             sizeof(AsmPassedInterrupt));
-  memcpy(iretqRsp, cpu, sizeof(AsmPassedInterrupt));
-
-  return (size_t)iretqRsp;
+    if (!tasksInitiated) return rsp;
+    AsmPassedInterrupt *cpu = (AsmPassedInterrupt *)rsp;
+    AsmPassedInterrupt *iretqRsp =
+        (AsmPassedInterrupt *)(currentTask->whileTssRsp -
+                               sizeof(AsmPassedInterrupt));
+    memcpy(iretqRsp, cpu, sizeof(AsmPassedInterrupt));
+    return (size_t)iretqRsp;
 }
 
 void *irq_routines[16] = {0};
@@ -188,6 +185,10 @@ extern "C" void handle_interrupt(uint64_t rsp)
     switch (cpu->interrupt) {
     case 32 + 0:
       irq_handler(0, cpu);
+      #if defined(DEBUG_SCHEDULER) && defined(DEBUG_LOOPING)
+          if (currentTask)
+          printf("[timer] before schedule, currentTask=%d\n", currentTask->id);
+      #endif
       schedule(cpu);
       break;
 
@@ -227,7 +228,9 @@ extern "C" void handle_interrupt(uint64_t rsp)
     }
 
     if (currentTask && !currentTask->systemCallInProgress
-        && tasksInitiated && currentTask->id != KERNEL_TASK_ID)
+        && tasksInitiated
+        && currentTask->id != KERNEL_TASK_ID
+        && !currentTask->kernel_task)
     {
       handle_task_fault(cpu);
       return;
@@ -257,10 +260,14 @@ extern "C" void handle_interrupt(uint64_t rsp)
       dbg_main(cpu->interrupt);
       dbg_loadregs();
     }
-
+    uint64_t cr2;
+    asm volatile("movq %%cr2, %0" : "=r"(cr2));
+    printf("Fault at rip=0x%lx, cr2=0x%lx, error=0x%lx\n", cpu->rip, cr2, cpu->error);
+    printf("currentTask=%p, currentTask->infoPd=%p, currentTask->whileTssRsp=0x%lx\n",
+              currentTask, currentTask?currentTask->infoPd:0, currentTask?currentTask->whileTssRsp:0);
     Halt();
   }
-  else if (cpu->interrupt == 0x80)
+  else if (cpu->interrupt == 0x80) 
   {
     syscall_handler(cpu);
   }

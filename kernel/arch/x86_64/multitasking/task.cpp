@@ -124,6 +124,11 @@ Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir
   target->state = TASK_STATE_CREATED; // TASK_STATE_READY
   // target->pagedir = pagedir;
   target->infoPd = taskInfoPdAllocate(false);
+  if (!target->infoPd) {
+      printf("task_create: infoPd allocation failed\n");
+      free(target);
+      return NULL;
+  }
   target->infoPd->pagedir = pagedir; // no lock cause only we use it
 
   void  *tssRsp = virtual_allocate(USER_STACK_PAGES);
@@ -224,6 +229,9 @@ void task_call_reaper(Task *target) {
 
 void task_kill(uint32_t id, uint16_t ret) {
   Task *task = task_get(id);
+  if (task->state == TASK_STATE_DEAD)
+    return;
+
   if (!task)
     return;
 

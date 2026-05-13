@@ -27,7 +27,7 @@
 #ifndef MAX_PATH
 #define MAX_PATH 256
 #endif
-
+ 
 #define FAT32_MAX_FILE_SIZE_BYTES 0xFFFFFFFFUL
 
 static char current_working_directory[MAX_PATH] = "/";
@@ -691,18 +691,25 @@ void Shell::cmd_tasks()
 }
 
 static void infinite_pause_loop_kernel_task_entry(uint64_t unused_parameter)
-{
+{ 
+    bool ran = false;
+    if (!ran) {
+        ran = true;
+        printf("Hello from the spawned kernel task! It will now enter an infinite pause loop.");
+    }
     while (true) asm volatile("pause");
-}
+} 
 
 void Shell::cmd_spawn()
-{
+{   
     char spawned_task_id_buffer[32];
     Task* new_kernel_task = task_create_kernel(
         (uint64_t)infinite_pause_loop_kernel_task_entry, 0);
     if (!new_kernel_task) { println("task_create_kernel failed"); return; }
     task_name_kernel(new_kernel_task, "shell-test", 10);
     print("spawned task id=");
+    while(1);
+
     u64toa(new_kernel_task->id, spawned_task_id_buffer, 10);
     println(spawned_task_id_buffer);
 }

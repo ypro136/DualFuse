@@ -64,9 +64,13 @@ void virtual_map_region_by_length(uint64_t virt_addr, uint64_t phys_addr,
 
 // Will NOT check for the current task and update it's pagedir (on the struct)!
 void change_page_directory_unsafe(uint64_t *pd) {
-  printf("[paging] change_page_directory_unsafe: pd=%lx\n", (uint64_t)pd);
+  #if defined(DEBUG_MEMORY) && defined(DEBUG_LOOPING)
+    printf("[paging] change_page_directory_unsafe: pd=%lx\n", (uint64_t)pd);
+  #endif
     uint64_t targ = paging_virtual_to_physical((size_t)pd);
-    printf("[paging] physical lookup result: %lx\n", targ);
+    #if defined(DEBUG_MEMORY) && defined(DEBUG_LOOPING)
+      printf("[paging] physical lookup result: %lx\n", targ);
+    #endif
     if (!targ) {
         printf("[paging] Could not change to pd{%lx}!\n", pd);
         Halt();
