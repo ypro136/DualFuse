@@ -63,40 +63,42 @@ void task_attach_def_termios(Task *task) {
 
 // although there are locks on these two functions, they are EXTREMELY unsafe!
 Task *task_list_allocate() {
-  spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
-  Task *target = (Task *)malloc(sizeof(Task));
-  memset(target, 0, sizeof(Task)); // TASK_STATE_DEAD is 0 too
-  asm volatile("cli");
-  Task *browse = firstTask;
-  while (browse) {
-    if (!browse->next)
-      break; // found final
-    browse = browse->next;
-  }
+    spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
+    // Allocate a whole page for the task structure (guaranteed 16‑byte aligned)
+    Task *target = (Task *)virtual_allocate(1);   // 1 page = 4 KB
+    if (!target) {
+        spinlock_cnt_write_release(&TASK_LL_MODIFY);
+        return NULL;
+    }
+    memset(target, 0, PAGE_SIZE);   // clear the whole page
 
-  assert(browse);
-  browse->next = target;
-  asm volatile("sti");
-  spinlock_cnt_write_release(&TASK_LL_MODIFY);
-  return target;
+    asm volatile("cli");
+    Task *browse = firstTask;
+    while (browse) {
+        if (!browse->next) break;
+        browse = browse->next;
+    }
+    assert(browse);
+    browse->next = target;
+    asm volatile("sti");
+    spinlock_cnt_write_release(&TASK_LL_MODIFY);
+    return target;
 }
 
 // will NEVER be the first one
 void task_list_destroy(Task *target) {
-  spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
-  asm volatile("cli");
-  Task *prev = firstTask;
-  while (prev) {
-    if (prev->next == target)
-      break;
-    prev = prev->next;
-  }
-  assert(prev);
-
-  prev->next = target->next;
-  asm volatile("sti");
-  spinlock_cnt_write_release(&TASK_LL_MODIFY);
-  free(target); // finally, destroy it
+    spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
+    asm volatile("cli");
+    Task *prev = firstTask;
+    while (prev) {
+        if (prev->next == target) break;
+        prev = prev->next;
+    }
+    assert(prev);
+    prev->next = target->next;
+    asm volatile("sti");
+    spinlock_cnt_write_release(&TASK_LL_MODIFY);
+    virtual_free(target, 1);   // free the page
 }
 
 Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir,

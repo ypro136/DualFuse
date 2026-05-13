@@ -36,6 +36,7 @@
 #include <scheduler.h>
 
 #include <GUI.h>
+#include <GUI_input.h>
 #include <fram_loop.h>
 
 #include <ramdisk.h>
@@ -47,6 +48,18 @@
 extern "C" void _init(void);
 
 extern "C" void kernel_main(void);
+
+static void gui_render_kernel_task_entry() {
+    while (1) {
+        frame_loop(render_xp_desktop);
+    }
+}
+
+static void gui_input_kernel_task_entry() {
+    while (1) {
+        GUI_input_loop();
+    }
+}
 
 extern "C" void kernel_main(void) 
 {
@@ -122,14 +135,17 @@ extern "C" void kernel_main(void)
     bootloader.Boot_log = NULL;
 
     gdt_update_tss_rsp0(currentTask->whileTssRsp);
+
+    Task* gui_render_task = task_create_kernel((uint64_t)gui_render_kernel_task_entry, 0);
+    task_name_kernel(gui_render_task, "gui_render", 10);
+
+    Task* gui_input_task = task_create_kernel((uint64_t)gui_input_kernel_task_entry, 0);
+    task_name_kernel(gui_input_task, "gui_input", 9);
+
     scheduler_enabled = true;
-    printf("scheduler enabled.\n");
-    
-    bool should_exit = false;
-    while (!should_exit) 
-    {
-        frame_loop(render_xp_desktop);
+    printf("scheduler enabled.\n"); 
+
+    while (1) {
+        asm volatile("pause");
     }
-	
-    for (;;) {}
-} 
+}

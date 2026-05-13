@@ -147,7 +147,7 @@ typedef struct TaskSysInterrupted {
 #define EXTRAS_DISABLE_FUTEX (1 << 0)
 #define EXTRAS_INVOLUTARY_WAKEUP (1 << 1)
 
-struct Task {
+struct __attribute__((aligned(16))) Task {
   uint64_t id;
   int      pgid;
   int      tgid;
