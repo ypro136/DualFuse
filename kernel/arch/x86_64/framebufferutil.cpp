@@ -22,6 +22,8 @@ uint32_t color = 0xffffff;
 uint32_t SCREEN_WIDTH;
 uint32_t SCREEN_HEIGHT;
 
+Spinlock gui_lock = {0};
+
 
 int framebuffer_initialize()
 {
@@ -51,6 +53,7 @@ printf("[framebuffer] struct=%lx pixel_addr=%lx\n",
     tempframebuffer->pitch = framebuffer->pitch;
     
     buffer_size = (tempframebuffer->height * tempframebuffer->pitch);
+    printf("[framebuffer] calculated buffer_size: %d bytes\n", (unsigned long long)buffer_size);
     // Dynamically allocate the back buffer
     buffer = (volatile uint32_t*)malloc(buffer_size);
     if (buffer == nullptr) {
@@ -144,9 +147,10 @@ void draw_rectangle(vector2 start, vector2 end)
     draw_horizontal_line(line_start, line_end);
 }
 
-void clear()
-{
+void clear() {
+    spinlock_acquire(&gui_lock);
     memset((void*)tempframebuffer->address, 0, buffer_size);
+    spinlock_release(&gui_lock);
 }
 
 
@@ -156,14 +160,6 @@ void test_framebuffer(uint32_t test_color)
     printf("testing framebuffer...\n");
 
     color = test_color;
-
-     // framebuffer model is assumed to be RGB with 32-bit pixels
-    // for (size_t j = 0; j < 10; j++) {
-    //     for (size_t i = 0; i < 100; i++) {
-    //         volatile uint32_t *fb_ptr = tempframebuffer->address;
-    //         fb_ptr[i * (tempframebuffer->pitch / 4) + i] = color;
-    //     }
-    // }
 
     struct vector2 line_start = {0,0};
     struct vector2 line_end = {0,0};
@@ -208,17 +204,14 @@ void test_framebuffer(uint32_t test_color)
     }
 }
 
-void copy_buffer_to_screan()
-{
-    checkpoint(35, 0xFFFF00); // yellow at pos 820 - entered copy
-    if (tempframebuffer->address)
-    {
-        checkpoint(36, 0xFF6600); // orange at pos 840 - about to memcpy
-        memcpy((void*)framebuffer->address,
-               (void*)tempframebuffer->address,
-               buffer_size);
-        checkpoint(37, 0x00FF00); // green at pos 860 - memcpy done
-    }
+
+void copy_buffer_to_screan() {
+    if (!tempframebuffer->address) return;
+    spinlock_acquire(&gui_lock);
+    memcpy((void*)framebuffer->address,
+           (void*)tempframebuffer->address,
+           buffer_size);
+    spinlock_release(&gui_lock);
 }
 
 void draw_pixel(int x, int y, uint32_t rgb)
@@ -231,91 +224,3 @@ void draw_pixel(int x, int y, uint32_t rgb)
     tfb_ptr[x + y * (tempframebuffer->pitch / 4)] = rgb;
 }
 
-
-
-#if defined(DEBUG_FRAMEBUFFER)
-void early_debug_bars()
-{
-    struct limine_framebuffer* fb = bootloader.framebuffer;
-    if (!fb || !fb->address) return;
-
-    uint8_t*  base  = (uint8_t*)fb->address;
-    uint64_t  pitch = fb->pitch;
-    uint64_t  w     = fb->width;
-    uint64_t  h     = fb->height;
-    uint32_t  bpp   = fb->bpp / 8;   // bytes per pixel
-
-    // Helper: fill a horizontal band with a solid color
-    auto fill_band = [&](uint64_t y_start, uint64_t band_h, uint32_t color) {
-        for (uint64_t y = y_start; y < y_start + band_h && y < h; y++) {
-            uint32_t* row = (uint32_t*)(base + y * pitch);
-            for (uint64_t x = 0; x < w; x++)
-                row[x] = color;
-        }
-    };
-
-    // Paint whole screen magenta so we know SOMETHING wrote
-    fill_band(0, h, 0xFF00FF);
-
-    // Encode width  as a green bar (1 pixel wide per 4 pixels of width)
-    // e.g. 1920 -> 480px bar,  1366 -> 341px bar
-    uint64_t w_bar = w / 4;
-    for (uint64_t y = 10; y < 30; y++) {
-        uint32_t* row = (uint32_t*)(base + y * pitch);
-        for (uint64_t x = 0; x < w_bar && x < w; x++)
-            row[x] = 0x00FF00;
-    }
-
-    // Encode height as a blue bar (1 pixel per 4 pixels of height)
-    // e.g. 1080 -> 270px,  768 -> 192px
-    uint64_t h_bar = h / 4;
-    for (uint64_t y = 40; y < 60; y++) {
-        uint32_t* row = (uint32_t*)(base + y * pitch);
-        for (uint64_t x = 0; x < h_bar && x < w; x++)
-            row[x] = 0x0000FF;
-    }
-
-    // Encode pitch as a red bar (1 pixel per 16 bytes of pitch)
-    // e.g. pitch=7680 -> 480px,  pitch=5504 -> 344px
-    uint64_t p_bar = pitch / 16;
-    for (uint64_t y = 70; y < 90; y++) {
-        uint32_t* row = (uint32_t*)(base + y * pitch);
-        for (uint64_t x = 0; x < p_bar && x < w; x++)
-            row[x] = 0xFF0000;
-    }
-
-    // Encode bpp as a white bar (20px per byte, so 4 bytes = 80px)
-    uint64_t bpp_bar = bpp * 20;
-    for (uint64_t y = 100; y < 120; y++) {
-        uint32_t* row = (uint32_t*)(base + y * pitch);
-        for (uint64_t x = 0; x < bpp_bar && x < w; x++)
-            row[x] = 0xFFFFFF;
-    }
-
-        // Encode bpp as a white bar (20px per byte, so 4 bytes = 80px)
-    uint64_t full_bar = w;
-    for (uint64_t y = 100; y < 120; y++) {
-        uint32_t* row = (uint32_t*)(base + y * pitch);
-        for (uint64_t x = 0; x < full_bar && x < w; x++)
-            row[x] = 0xFFFFFF;
-    }
-
-}
-#endif
-
-void checkpoint(int n, uint32_t color)
-{
-    #if defined(DEBUG_FRAMEBUFFER)
-    struct limine_framebuffer* fb = bootloader.framebuffer;
-    if (!fb || !fb->address) return;
-    uint8_t* base = (uint8_t*)fb->address;
-    int x_start = n * 20;
-    for (uint64_t y = 0; y < fb->height; y++) {
-        uint32_t* row = (uint32_t*)(base + y * fb->pitch);
-        for (int x = x_start; x < x_start + 18 && x < (int)fb->width; x++)
-            row[x] = color;
-    }
-    #endif
-    return;
-
-}

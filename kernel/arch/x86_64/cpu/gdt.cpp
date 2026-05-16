@@ -5,6 +5,10 @@
 #include <string.h>
 
 #include <gdt.h>
+#include <apic.h>
+
+#include <liballoc.h>
+#include <hcf.hpp>
 
 
 static GDTEntries gdt;
@@ -12,6 +16,8 @@ static GDTPtr     gdtr;
 static TSSPtr     tss;
 
 TSSPtr *tssPtr = &tss;
+
+TSSPtr* per_core_tss[256] = {0};
 
 void gdt_update_tss_rsp0(uint64_t kernel_stack_top) {
     tssPtr->rsp0 = kernel_stack_top;
@@ -96,7 +102,65 @@ int gdt_initialize() {
   memset(&tss, 0, sizeof(TSSPtr));
   gdt_load_tss(&tss);
 
+  per_core_tss[apicGetBspLapicId()] = &tss;
+
   printf("gdt initialized.\n");
 
   return 0;
+}
+
+void smp_ap_initialize_gdt_and_tss(uint64_t kernel_stack_top) {
+    GDTEntries* per_ap_gdt = (GDTEntries*)malloc(sizeof(GDTEntries));
+    if (!per_ap_gdt) {
+        printf("[smp] ERROR: failed to allocate per-AP GDT\n");
+        Halt();
+    }
+    memcpy(per_ap_gdt, &gdt, sizeof(GDTEntries));   // copy BSP’s descriptors
+
+    TSSPtr* per_ap_tss = (TSSPtr*)calloc(1, sizeof(TSSPtr));
+    if (!per_ap_tss) {
+        printf("[smp] ERROR: failed to allocate per-AP TSS\n");
+        Halt();
+    }
+    per_ap_tss->rsp0 = kernel_stack_top;            // the only non‑zero field we need
+
+    uint32_t my_lapic_id;
+    asm volatile("mov $1, %%eax; cpuid; shrl $24, %%ebx" : "=b"(my_lapic_id));
+    per_core_tss[my_lapic_id] = per_ap_tss;
+
+    // Point the TSS descriptor inside the new GDT to the new TSS
+    uint64_t tss_addr = (uint64_t)per_ap_tss;
+    per_ap_gdt->tss.length        = sizeof(TSSPtr) - 1;
+    per_ap_gdt->tss.base_low      = (uint16_t)(tss_addr & 0xFFFF);
+    per_ap_gdt->tss.base_mid      = (uint8_t)((tss_addr >> 16) & 0xFF);
+    per_ap_gdt->tss.flags1        = 0x89;   // present, 64‑bit TSS available
+    per_ap_gdt->tss.flags2        = 0;
+    per_ap_gdt->tss.base_high     = (uint8_t)((tss_addr >> 24) & 0xFF);
+    per_ap_gdt->tss.base_upper32  = (uint32_t)(tss_addr >> 32);
+    per_ap_gdt->tss.reserved      = 0;
+
+    GDTPtr gdt_ptr;
+    gdt_ptr.limit = sizeof(GDTEntries) - 1;
+    gdt_ptr.base  = (uint64_t)per_ap_gdt;
+
+    // Load the new GDT
+    asm volatile("lgdt %0" :: "m"(gdt_ptr) : "memory");
+
+    // Reload segment registers using the new GDT’s 64‑bit code/data selectors
+    asm volatile(
+        "pushq $0x28\n\t"
+        "leaq 1f(%%rip), %%rax\n\t"
+        "pushq %%rax\n\t"
+        "lretq\n\t"
+        "1:\n\t"
+        "movl $0x30, %%eax\n\t"
+        "movl %%eax, %%ds\n\t"
+        "movl %%eax, %%es\n\t"
+        "movl %%eax, %%fs\n\t"
+        "movl %%eax, %%gs\n\t"
+        "movl %%eax, %%ss\n\t"
+        ::: "rax", "memory");
+
+    // Load the task register with the TSS selector (same 0x58, now pointing to our new TSS)
+    asm volatile("ltr %%ax" :: "a"(0x58) : "memory");
 }

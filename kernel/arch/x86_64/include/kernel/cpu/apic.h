@@ -21,8 +21,18 @@
 
 #define APIC_LVT_TIMER_MODE_PERIODIC (1 << 17)
 
+#define IPI_VECTOR_TLB_SHOOTDOWN  0x81
+
+
 extern bool apic_initialized;
 extern bool x2apic_mode;
+
+#define CORE_TYPE_PCORE  0x40
+#define CORE_TYPE_ECORE  0x20
+
+extern uint8_t smp_ap_lapic_id_list[256];
+extern uint8_t smp_ap_count;
+extern uint8_t per_lapic_core_type[256];
 
 // APIC quick access
 // (same address for different cores)
@@ -52,6 +62,9 @@ extern uint32_t lapicGenericArray[MAX_IRQ];
 void initiateAPIC();
 void smpInitiateAPIC();
 bool apicIsX2Apic();
+
+void apicSendIpiToAll(uint8_t vector);
+void tlb_shootdown_all();
 
 uint8_t ioApicRedirect(uint8_t irq, bool ignored);
 uint8_t ioApicPciRegister(pci_device *device, pci_general_device *details);

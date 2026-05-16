@@ -23,6 +23,10 @@ bool x2apic_mode = false;
 uint8_t  irqGenericArray[MAX_IRQ] = {0};
 uint32_t lapicGenericArray[MAX_IRQ] = {0};
 
+uint8_t smp_ap_lapic_id_list[256] = {0};
+uint8_t smp_ap_count = 0;
+uint8_t per_lapic_core_type[256] = {0};
+
 bool apic_initialized = false;
 
 
@@ -262,6 +266,7 @@ void initiateAPIC() {
   #endif
 
   x2apic_mode = apicIsX2Apic();
+  
 
   initiateIrqPerCore();
 
@@ -272,7 +277,6 @@ void initiateAPIC() {
 
   apicPhys = apicGetBase();
 
-  // Validate APIC physical address
   if (!apicPhys || apicPhys > 0xFFFFFFFF) {
     printf("[apic] Invalid APIC address: %lx, using fallback 0xFEE00000\n", apicPhys);
     apicPhys = 0xFEE00000;
@@ -287,7 +291,6 @@ void initiateAPIC() {
     apicSetBase(apicPhys);
     uint32_t svr = apicRead(0xF0);
     apicWrite(0xF0, svr | 0x1FF);
-    checkpoint(2, 0xFF0000); // red - bailed out, no MADT
     return;
   }
 
@@ -301,7 +304,7 @@ void initiateAPIC() {
 
   LinkedListInit(&dsIoapic, sizeof(IOAPIC));
 
-  // Parse MADT entries
+  // ---- First MADT pass: IOAPICs & overrides (existing code) ----
   size_t curr = (size_t)madt + sizeof(AcpiMadt);
   size_t end = curr + madt->hdr.length;
   int    ioapics = 0;
@@ -334,7 +337,6 @@ void initiateAPIC() {
     curr += browse->length;
   }
 
-
   if (ioapics == 0)
     printf("[apic] No I/O APICs found - skipping I/O APIC setup\n");
 
@@ -345,6 +347,38 @@ void initiateAPIC() {
   apicSetBase(apicPhys);
   apicWrite(0xF0, apicRead(0xF0) | 0x1FF);
 
+  // ---- Phase 1: Collect enabled LAPIC IDs & BSP core type ----
+  uint8_t bsp_lapic_id = apicGetBspLapicId();
+  curr = (size_t)madt + sizeof(AcpiMadt); // rewind
+  while (curr < end) {
+    AcpiEntryHdr *browse = (AcpiEntryHdr *)curr;
+    if (browse->type == ACPI_MADT_ENTRY_TYPE_LAPIC) {
+      AcpiMadtLapic *lapic = (AcpiMadtLapic *)browse;
+      // must be enabled (bit 0 of flags) and not the BSP itself
+      if ((lapic->flags & 1) && lapic->lapic_id != bsp_lapic_id) {
+        smp_ap_lapic_id_list[smp_ap_count++] = lapic->lapic_id;
+      }
+    }
+    curr += browse->length;
+  }
+
+  // BSP core type via CPUID 0x1A
+  {
+    uint32_t eax = 0x1A, ebx = 0, ecx = 0, edx = 0;
+    cpuid(&eax, &ebx, &ecx, &edx);
+    uint8_t bsp_core_type = (eax >> 24) & 0xFF;
+    if (bsp_core_type == CORE_TYPE_PCORE || bsp_core_type == CORE_TYPE_ECORE)
+      per_lapic_core_type[bsp_lapic_id] = bsp_core_type;
+  }
+
+  // Debug gate – must print this before proceeding
+  printf("[smp] found %u APs: lapic_ids=[", smp_ap_count);
+  for (int i = 0; i < smp_ap_count; i++) {
+    printf("%u", smp_ap_lapic_id_list[i]);
+    if (i < smp_ap_count - 1) printf(", ");
+  }
+  printf("]\n");
+
   apic_initialized = true;
 
   // Disable legacy 8259 PIC
@@ -352,13 +386,27 @@ void initiateAPIC() {
   out_port_byte(0xa1, 0xff);
 
   printf("APIC initialized.\n");
-
 }
 
 void smpInitiateAPIC() {
   // enable lapic
   apicSetBase(apicPhys);
   apicWrite(0xF0, apicRead(0xF0) | 0x1FF);
+}
+
+void apicSendIpiToAll(uint8_t vector) {
+    if (x2apic_mode) {
+        // broadcast to all excluding self
+        wrmsr(0x830, (uint64_t)0xC0000 | vector); // shorthand: all-exc-self
+    } else {
+        apicWrite(0x310, 0);
+        apicWrite(0x300, (3 << 18) | (1 << 14) | vector); // all-exc-self, fixed
+        while (apicRead(0x300) & (1 << 12)) asm volatile("pause");
+    }
+}
+
+void tlb_shootdown_all() {
+    apicSendIpiToAll(IPI_VECTOR_TLB_SHOOTDOWN);
 }
 
 

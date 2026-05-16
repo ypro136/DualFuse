@@ -59,6 +59,7 @@ void elfProcessLoad(Elf64_Phdr *elf_phdr, uint8_t *out, size_t base) {
       continue;
     size_t paddr = physical_allocate(1);
     virtual_map(base + vaddr, paddr, PF_USER | PF_RW);
+    tlb_shootdown_all();
   }
 
   // Copy the required info

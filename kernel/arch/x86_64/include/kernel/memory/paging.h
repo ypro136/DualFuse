@@ -68,7 +68,9 @@
 
 #define P_PHYS_ADDR(x) ((x) & ~0xFFF)
 
-void paging_initialize();
+void paging_initialize(); 
+
+void debug_page_table_entry(uintptr_t virtual_address);
 
 void virtual_mapL(uint64_t *pagedir, uint64_t virt_addr, uint64_t phys_addr,
                  uint64_t flags);

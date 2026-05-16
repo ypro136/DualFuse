@@ -48,6 +48,53 @@ void paging_initialize() {
   // VirtualSeek(bootloader.hhdmOffset);
 }
 
+// Walk the 4‑level page table and print the entry for a given virtual address.
+static void debug_page_table_entry(uintptr_t virtual_address) {
+    uint64_t cr3;
+    asm volatile("mov %%cr3, %0" : "=r"(cr3));
+    printf("[smp] BSP CR3 = 0x%lx%08lx\n",
+           (unsigned long)(cr3 >> 32), (unsigned long)(cr3 & 0xFFFFFFFF));
+    uint64_t *pml4 = (uint64_t *)((cr3 & 0x7FFFFFFFFFFFF000) + bootloader.hhdmOffset);
+
+    int pml4_index = (virtual_address >> 39) & 0x1FF;
+    uint64_t pml4_entry = pml4[pml4_index];
+    printf("[smp] PML4[%d] = 0x%lx%08lx\n", pml4_index,
+           (unsigned long)(pml4_entry >> 32), (unsigned long)(pml4_entry & 0xFFFFFFFF));
+    if (!(pml4_entry & 1)) { printf("[smp] PML4 not present\n"); return; }
+
+    uint64_t *pdpt = (uint64_t *)((pml4_entry & 0x7FFFFFFFFFFFF000) + bootloader.hhdmOffset);
+    int pdpt_index = (virtual_address >> 30) & 0x1FF;
+    uint64_t pdpt_entry = pdpt[pdpt_index];
+    printf("[smp] PDPT[%d] = 0x%lx%08lx\n", pdpt_index,
+           (unsigned long)(pdpt_entry >> 32), (unsigned long)(pdpt_entry & 0xFFFFFFFF));
+    if (!(pdpt_entry & 1)) { printf("[smp] PDPT not present\n"); return; }
+    if (pdpt_entry & (1 << 7)) {
+        printf("[smp] 1 GiB page, NX=%lu\n", (unsigned long)((pdpt_entry >> 63) & 1));
+        return;
+    }
+
+    uint64_t *pd = (uint64_t *)((pdpt_entry & 0x7FFFFFFFFFFFF000) + bootloader.hhdmOffset);
+    int pd_index = (virtual_address >> 21) & 0x1FF;
+    uint64_t pd_entry = pd[pd_index];
+    printf("[smp] PD[%d] = 0x%lx%08lx\n", pd_index,
+           (unsigned long)(pd_entry >> 32), (unsigned long)(pd_entry & 0xFFFFFFFF));
+    if (!(pd_entry & 1)) { printf("[smp] PD not present\n"); return; }
+    if (pd_entry & (1 << 7)) {
+        printf("[smp] 2 MiB page, NX=%lu\n", (unsigned long)((pd_entry >> 63) & 1));
+        return;
+    }
+
+    uint64_t *pt = (uint64_t *)((pd_entry & 0x7FFFFFFFFFFFF000) + bootloader.hhdmOffset);
+    int pt_index = (virtual_address >> 12) & 0x1FF;
+    uint64_t pt_entry = pt[pt_index];
+    printf("[smp] PT[%d] = 0x%lx%08lx\n", pt_index,
+           (unsigned long)(pt_entry >> 32), (unsigned long)(pt_entry & 0xFFFFFFFF));
+    printf("[smp] 4 KiB page, NX=%lu, Present=%lu, RW=%lu\n",
+           (unsigned long)((pt_entry >> 63) & 1),
+           (unsigned long)(pt_entry & 1),
+           (unsigned long)((pt_entry >> 1) & 1));
+}
+
 void virtual_map_region_by_length(uint64_t virt_addr, uint64_t phys_addr,
                               uint64_t length, uint64_t flags) {
 #if ELF_DEBUG
@@ -59,6 +106,7 @@ void virtual_map_region_by_length(uint64_t virt_addr, uint64_t phys_addr,
     uint64_t xvirt = virt_addr + i * PAGE_SIZE;
     uint64_t xphys = phys_addr + i * PAGE_SIZE;
     virtual_map(xvirt, xphys, flags);
+    tlb_shootdown_all();
   }
 }
 
@@ -92,12 +140,12 @@ void change_page_directory_fake(uint64_t *pd) {
 void change_page_directory(uint64_t *pd) 
 {
   if (tasksInitiated) {
-    spinlock_acquire(&currentTask->infoPd->LOCK_PD);
-    if (pd == currentTask->infoPd->pagedir)
-      currentTask->pagedirOverride = 0;
+    spinlock_acquire(&current_task_this_core()->infoPd->LOCK_PD);
+    if (pd == current_task_this_core()->infoPd->pagedir)
+      current_task_this_core()->pagedirOverride = 0;
     else
-      currentTask->pagedirOverride = pd;
-    spinlock_release(&currentTask->infoPd->LOCK_PD);
+      current_task_this_core()->pagedirOverride = pd;
+    spinlock_release(&current_task_this_core()->infoPd->LOCK_PD);
   }
   change_page_directory_unsafe(pd);
 }

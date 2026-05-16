@@ -161,9 +161,9 @@ extern "C" void syscall_handler(AsmPassedInterrupt *regs) {
   uint64_t *rspPtr = (uint64_t *)((size_t)regs + sizeof(AsmPassedInterrupt));
   uint64_t  rsp = *rspPtr;
 
-  currentTask->systemCallInProgress = true;
-  currentTask->syscallRegs = regs;
-  currentTask->syscallRsp = rsp;
+  current_task_this_core()->systemCallInProgress = true;
+  current_task_this_core()->syscallRegs = regs;
+  current_task_this_core()->syscallRsp = rsp;
 
   asm volatile("sti"); // do other task stuff while we're here!
 
@@ -174,9 +174,9 @@ extern "C" void syscall_handler(AsmPassedInterrupt *regs) {
     printf("[syscalls] FAIL! Tried to access syscall{%d} (out of bounds)!\n",
            id);
 #endif
-    currentTask->syscallRsp = 0;
-    currentTask->syscallRegs = 0;
-    currentTask->systemCallInProgress = false;
+    current_task_this_core()->syscallRsp = 0;
+    current_task_this_core()->syscallRegs = 0;
+    current_task_this_core()->systemCallInProgress = false;
   }
   size_t handler = syscalls[id];
 
@@ -188,7 +188,7 @@ extern "C" void syscall_handler(AsmPassedInterrupt *regs) {
 
   if (!handler)
     printf("\033[0;31m");
-  printf("%d [syscalls] %s( ", currentTask->id, usable ? info->name : "???");
+  printf("%d [syscalls] %s( ", current_task_this_core()->id, usable ? info->name : "???");
   if (usable) {
     if (info->rdi[0])
       printf("\b%s:%lx ", info->rdi, regs->rdi);
@@ -213,9 +213,9 @@ extern "C" void syscall_handler(AsmPassedInterrupt *regs) {
 #if DEBUG_SYSCALLS_MISSING
     printf("[syscalls] Tried to access syscall{%d} (doesn't exist)!\n", id);
 #endif
-    currentTask->syscallRsp = 0;
-    currentTask->syscallRegs = 0;
-    currentTask->systemCallInProgress = false;
+    current_task_this_core()->syscallRsp = 0;
+    current_task_this_core()->syscallRegs = 0;
+    current_task_this_core()->systemCallInProgress = false;
   }
 
   long int ret = ((SyscallHandler)(handler))(regs->rdi, regs->rsi, regs->rdx,
@@ -227,9 +227,9 @@ extern "C" void syscall_handler(AsmPassedInterrupt *regs) {
   regs->rax = ret;
 
 //cleanup
-  currentTask->syscallRsp = 0;
-  currentTask->syscallRegs = 0;
-  currentTask->systemCallInProgress = false;
+  current_task_this_core()->syscallRsp = 0;
+  current_task_this_core()->syscallRegs = 0;
+  current_task_this_core()->systemCallInProgress = false;
 }
 
 // System calls themselves

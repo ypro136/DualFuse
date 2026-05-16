@@ -12,6 +12,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <scheduler.h>
+#include <apic.h>
 
 Console console;
 Console* console_arr[MAX_NUM_OF_CONSOLES] = {0};
@@ -505,17 +507,19 @@ void console_buffer_char(char c)   { console.buffer_character(c); }
 
 void set_window_size(uint32_t width, uint32_t height) { console.set_window_size(width, height); }
 
-void putchar_(char c)
-{
-    if (!g_console_output_enabled) {
+__attribute__((no_caller_saved_registers))
+void putchar_(char c) {
+    uint32_t core_id = apic_initialized ? apicCurrentCore() : 0;
+    bool in_irq = per_core_in_interrupt[core_id];
+
+    if (!g_console_output_enabled || in_irq) {
         serial_write(c);
         log_putc(c);
         return;
     }
 
     if (console.is_ready() && tempframebuffer && psf &&
-        tempframebuffer->address && screen_width != 0)
-    {
+        tempframebuffer->address && screen_width != 0) {
         printfch(c);
     }
     serial_write(c);

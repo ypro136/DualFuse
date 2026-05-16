@@ -26,8 +26,8 @@ struct PipeSpecific {
 };
 
 int pipe_open(int *fds) {
-  int readFd = fsUserOpen(currentTask, "/dev/stdout", O_RDONLY, 0);
-  int writeFd = fsUserOpen(currentTask, "/dev/stdout", O_WRONLY, 0);
+  int readFd = fsUserOpen(current_task_this_core(), "/dev/stdout", O_RDONLY, 0);
+  int writeFd = fsUserOpen(current_task_this_core(), "/dev/stdout", O_WRONLY, 0);
 
   if (readFd < 0 || writeFd < 0)
     {
@@ -35,8 +35,8 @@ int pipe_open(int *fds) {
     return -1;
   }
 
-  OpenFile *read = fsUserGetNode(currentTask, readFd);
-  OpenFile *write = fsUserGetNode(currentTask, writeFd);
+  OpenFile *read = fsUserGetNode(current_task_this_core(), readFd);
+  OpenFile *write = fsUserGetNode(current_task_this_core(), writeFd);
 
   if (!read || !write)
   {
@@ -96,7 +96,7 @@ int pipe_read(OpenFile *fd, uint8_t *out, size_t limit) {
 
   // check write items in this process (so we don't hang unreasonably)
   // apparently not needed :")
-  // OpenFile *browse = currentTask->firstFile;
+  // OpenFile *browse = current_task_this_core()->firstFile;
   // int       ourWriteFds = 0;
   // while (browse) {
   //   if (browse->handlers->close != pipe_close_end) {
@@ -113,7 +113,7 @@ int pipe_read(OpenFile *fd, uint8_t *out, size_t limit) {
   while (pipe->writeFds != 0 && !pipe->assigned) {
     if (fd->flags & O_NONBLOCK)
       return -EWOULDBLOCK;
-    // printf("write{%d} curr{%d}\n", pipe->writeFds, currentTask->id);
+    // printf("write{%d} curr{%d}\n", pipe->writeFds, current_task_this_core()->id);
     asm volatile("pause");
   }
 

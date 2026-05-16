@@ -22,9 +22,9 @@ size_t eventFdOpen(uint64_t initValue, int flags) {
     return ERR(ENOSYS);
   }
 
-  int eventFdNumber = fsUserOpen(currentTask, "/dev/null", O_RDWR, 0);
+  int eventFdNumber = fsUserOpen(current_task_this_core(), "/dev/null", O_RDWR, 0);
   assert(eventFdNumber >= 0);
-  OpenFile *eventFd = fsUserGetNode(currentTask, eventFdNumber);
+  OpenFile *eventFd = fsUserGetNode(current_task_this_core(), eventFdNumber);
   assert(eventFd);
 
   if (flags & EFD_CLOEXEC)
@@ -72,7 +72,7 @@ size_t eventFdRead(OpenFile *fd, uint8_t *out, size_t limit) {
     spinlock_acquire(&eventFd->LOCK_EVENTFD);
     if (eventFd->counter != 0)
       break;
-    if (signalsPendingQuick(currentTask)) {
+    if (signalsPendingQuick(current_task_this_core())) {
       spinlock_release(&eventFd->LOCK_EVENTFD);
       return ERR(EINTR);
     }
@@ -100,7 +100,7 @@ size_t eventFdWrite(OpenFile *fd, uint8_t *in, size_t limit) {
     spinlock_acquire(&eventFd->LOCK_EVENTFD);
     if (!(toAdd > 0xffffffffffffffff - eventFd->counter))
       break;
-    if (signalsPendingQuick(currentTask)) {
+    if (signalsPendingQuick(current_task_this_core())) {
       spinlock_release(&eventFd->LOCK_EVENTFD);
       return ERR(EINTR);
     }

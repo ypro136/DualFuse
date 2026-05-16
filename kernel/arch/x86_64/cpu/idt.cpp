@@ -3,6 +3,7 @@
 #include <idt.h>
 #include <isr.h>
 #include <gdt.h>
+#include <apic.h>
 #include <utility.h>
 
 
@@ -27,4 +28,12 @@ void set_idt()
   idt_pointer.base = (size_t)&idt;
   idt_pointer.limit = IDT_ENTRIES * sizeof(idt_entry) - 1;
   asm volatile("lidt %0" ::"m"(idt_pointer) : "memory");
+}
+
+// vector 0x81 handler (naked or via your ISR macro)
+void tlb_shootdown_handler(AsmPassedInterrupt* interrupt_frame) {
+    uint64_t cr3;
+    asm volatile("mov %%cr3, %0" : "=r"(cr3));
+    asm volatile("mov %0, %%cr3" :: "r"(cr3));   // flush local TLB
+    apicWrite(0xB0, 0);                            // EOI
 }

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <timer.h>
 #include <paging.h>
+#include <apic.h>
 
 static uint64_t i2cInitializedBase = 0;
 
@@ -108,6 +109,7 @@ static void i2cMapMmio(uint64_t physBase) {
         return;
     }
     virtual_map(virtBase, physBase, PF_PRESENT | PF_RW | PF_PCD);
+    tlb_shootdown_all();
     printf("[i2c] mapped MMIO phys=0x%lx virt=0x%lx\n", physBase, virtBase);
 }
 

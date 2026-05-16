@@ -98,38 +98,33 @@ void handle_task_fault(AsmPassedInterrupt *regs) {
     asm volatile("movq %%cr2, %0" : "=r"(err_pos));
     last_console_state = console_is_output_enabled();
     console_set_output_enabled(false);
-    printf("[isr] Page fault occured at cr2{%lx} rip{%lx}\n", err_pos,
-           regs->rip);
+    printf("[isr] Core %d: Page fault at cr2{%lx} rip{%lx} err{%lx}\n", apicCurrentCore(), err_pos, regs->rip, regs->error);
     console_set_output_enabled(last_console_state);
   }
   last_console_state = console_is_output_enabled();
   console_set_output_enabled(false);
   printf("[isr::task] [%c] Killing task{%d} because of %s!\n",
-         currentTask->kernel_task ? '-' : 'u', currentTask->id,
+         current_task_this_core()->kernel_task ? '-' : 'u', current_task_this_core()->id,
          exceptions[regs->interrupt]);
   console_set_output_enabled(last_console_state);
-  task_kill(currentTask->id, 139);
+  task_kill(current_task_this_core()->id, 139);
 }
 
 extern "C" uint64_t handle_syscall_tssrsp(uint64_t rsp) {
-  if (!tasksInitiated)
-    return rsp;
-
-  void *cpu = (void *)rsp;
-
-  void *iretqRsp =
-      (void *)(currentTask->whileSyscallRsp - sizeof(AsmPassedInterrupt) - 8);
-  memcpy(iretqRsp, cpu, sizeof(AsmPassedInterrupt) + 8);
-
-  return (size_t)iretqRsp;
+    if (!tasksInitiated) return rsp;
+    Task *task = current_task_this_core();
+    void *cpu = (void *)rsp;
+    void *iretqRsp = (void *)(task->whileSyscallRsp - sizeof(AsmPassedInterrupt) - 8);
+    memcpy(iretqRsp, cpu, sizeof(AsmPassedInterrupt) + 8);
+    return (size_t)iretqRsp;
 }
 
 extern "C" uint64_t handle_tssrsp(uint64_t rsp) {
     if (!tasksInitiated) return rsp;
+    Task *task = current_task_this_core();
     AsmPassedInterrupt *cpu = (AsmPassedInterrupt *)rsp;
     AsmPassedInterrupt *iretqRsp =
-        (AsmPassedInterrupt *)(currentTask->whileTssRsp -
-                               sizeof(AsmPassedInterrupt));
+        (AsmPassedInterrupt *)(task->whileTssRsp - sizeof(AsmPassedInterrupt));
     memcpy(iretqRsp, cpu, sizeof(AsmPassedInterrupt));
     return (size_t)iretqRsp;
 }
@@ -186,8 +181,8 @@ extern "C" void handle_interrupt(uint64_t rsp)
     case 32 + 0:
       irq_handler(0, cpu);
       #if defined(DEBUG_SCHEDULER) && defined(DEBUG_LOOPING)
-          if (currentTask)
-          printf("[timer] before schedule, currentTask=%d\n", currentTask->id);
+          if (current_task_this_core())
+          printf("[timer] before schedule, current_task_this_core()=%d\n", current_task_this_core()->id);
       #endif
       schedule(cpu);
       break;
@@ -219,7 +214,7 @@ extern "C" void handle_interrupt(uint64_t rsp)
   }
   else if (cpu->interrupt >= 0 && cpu->interrupt <= 31)
   {
-    if (currentTask && currentTask->systemCallInProgress)
+    if (current_task_this_core() && current_task_this_core()->systemCallInProgress)
     {
       bool last_console_state = console_is_output_enabled();
       console_set_output_enabled(false);
@@ -227,10 +222,10 @@ extern "C" void handle_interrupt(uint64_t rsp)
       console_set_output_enabled(last_console_state);
     }
 
-    if (currentTask && !currentTask->systemCallInProgress
+    if (current_task_this_core() && !current_task_this_core()->systemCallInProgress
         && tasksInitiated
-        && currentTask->id != KERNEL_TASK_ID
-        && !currentTask->kernel_task)
+        && current_task_this_core()->id != KERNEL_TASK_ID
+        && !current_task_this_core()->kernel_task)
     {
       handle_task_fault(cpu);
       return;
@@ -242,12 +237,9 @@ extern "C" void handle_interrupt(uint64_t rsp)
       if (cpu->interrupt == 14) {
         uint64_t err_pos;
         asm volatile("movq %%cr2, %0" : "=r"(err_pos));
-        printf("[isr] Page fault at cr2{%lx} rip{%lx} err{%lx}\n",
-               err_pos, cpu->rip, cpu->error);
+        printf("[isr] Core %d: Page fault at cr2{%lx}\n", apicCurrentCore(), err_pos);
       } else {
-        printf("[isr] Exception %d (%s) at rip{%lx} err{%lx}\n",
-               cpu->interrupt, exceptions[cpu->interrupt],
-               cpu->rip, cpu->error);
+        printf("[isr] Core %d: Exception %d (%s) at rip{%lx} err{%lx}\n",apicCurrentCore(), cpu->interrupt, exceptions[cpu->interrupt],cpu->rip, cpu->error);
       }
       console_set_output_enabled(last_console_state);
     }
@@ -263,8 +255,8 @@ extern "C" void handle_interrupt(uint64_t rsp)
     uint64_t cr2;
     asm volatile("movq %%cr2, %0" : "=r"(cr2));
     printf("Fault at rip=0x%lx, cr2=0x%lx, error=0x%lx\n", cpu->rip, cr2, cpu->error);
-    printf("currentTask=%p, currentTask->infoPd=%p, currentTask->whileTssRsp=0x%lx\n",
-              currentTask, currentTask?currentTask->infoPd:0, currentTask?currentTask->whileTssRsp:0);
+    printf("current_task_this_core()=%p, current_task_this_core()->infoPd=%p, current_task_this_core()->whileTssRsp=0x%lx\n",
+              current_task_this_core(), current_task_this_core()?current_task_this_core()->infoPd:0, current_task_this_core()?current_task_this_core()->whileTssRsp:0);
     Halt();
   }
   else if (cpu->interrupt == 0x80) 

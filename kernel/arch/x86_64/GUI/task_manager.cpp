@@ -16,6 +16,7 @@
 #include <pmm.h>
 #include <system.h>
 #include <bootloader.h>
+#include <apic.h>                     // for per_lapic_core_current_task lookup
 
 extern int current_font_height;
 
@@ -28,7 +29,7 @@ struct TaskManagerLayout {
     int visible_row_count;
     int list_content_w;
     int scrollbar_x, scrollbar_y, scrollbar_h;
-    int col_pid_x, col_state_x, col_type_x, col_name_x;
+    int col_pid_x, col_state_x, col_type_x, col_core_x, col_name_x;
     int memory_section_y;
     int sysinfo_section_y;
 };
@@ -58,7 +59,8 @@ static TaskManagerLayout task_manager_compute_layout(TaskManagerState* state) {
     layout.col_pid_x   = layout.client_x;
     layout.col_state_x = layout.col_pid_x   + TASK_MANAGER_COL_PID_W;
     layout.col_type_x  = layout.col_state_x + TASK_MANAGER_COL_STATE_W;
-    layout.col_name_x  = layout.col_type_x  + TASK_MANAGER_COL_TYPE_W;
+    layout.col_core_x  = layout.col_type_x  + TASK_MANAGER_COL_TYPE_W;
+    layout.col_name_x  = layout.col_core_x  + TASK_MANAGER_COL_CORE_W;
 
     layout.memory_section_y  = layout.client_y + layout.process_list_area_h;
     layout.sysinfo_section_y = layout.memory_section_y + TASK_MANAGER_MEMORY_BAR_SECTION_H;
@@ -80,6 +82,7 @@ static const char* task_manager_state_to_string(uint8_t task_state) {
         case TASK_STATE_SIGKILLED:              return "SIGKILLED";
         case TASK_STATE_FUTEX:                  return "FUTEX";
         case TASK_STATE_DUMMY:                  return "DUMMY";
+        case TASK_STATE_RUNNING:                return "RUNNING";
         default:                                return "UNKNOWN";
     }
 }
@@ -138,6 +141,7 @@ static void task_manager_draw_process_list(TaskManagerState* state, const TaskMa
     draw_text("PID",   layout.col_pid_x   + 2, header_text_baseline_y, 0xFFFFFF, XP_BUTTON_SHADOW);
     draw_text("State", layout.col_state_x + 2, header_text_baseline_y, 0xFFFFFF, XP_BUTTON_SHADOW);
     draw_text("Type",  layout.col_type_x  + 2, header_text_baseline_y, 0xFFFFFF, XP_BUTTON_SHADOW);
+    draw_text("Core",  layout.col_core_x  + 2, header_text_baseline_y, 0xFFFFFF, XP_BUTTON_SHADOW);
     draw_text("Name",  layout.col_name_x  + 2, header_text_baseline_y, 0xFFFFFF, XP_BUTTON_SHADOW);
 
     int rows_start_y = layout.client_y + layout.header_row_h;
@@ -172,6 +176,13 @@ static void task_manager_draw_process_list(TaskManagerState* state, const TaskMa
 
         const char* type_string = state->snapshot_entries[snapshot_index].is_kernel_task ? "KERNEL" : "USER";
         draw_text(type_string, layout.col_type_x + 2, text_baseline_y, row_foreground_color, row_background_color);
+
+        char core_string[8];
+        if (state->snapshot_entries[snapshot_index].running_core >= 0)
+            snprintf(core_string, sizeof(core_string), "%d", state->snapshot_entries[snapshot_index].running_core);
+        else
+            strcpy(core_string, "-");
+        draw_text(core_string, layout.col_core_x + 2, text_baseline_y, row_foreground_color, row_background_color);
 
         draw_text(state->snapshot_entries[snapshot_index].task_display_name,
                   layout.col_name_x + 2, text_baseline_y,
@@ -279,6 +290,7 @@ void task_manager_refresh_snapshot(TaskManagerState* state) {
         snapshot_entry->task_id        = task_list_entry->id;
         snapshot_entry->task_state     = task_list_entry->state;
         snapshot_entry->is_kernel_task = task_list_entry->kernel_task;
+        snapshot_entry->running_core   = -1;   // default: not running
 
         const char* task_name_source = nullptr;
         if (task_list_entry->cmdline && task_list_entry->cmdline[0] != '\0') {
@@ -297,6 +309,19 @@ void task_manager_refresh_snapshot(TaskManagerState* state) {
     }
 
     spinlock_cnt_read_release(&TASK_LL_MODIFY);
+
+    // Fill running_core for tasks in RUNNING state
+    for (int i = 0; i < state->snapshot_task_count; i++) {
+        if (state->snapshot_entries[i].task_state == TASK_STATE_RUNNING) {
+            for (int lapic_id = 0; lapic_id < 256; lapic_id++) {
+                Task* core_task = per_lapic_core_current_task[lapic_id];
+                if (core_task && core_task->id == state->snapshot_entries[i].task_id) {
+                    state->snapshot_entries[i].running_core = lapic_id;
+                    break;
+                }
+            }
+        }
+    }
 
     state->snapshot_last_refresh_frame = GUI_frame;
 }

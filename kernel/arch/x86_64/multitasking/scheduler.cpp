@@ -4,40 +4,68 @@
 #include <paging.h>
 #include <gdt.h>
 #include <string.h>
+#include <apic.h>                     // for apicCurrentCore, apicGetBspLapicId
 
 bool scheduler_enabled = false;
 
-static Task* scheduler_pick_next_ready_task() {
-    Task* candidate = currentTask->next ? currentTask->next : firstTask;
-    for (int scheduler_search_iteration = 0; scheduler_search_iteration < 512; scheduler_search_iteration++) {
-        if (candidate->state == TASK_STATE_READY)
+volatile uint8_t per_core_in_interrupt[256] = {0};
+
+static Spinlock sched_task_list_lock = {0};
+
+static Task* scheduler_pick_next_ready_task(Task* start_after, uint32_t core_id) {
+    spinlock_acquire(&sched_task_list_lock);
+
+    Task* candidate = start_after->next ? start_after->next : firstTask;
+    for (int i = 0; i < 512; i++) {
+        // skip tasks that cannot run on this core
+        if (!(candidate->core_affinity & (1 << core_id))) {
+            candidate = candidate->next ? candidate->next : firstTask;
+            continue;
+        }
+
+        if (__sync_bool_compare_and_swap(&candidate->state,
+                                         TASK_STATE_READY,
+                                         TASK_STATE_RUNNING)) {
+            spinlock_release(&sched_task_list_lock);
             return candidate;
+        }
         candidate = candidate->next ? candidate->next : firstTask;
     }
-    return dummyTask;
+
+    spinlock_release(&sched_task_list_lock);
+    return nullptr;
 }
 
 void schedule(AsmPassedInterrupt* interrupt_frame) {
-    if (!tasksInitiated || !scheduler_enabled || !currentTask)
+    if (!tasksInitiated || !scheduler_enabled)
         return;
 
-#if defined(DEBUG_SCHEDULER) && defined(DEBUG_LOOPING)
-    printf("[sched] enter, currentTask=%d, interrupt_frame=%p\n",
-           currentTask->id, interrupt_frame);
-#endif
+    uint32_t core_id = apicCurrentCore();
+    per_core_in_interrupt[core_id] = 1;
+    #if defined(DEBUG_SCHEDULER) && defined(DEBUG_LOOPING)
+        printf("[sched] core %d called by interrupt, runing scheduler\n", core_id);
+    #endif
 
-    asm volatile("fxsave %0" :: "m"(currentTask->fpuenv) : "memory");
-    memcpy(&currentTask->registers, interrupt_frame, sizeof(AsmPassedInterrupt));
+    Task* core_current_task = per_lapic_core_current_task[core_id];
+    if (!core_current_task)
+        return;
 
-#if defined(DEBUG_SCHEDULER) && defined(DEBUG_LOOPING)
-    printf("[sched] saved task %d rip=0x%lx\n",
-           currentTask->id, currentTask->registers.rip);
-#endif
+    asm volatile("fxsave %0" :: "m"(core_current_task->fpuenv) : "memory");
+    memcpy(&core_current_task->registers, interrupt_frame, sizeof(AsmPassedInterrupt));
 
-    Task* next_task = scheduler_pick_next_ready_task();
+    if (core_current_task->state == TASK_STATE_RUNNING)
+        core_current_task->state = TASK_STATE_READY;
 
-    if (next_task == currentTask) {
-        asm volatile("fxrstor %0" :: "m"(currentTask->fpuenv) : "memory");
+    Task* next_task = scheduler_pick_next_ready_task(core_current_task, core_id);
+
+    if (!next_task || next_task == core_current_task) {
+        // Re-claim before restoring — another core could steal it in the window
+        // between the READY reset above and here
+        __sync_bool_compare_and_swap(&core_current_task->state,
+                                      TASK_STATE_READY,
+                                      TASK_STATE_RUNNING);
+        asm volatile("fxrstor %0" :: "m"(core_current_task->fpuenv) : "memory");
+        per_core_in_interrupt[core_id] = 0;
         return;
     }
 
@@ -47,43 +75,35 @@ void schedule(AsmPassedInterrupt* interrupt_frame) {
         return;
     }
 
-    currentTask = next_task;
+    // Update per‑core current task and, if this is the BSP, the global pointer
+    per_lapic_core_current_task[core_id] = next_task;
+    if (core_id == apicGetBspLapicId())
+        currentTask = next_task;
 
-#if defined(DEBUG_SCHEDULER)
-    if (currentTask->whileTssRsp < 0xFFFF800000000000ULL) {
+#if defined(DEBUG_SCHEDULER) && defined(DEBUG_LOOPING)
+    printf("[sched] core %u switching to task %d (rip=0x%lx)\n",
+           core_id, next_task->id, next_task->registers.rip);
+    if (next_task->whileTssRsp < 0xFFFF800000000000ULL) {
         printf("[sched] next task %d has bad whileTssRsp: 0x%lx\n",
-               currentTask->id, currentTask->whileTssRsp);
+               next_task->id, next_task->whileTssRsp);
         Halt();
     }
 #endif
 
-    if (!currentTask->infoPd) {
-        printf("FATAL: currentTask->infoPd is NULL\n");
-        Halt();
-    }
+    asm volatile("fxrstor %0" :: "m"(next_task->fpuenv) : "memory");
+    per_core_tss[core_id]->rsp0 = next_task->whileTssRsp;
+    change_page_directory(next_task->infoPd->pagedir);
 
-    asm volatile("fxrstor %0" :: "m"(currentTask->fpuenv) : "memory");
-    gdt_update_tss_rsp0(currentTask->whileTssRsp);
-    change_page_directory(currentTask->infoPd->pagedir);
-    #if defined(DEBUG_SCHEDULER)
-        printf("[sched] about to restore task %d: rip=0x%lx, interrupt_frame=%p\n",
-            currentTask->id, currentTask->registers.rip, interrupt_frame);
-    #endif
-    #if defined(DEBUG_SCHEDULER)
-        if ((uint64_t)interrupt_frame < 0xFFFF800000000000ULL) {
-            printf("[sched] FATAL: interrupt_frame is invalid: %p\n", interrupt_frame);
-            printf("[sched]   currentTask id=%d, whileTssRsp=0x%lx\n",
-                currentTask->id, currentTask->whileTssRsp);
-            Halt();
-        }
-    #endif
-        memcpy(interrupt_frame, &currentTask->registers, sizeof(AsmPassedInterrupt));
-    #if defined(DEBUG_SCHEDULER)
-        printf("[sched] restored successfully\n");
-    #endif
+    memcpy(interrupt_frame, &next_task->registers, sizeof(AsmPassedInterrupt));
 
-#if defined(DEBUG_SCHEDULER)
-    printf("[sched] restored task %d rip=0x%lx, interrupt_frame=%p\n",
-           currentTask->id, currentTask->registers.rip, interrupt_frame);
+#if defined(DEBUG_SCHEDULER) && defined(DEBUG_LOOPING)
+    printf("[sched] core %u restored task %d rip=0x%lx\n",
+           core_id, next_task->id, next_task->registers.rip);
 #endif
+}
+
+void scheduler_lapic_timer_start_on_current_ap() {
+    apicWrite(APIC_REGISTER_TIMER_DIV, 0x3);
+    apicWrite(APIC_REGISTER_LVT_TIMER, 32 | APIC_LVT_TIMER_MODE_PERIODIC);
+    apicWrite(APIC_REGISTER_TIMER_INITCNT, 100000);
 }

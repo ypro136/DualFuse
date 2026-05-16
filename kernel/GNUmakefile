@@ -75,9 +75,11 @@ override CFLAGS:=$(CFLAGS) \
 
 override LDFLAGS := -static -z text -Wl,--no-relax,-Y,$(SYSROOT)/usr/lib,--gc-sections
 
-# debuging options -DDEBUG_MEMORY -DDEBUG_ISR -DDEBUG_CONSOLE -DDEBUG_TIMER -DDEBUG_PCI -DDEBUG_TASK -DDEBUG_KEYBOARD -DDEBUG_INTERRUPT -DDEBUG_APIC -DDEBUG_GUI -DDEBUG_FRAMEBUFFER -DDEBUG_MOUSE -DDEBUG_LOOPING -DDEBUG_FILE_EXPLORER -DDEBUG_SSFN -DDEBUG_IMAGE_VIEWER -DDEBUG_SCHEDULER
+# debuging options -DDEBUG_MEMORY -DDEBUG_ISR -DDEBUG_CONSOLE -DDEBUG_TIMER -DDEBUG_PCI -DDEBUG_TASK -DDEBUG_KEYBOARD 
+# -DDEBUG_INTERRUPT -DDEBUG_APIC -DDEBUG_GUI -DDEBUG_FRAMEBUFFER -DDEBUG_MOUSE -DDEBUG_LOOPING -DDEBUG_FILE_EXPLORER 
+# -DDEBUG_SSFN -DDEBUG_IMAGE_VIEWER -DDEBUG_SCHEDULER -DDEBUG_SMP -DDEBUG_SMP_AP
 
-CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -D__is_x86_64 -DLIMINE_API_REVISION=1 -Iinclude	-Iinclude/ -I./include/ -DDEBUG_IMAGE_VIEWER #-DDEBUG_SCHEDULER -DDEBUG_LOOPING
+CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -D__is_x86_64 -DLIMINE_API_REVISION=1 -Iinclude	-Iinclude/ -I./include/ -DDEBUG_SCHEDULER #-DDEBUG_LOOPING
 LIBS:=$(LIBS) -lc -lgcc
 
 ARCHDIR=arch/$(ARCH)
@@ -107,6 +109,7 @@ override CPPFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.cpp' ! 
 override CFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.c' | LC_ALL=C sort)
 override ASFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.S' ! -name "crti.S" ! -name "crtn.S" | LC_ALL=C sort)
 override NASMFILES := $(shell cd $(ARCHDIR) && find -L * -type f -name '*.asm' | LC_ALL=C sort)
+override NASMFILES := $(filter-out cpu/ap_trampoline.asm,$(NASMFILES))
 override OBJ := $(addprefix obj/,$(KERNELFILES:.cpp=.cpp.o) $(CFILES:.c=.c.o) $(NASMFILES:.asm=.asm.o) $(CPPFILES:.cpp=.cpp.o) $(ASFILES:.S=.S.o))
 override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d) $(CRTI_SOURCE:.S=.S.o) $(CRTN_SOURCE:.S=.S.o) $(CPPFILES:.cpp=.cpp.d) $(KERNELFILES:.cpp=.cpp.d))
 CRTEND_OBJ:=$(shell $(CPP) $(CFLAGS) -print-file-name=crtend.o)
@@ -207,6 +210,19 @@ obj/%.asm.o: $(ARCHDIR)/%.asm GNUmakefile
 	nasm -g -f $(NASM_ARCH) $< -o $@ 2>> $(ERROR_OUT_FILE)
 	@echo "\n"
 
+# Trampoline binary blob
+obj/ap_trampoline.bin: arch/x86_64/cpu/ap_trampoline.asm GNUmakefile
+	mkdir -p obj
+	nasm -f bin $< -o $@
+
+# Generate C header from binary
+arch/x86_64/include/kernel/cpu/ap_trampoline_blob.h: obj/ap_trampoline.bin GNUmakefile
+	mkdir -p $$(dirname $@)
+	xxd -i $< > $@
+
+# Make sure smp.cpp.o is rebuilt when the header changes
+obj/arch/x86_64/cpu/smp.cpp.o: arch/x86_64/include/kernel/cpu/ap_trampoline_blob.h GNUmakefile
+
 clean: clean_errorout
 	echo "Clean"
 	-rm -f bin/$(OUTPUT).kernel
@@ -224,7 +240,7 @@ clean_errorout:
 install: clean .stamp-headers install-kernel
 
 # Stamp file: only re-installs headers when the source headers actually change
-.stamp-headers: $(shell find $(ARCH_LIBS_DIR) -name '*.h' 2>/dev/null) GNUmakefile
+.stamp-headers: $(shell find $(ARCH_LIBS_DIR) -name '*.h' 2>/dev/null) arch/x86_64/include/kernel/cpu/ap_trampoline_blob.h GNUmakefile 
 	mkdir -p $(DESTDIR)$(INCLUDEDIR)
 	cp -R --preserve=timestamps $(ARCH_LIBS_DIR)/. $(DESTDIR)$(INCLUDEDIR)/.
 	cp -R --preserve=timestamps $(ARCH_LIBS_DIR) $(DESTDIR)$(INCLUDEDIR)/.

@@ -12,6 +12,10 @@
 
 #include <limine.h>
 
+#include <spinlock.h>
+
+extern Spinlock gui_lock;
+
 extern volatile struct limine_framebuffer *tempframebuffer;
 extern volatile struct limine_framebuffer tempframebuffer_data;
 
@@ -44,8 +48,3 @@ void copy_buffer_to_screan();
 
 void test_framebuffer(uint32_t test_color);
 
-
-#if defined(DEBUG_FRAMEBUFFER)
-void early_debug_bars();
-#endif
-void checkpoint(int n, uint32_t color);

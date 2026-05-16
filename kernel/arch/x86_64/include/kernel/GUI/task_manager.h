@@ -11,6 +11,7 @@
 #define TASK_MANAGER_SCROLLBAR_W                       16
 #define TASK_MANAGER_COL_PID_W                         50
 #define TASK_MANAGER_COL_STATE_W                      110
+#define TASK_MANAGER_COL_CORE_W                       110
 #define TASK_MANAGER_COL_TYPE_W                        70
 #define TASK_MANAGER_BUTTON_W                         120
 #define TASK_MANAGER_BUTTON_H                          24
@@ -23,6 +24,7 @@ struct TaskManagerSnapshotEntry {
     uint8_t  task_state;
     bool     is_kernel_task;
     char     task_display_name[TASK_MANAGER_TASK_NAME_BUFFER_LEN];
+    int      running_core;      // LAPIC ID of the core running this task, or -1
 };
 
 struct TaskManagerState {

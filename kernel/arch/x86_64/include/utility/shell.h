@@ -41,6 +41,7 @@ private:
     void cmd_edit(int argument_count, char* argument_vector[]);
     void cmd_memtest();
     void cmd_scheduler_toggle(const char* argument);
+    void cmd_cores();
 
     void cmd_madt();
     void cmd_i2c();

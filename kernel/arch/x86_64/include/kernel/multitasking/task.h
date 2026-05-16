@@ -12,7 +12,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <linux.h>
-
+#include <apic.h>
+ 
 #include <string.h>
 #include <types.h>
 #include <signal.h>
@@ -33,6 +34,9 @@
 #define helperCmdline ("kernel")
 #define dummyCmdline ("dummy")
 #define lwipCmdline ("lwip")
+
+#define TASK_AFFINITY_ANY  0xFF
+#define TASK_AFFINITY_BSP  1
 
 typedef struct {
   uint64_t edi;
@@ -55,6 +59,7 @@ typedef enum TASK_STATE {
   TASK_STATE_SIGKILLED = 9,
   TASK_STATE_FUTEX = 10,
   TASK_STATE_DUMMY = 69,
+  TASK_STATE_RUNNING = 11,
 } TASK_STATE;
 
 typedef struct KilledInfo {
@@ -215,6 +220,7 @@ struct __attribute__((aligned(16))) Task {
   int      *tidptr;
 
   uint64_t extras; // extra flags
+  uint8_t  core_affinity;   // bitmask of allowed cores (0 = BSP only, 0xFF = any)
 
   Task *parent;
   Task *next;
@@ -235,9 +241,19 @@ extern void  kernelHelpEntry();
 extern Spinlock LOCK_REAPER;
 extern Task    *reaperTask;
 
+extern Task* per_lapic_core_current_task[256];
+
+static inline Task* current_task_this_core() {
+    return apic_initialized
+               ? per_lapic_core_current_task[(apicRead(APIC_REGISTER_APICID) >> 24) & 0xFF]
+               : currentTask;
+}
+
 // needed for libraries that still depend on some sort of errno
 // should be safe as it's per-thread
-#define errno (currentTask->kernelErrno)
+#define errno (current_task_this_core()->kernelErrno)
+
+void kernel_ap_idle_entry();
 
 void task_spinlock_exit(Task *task, Spinlock *lock);
 void tasks_initialize();

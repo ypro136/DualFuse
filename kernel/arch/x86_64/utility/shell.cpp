@@ -118,6 +118,7 @@ void Shell::execute(char* input_command_line)
     else if (strcmp(argument_vector[0], "MOUNT")   == 0) cmd_mount();
     else if (strcmp(argument_vector[0], "EDIT")    == 0) cmd_edit(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "MEMTEST") == 0) cmd_memtest();
+    else if (strcmp(argument_vector[0], "CORES") == 0) cmd_cores();
     else if (strcmp(argument_vector[0], "SCHED") == 0) cmd_scheduler_toggle(argument_vector[1]);
     else { print("Unknown command: "); println(argument_vector[0]); }
 }
@@ -210,7 +211,7 @@ void Shell::cmd_help()
 
 void Shell::cmd_scheduler_toggle(const char* argument) {
     if (strcmp(argument, "ON") == 0 || strcmp(argument, "on") == 0) {
-        gdt_update_tss_rsp0(currentTask->whileTssRsp);
+        gdt_update_tss_rsp0(current_task_this_core()->whileTssRsp);
         scheduler_enabled = true;
         printf("scheduler: enabled\n");
     } else if (strcmp(argument, "OFF") == 0 || strcmp(argument, "off") == 0) {
@@ -660,6 +661,7 @@ static const char* task_state_to_string(uint8_t task_state_enum_value)
         case 8:  return "BLOCKED";
         case 9:  return "SIGKILLED";
         case 10: return "FUTEX";
+        case 11: return "RUNNING";
         case 69: return "DUMMY";
         default: return "UNKNOWN";
     }
@@ -668,9 +670,8 @@ static const char* task_state_to_string(uint8_t task_state_enum_value)
 void Shell::cmd_tasks()
 {
     char id_string_buffer[32];
-    println("ID   STATE                  TYPE");
-    println("---- ---------------------- -------");
-
+    println("ID   STATE                  TYPE    CORE");
+    println("---- ---------------------- ------- ----");
     spinlock_cnt_read_acquire(&TASK_LL_MODIFY);
     Task* current_task_node = firstTask;
     while (current_task_node) {
@@ -684,7 +685,23 @@ void Shell::cmd_tasks()
         for (int padding_index = strlen(state_name_string); padding_index < 23; padding_index++)
             print(" ");
 
-        println(current_task_node->kernel_task ? "kernel" : "user");
+        print(current_task_node->kernel_task ? "kernel  " : "user    ");
+
+        // find which core currently runs this task
+        int owning_core = -1;
+        for (int core_index = 0; core_index < 256; core_index++) {
+            if (per_lapic_core_current_task[core_index] == current_task_node) {
+                owning_core = core_index;
+                break;
+            }
+        }
+        if (owning_core >= 0) {
+            u64toa(owning_core, id_string_buffer, 10);
+            println(id_string_buffer);
+        } else {
+            println("-");
+        }
+
         current_task_node = current_task_node->next;
     }
     spinlock_cnt_read_release(&TASK_LL_MODIFY);
@@ -712,6 +729,23 @@ void Shell::cmd_spawn()
 
     u64toa(new_kernel_task->id, spawned_task_id_buffer, 10);
     println(spawned_task_id_buffer);
+}
+
+void Shell::cmd_cores()
+{
+    char buf[32];
+    println("CPU Cores:");
+    print("  BSP LAPIC ID: "); u64toa(apicGetBspLapicId(), buf, 10); println(buf);
+    print("  AP count: "); u64toa(smp_ap_count, buf, 10); println(buf);
+    for (int i = 0; i < smp_ap_count; i++) {
+        print("    AP["); u64toa(i, buf, 10); print(buf);
+        print("] LAPIC ID="); u64toa(smp_ap_lapic_id_list[i], buf, 10); print(buf);
+        uint8_t core_type = per_lapic_core_type[smp_ap_lapic_id_list[i]];
+        if (core_type == CORE_TYPE_PCORE)      print(" (P-core)");
+        else if (core_type == CORE_TYPE_ECORE) print(" (E-core)");
+        else                                   print(" (unknown core type)");
+        println("");
+    }
 }
 
 void Shell::cmd_kill(int argument_count, char* argument_vector[])

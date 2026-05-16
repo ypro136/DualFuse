@@ -7,19 +7,19 @@
 #include <utility.h>
 
 #define SYSCALL_GETPID 39
-static size_t syscallGetPid() { return currentTask->tgid; }
+static size_t syscallGetPid() { return current_task_this_core()->tgid; }
 
 #define SYSCALL_GETCWD 79
 static size_t syscallGetcwd(char *buff, size_t size) {
-  spinlock_acquire(&currentTask->infoFs->LOCK_FS);
-  size_t realLength = strlen(currentTask->infoFs->cwd) + 1;
+  spinlock_acquire(&current_task_this_core()->infoFs->LOCK_FS);
+  size_t realLength = strlen(current_task_this_core()->infoFs->cwd) + 1;
   if (size < realLength) {
-    spinlock_release(&currentTask->infoFs->LOCK_FS);
+    spinlock_release(&current_task_this_core()->infoFs->LOCK_FS);
     return ERR(ERANGE);
   }
-  memcpy(buff, currentTask->infoFs->cwd, realLength);
+  memcpy(buff, current_task_this_core()->infoFs->cwd, realLength);
 
-  spinlock_release(&currentTask->infoFs->LOCK_FS);
+  spinlock_release(&current_task_this_core()->infoFs->LOCK_FS);
   return realLength;
 }
 
@@ -49,7 +49,7 @@ static size_t syscallChdir(char *newdir) {
 
 #define SYSCALL_FCHDIR 81
 static size_t syscallFchdir(int fd) {
-  OpenFile *file = fsUserGetNode(currentTask, fd);
+  OpenFile *file = fsUserGetNode(current_task_this_core(), fd);
   if (!file)
     return ERR(EBADF);
   if (!file->dirname)
@@ -66,10 +66,10 @@ struct rlimit {
 static size_t syscallGetrlimit(int resource, struct rlimit *rlim) {
   switch (resource) {
   case 7: // max open fds
-    spinlock_cnt_read_acquire(&currentTask->infoFiles->WLOCK_FILES);
-    rlim->rlim_cur = currentTask->infoFiles->rlimitFdsSoft;
-    rlim->rlim_max = currentTask->infoFiles->rlimitFdsHard;
-    spinlock_cnt_read_release(&currentTask->infoFiles->WLOCK_FILES);
+    spinlock_cnt_read_acquire(&current_task_this_core()->infoFiles->WLOCK_FILES);
+    rlim->rlim_cur = current_task_this_core()->infoFiles->rlimitFdsSoft;
+    rlim->rlim_max = current_task_this_core()->infoFiles->rlimitFdsHard;
+    spinlock_cnt_read_release(&current_task_this_core()->infoFiles->WLOCK_FILES);
     // todo: ENSURE hard limits are multiples of 8 (for later)
     return 0;
     break;
@@ -116,7 +116,7 @@ static size_t syscallGetegid() {
 #define SYSCALL_SETPGID 109
 static size_t syscallSetpgid(int pid, int pgid) {
   if (!pid)
-    pid = currentTask->id;
+    pid = current_task_this_core()->id;
 
   Task *task = task_get(pid);
   if (!task) {
@@ -130,20 +130,20 @@ static size_t syscallSetpgid(int pid, int pgid) {
 
 #define SYSCALL_GETPPID 110
 static size_t syscallGetppid() {
-  if (currentTask->parent)
-    return currentTask->parent->id;
+  if (current_task_this_core()->parent)
+    return current_task_this_core()->parent->id;
   else
     return KERNEL_TASK_ID;
 }
 
 #define SYSCALL_SETSID 112
 static size_t syscallSetsid() {
-  if (currentTask->tgid == currentTask->pgid)
+  if (current_task_this_core()->tgid == current_task_this_core()->pgid)
     return ERR(EPERM);
 
-  currentTask->sid = currentTask->tgid;
-  currentTask->pgid = currentTask->tgid;
-  currentTask->ctrlPty = -1;
+  current_task_this_core()->sid = current_task_this_core()->tgid;
+  current_task_this_core()->pgid = current_task_this_core()->tgid;
+  current_task_this_core()->ctrlPty = -1;
   return 0;
 }
 
@@ -157,14 +157,14 @@ static size_t syscallGetgroups(int gidsetsize, uint32_t *gids) {
 }
 
 #define SYSCALL_GETPGID 121
-static size_t syscallGetpgid() { return currentTask->pgid; }
+static size_t syscallGetpgid() { return current_task_this_core()->pgid; }
 
 #define SYSCALL_PRCTL 158
 static size_t syscallPrctl(int code, size_t addr) {
   switch (code) {
   case 0x1002:
-    currentTask->fsbase = addr;
-    wrmsr(MSRID_FSBASE, currentTask->fsbase);
+    current_task_this_core()->fsbase = addr;
+    wrmsr(MSRID_FSBASE, current_task_this_core()->fsbase);
 
     return 0;
     break;
@@ -175,13 +175,13 @@ static size_t syscallPrctl(int code, size_t addr) {
 }
 
 #define SYSCALL_GET_TID 186
-static size_t syscallGetTid() { return currentTask->id; }
+static size_t syscallGetTid() { return current_task_this_core()->id; }
 
 #define SYSCALL_SET_TID_ADDR 218
 static size_t syscallSetTidAddr(int *tidptr) {
   // todo: futex() WAKEUP!
-  currentTask->tidptr = tidptr;
-  return currentTask->id;
+  current_task_this_core()->tidptr = tidptr;
+  return current_task_this_core()->id;
 }
 
 // todo.. actually random!

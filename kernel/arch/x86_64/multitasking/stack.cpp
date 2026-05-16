@@ -23,6 +23,7 @@ void stackGenerateMutual(Task *task) {
     size_t virt_addr =
         USER_STACK_BOTTOM - USER_STACK_PAGES * 0x1000 + i * 0x1000;
     virtual_map(virt_addr, physical_allocate(1), PF_USER | PF_RW);
+    tlb_shootdown_all();
     memset((void *)virt_addr, 0, PAGE_SIZE);
   }
 }
@@ -178,7 +179,7 @@ void stackGenerateUser(Task *target, uint32_t argc, char **argv, uint32_t envc,
 }
 
 void taskKernelReturn() {
-  task_kill(currentTask->id, 0);
+  task_kill(current_task_this_core()->id, 0);
   while (1) {
   }
 }

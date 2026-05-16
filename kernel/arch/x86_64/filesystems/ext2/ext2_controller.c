@@ -832,6 +832,7 @@ size_t ext2Mmap(size_t addr, size_t length, int prot, int flags, OpenFile *fd,
   // now access it properly (via the HHDM, obviously)
   for (int i = 0; i < pages; i++)
     virtual_map(virt + i * PAGE_SIZE, phys + i * PAGE_SIZE, mappingFlags);
+    tlb_shootdown_all();
   memset((void *)(hhdmAddition), 0, pages * PAGE_SIZE);
 
   // do the read

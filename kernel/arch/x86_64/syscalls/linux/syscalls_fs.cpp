@@ -15,7 +15,7 @@
 static size_t syscallRead(int fd, char *str, uint32_t count) {
   if (!count)
     return 0;
-  OpenFile *browse = fsUserGetNode(currentTask, fd);
+  OpenFile *browse = fsUserGetNode(current_task_this_core(), fd);
   if (!browse)
     return ERR(EBADF);
   return fsRead(browse, (uint8_t *)str, count);
@@ -25,7 +25,7 @@ static size_t syscallRead(int fd, char *str, uint32_t count) {
 static size_t syscallWrite(int fd, char *str, uint32_t count) {
   if (!count)
     return 0;
-  OpenFile *browse = fsUserGetNode(currentTask, fd);
+  OpenFile *browse = fsUserGetNode(current_task_this_core(), fd);
   if (!browse)
     return ERR(EBADF);
   return fsWrite(browse, (uint8_t *)str, count);
@@ -36,22 +36,22 @@ static size_t syscallOpen(char *filename, int flags, int mode) {
   dbgSysExtraf("filename{%s}", filename);
   if (!filename)
     return ERR(EFAULT);
-  return fsUserOpen(currentTask, filename, flags, mode);
+  return fsUserOpen(current_task_this_core(), filename, flags, mode);
 }
 
 #define SYSCALL_CLOSE 3
-static size_t syscallClose(int fd) { return fsUserClose(currentTask, fd); }
+static size_t syscallClose(int fd) { return fsUserClose(current_task_this_core(), fd); }
 
 #define SYSCALL_STAT 4
 static size_t syscallStat(char *filename, stat *statbuf) {
   dbgSysExtraf("filename{%s}", filename);
-  bool ret = fsStatByFilename(currentTask, filename, statbuf);
+  bool ret = fsStatByFilename(current_task_this_core(), filename, statbuf);
   return (ret ? 0 : ERR(ENOENT));
 }
 
 #define SYSCALL_FSTAT 5
 static size_t syscallFstat(int fd, stat *statbuf) {
-  OpenFile *file = fsUserGetNode(currentTask, fd);
+  OpenFile *file = fsUserGetNode(current_task_this_core(), fd);
   if (!file)
     return ERR(EBADF);
 
@@ -61,7 +61,7 @@ static size_t syscallFstat(int fd, stat *statbuf) {
 
 #define SYSCALL_LSTAT 6
 static size_t syscallLstat(char *filename, stat *statbuf) {
-  bool ret = fsLstatByFilename(currentTask, filename, statbuf);
+  bool ret = fsLstatByFilename(current_task_this_core(), filename, statbuf);
   return (ret ? 0 : ERR(ENOENT));
 }
 
@@ -78,7 +78,7 @@ static size_t syscallPoll(struct pollfd *fds, int nfds, int timeout) {
     if (fds[i].fd == -1)
       continue; // ignore -1 fds
 
-    OpenFile *browse = fsUserGetNode(currentTask, fds[i].fd);
+    OpenFile *browse = fsUserGetNode(current_task_this_core(), fds[i].fd);
     if (!browse || !browse->handlers->poll)
       continue;
 
@@ -96,12 +96,12 @@ static size_t syscallPoll(struct pollfd *fds, int nfds, int timeout) {
 
 #define SYSCALL_LSEEK 8
 static size_t syscallLseek(uint32_t file, int offset, int whence) {
-  return fsUserSeek(currentTask, file, offset, whence);
+  return fsUserSeek(current_task_this_core(), file, offset, whence);
 }
 
 #define SYSCALL_IOCTL 16
 static size_t syscallIoctl(int fd, unsigned long request, void *arg) {
-  OpenFile *browse = fsUserGetNode(currentTask, fd);
+  OpenFile *browse = fsUserGetNode(current_task_this_core(), fd);
   if (!browse)
     return ERR(EBADF);
 
@@ -129,7 +129,7 @@ static size_t syscallPread64(uint64_t fd, char *buff, size_t count,
 
 #define SYSCALL_READV 19
 static size_t syscallReadV(uint32_t fd, iovec *iov, uint32_t ioVcnt) {
-  OpenFile *file = fsUserGetNode(currentTask, fd);
+  OpenFile *file = fsUserGetNode(current_task_this_core(), fd);
   if (!file)
     return ERR(EBADF);
 
@@ -160,7 +160,7 @@ static size_t syscallReadV(uint32_t fd, iovec *iov, uint32_t ioVcnt) {
 
 #define SYSCALL_WRITEV 20
 static size_t syscallWriteV(uint32_t fd, iovec *iov, uint32_t ioVcnt) {
-  OpenFile *file = fsUserGetNode(currentTask, fd);
+  OpenFile *file = fsUserGetNode(current_task_this_core(), fd);
   if (!file)
     return ERR(EBADF);
 
@@ -196,11 +196,11 @@ static size_t syscallAccess(char *filename, int mode) {
 
 #define SYSCALL_DUP 32
 static size_t syscallDup(uint32_t fd) {
-  OpenFile *file = fsUserGetNode(currentTask, fd);
+  OpenFile *file = fsUserGetNode(current_task_this_core(), fd);
   if (!file)
     return ERR(EBADF);
 
-  OpenFile *new_open_file = fsUserDuplicateNode(currentTask, file, -1);
+  OpenFile *new_open_file = fsUserDuplicateNode(current_task_this_core(), file, -1);
   new_open_file->closeOnExec = 0; // does not persist
 
   return new_open_file ? new_open_file->id : -1;
@@ -208,7 +208,7 @@ static size_t syscallDup(uint32_t fd) {
 
 #define SYSCALL_DUP2 33
 static size_t syscallDup2(uint32_t oldFd, uint32_t newFd) {
-  OpenFile *realFile = fsUserGetNode(currentTask, oldFd);
+  OpenFile *realFile = fsUserGetNode(current_task_this_core(), oldFd);
   if (!realFile)
     return ERR(EBADF);
 
@@ -216,22 +216,22 @@ static size_t syscallDup2(uint32_t oldFd, uint32_t newFd) {
     return newFd;
 
   // determine how we're going to do this
-  spinlock_cnt_write_acquire(&currentTask->infoFiles->WLOCK_FILES);
+  spinlock_cnt_write_acquire(&current_task_this_core()->infoFiles->WLOCK_FILES);
   OpenFile *browse =
-      (OpenFile *)AVLLookup(currentTask->infoFiles->firstFile, newFd);
+      (OpenFile *)AVLLookup(current_task_this_core()->infoFiles->firstFile, newFd);
   if (!browse) {
     // we don't have anything to close, reserve the id
-    bitmapGenericSet(currentTask->infoFiles->fdBitmap, newFd, true);
+    bitmapGenericSet(current_task_this_core()->infoFiles->fdBitmap, newFd, true);
   } else {
     // do NOT free the id on close in order to avoid race conditions
     browse->closeFlags |= VFS_CLOSE_FLAG_RETAIN_ID;
   }
-  spinlock_cnt_write_release(&currentTask->infoFiles->WLOCK_FILES);
+  spinlock_cnt_write_release(&current_task_this_core()->infoFiles->WLOCK_FILES);
 
   if (browse)
-    assert(fsUserClose(currentTask, newFd) == 0);
+    assert(fsUserClose(current_task_this_core(), newFd) == 0);
 
-  OpenFile *new_open_file = fsUserDuplicateNode(currentTask, realFile, newFd);
+  OpenFile *new_open_file = fsUserDuplicateNode(current_task_this_core(), realFile, newFd);
   assert(new_open_file);
   new_open_file->closeOnExec = 0; // does not persist
 
@@ -240,7 +240,7 @@ static size_t syscallDup2(uint32_t oldFd, uint32_t newFd) {
 
 #define SYSCALL_FCNTL 72
 static size_t syscallFcntl(int fd, int cmd, uint64_t arg) {
-  OpenFile *file = fsUserGetNode(currentTask, fd);
+  OpenFile *file = fsUserGetNode(current_task_this_core(), fd);
   if (!file)
     return ERR(EBADF);
   spinlock_acquire(&file->LOCK_OPERATIONS);
@@ -291,7 +291,7 @@ static size_t syscallFcntl(int fd, int cmd, uint64_t arg) {
 
 #define SYSCALL_FSYNC 74
 static size_t syscallFsync(int fd) {
-  OpenFile *browse = fsUserGetNode(currentTask, fd);
+  OpenFile *browse = fsUserGetNode(current_task_this_core(), fd);
   if (!browse)
     return ERR(EBADF);
   return 0; // none of our filesystems care enough about write caching
@@ -300,42 +300,42 @@ static size_t syscallFsync(int fd) {
 #define SYSCALL_MKDIR 83
 static size_t syscallMkdir(char *path, uint32_t mode) {
   dbgSysExtraf("path{%s}", path);
-  spinlock_acquire(&currentTask->infoFs->LOCK_FS);
-  mode &= ~(currentTask->infoFs->umask);
-  spinlock_release(&currentTask->infoFs->LOCK_FS);
-  return fsMkdir(currentTask, path, mode);
+  spinlock_acquire(&current_task_this_core()->infoFs->LOCK_FS);
+  mode &= ~(current_task_this_core()->infoFs->umask);
+  spinlock_release(&current_task_this_core()->infoFs->LOCK_FS);
+  return fsMkdir(current_task_this_core(), path, mode);
 }
 
 #define SYSCALL_LINK 86
 static size_t syscallLink(char *oldpath, char *newpath) {
-  return fsLink(currentTask, oldpath, newpath);
+  return fsLink(current_task_this_core(), oldpath, newpath);
 }
 
 #define SYSCALL_UNLINK 87
 static size_t syscallUnlink(char *path) {
   dbgSysExtraf("path{%s}", path);
-  return fsUnlink(currentTask, path, false);
+  return fsUnlink(current_task_this_core(), path, false);
 }
 
 #define SYSCALL_READLINK 89
 static size_t syscallReadlink(char *path, char *buf, int size) {
   dbgSysExtraf("path{%s}", path);
-  return fsReadlink(currentTask, path, buf, size);
+  return fsReadlink(current_task_this_core(), path, buf, size);
 }
 
 #define SYSCALL_UMASK 95
 static size_t syscallUmask(uint32_t mask) {
-  spinlock_acquire(&currentTask->infoFs->LOCK_FS);
-  int old = currentTask->infoFs->umask;
-  currentTask->infoFs->umask = mask & 0777;
-  spinlock_release(&currentTask->infoFs->LOCK_FS);
+  spinlock_acquire(&current_task_this_core()->infoFs->LOCK_FS);
+  int old = current_task_this_core()->infoFs->umask;
+  current_task_this_core()->infoFs->umask = mask & 0777;
+  spinlock_release(&current_task_this_core()->infoFs->LOCK_FS);
   return old;
 }
 
 #define SYSCALL_GETDENTS64 217
 static size_t syscallGetdents64(unsigned int fd, struct linux_dirent64 *dirp,
                                 unsigned int count) {
-  OpenFile *browse = fsUserGetNode(currentTask, fd);
+  OpenFile *browse = fsUserGetNode(current_task_this_core(), fd);
   if (!browse)
     return ERR(EBADF);
   if (!browse->handlers->getdents64)
@@ -425,7 +425,7 @@ char *atResolvePathname(int dirfd, char *pathname) {
     if (dirfd == AT_FDCWD) { // relative to cwd
       return pathname;
     } else { // relative to dirfd, resolve accordingly
-      OpenFile *fd = fsUserGetNode(currentTask, dirfd);
+      OpenFile *fd = fsUserGetNode(current_task_this_core(), dirfd);
       if (!fd)
         return (char *)ERR(EBADF);
       if (!fd->dirname)
@@ -514,7 +514,7 @@ static size_t syscallUnlinkat(int dirfd, char *pathname, int mode) {
 
   dbgSysExtraf("path{%s}", resolved);
 
-  size_t ret = fsUnlink(currentTask, resolved, directory);
+  size_t ret = fsUnlink(current_task_this_core(), resolved, directory);
   atResolvePathnameCleanup(pathname, resolved);
   return ret;
 }

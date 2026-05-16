@@ -16,6 +16,7 @@
 #include <fakefs.h>
 #include <dbg.h>
 #include <liballoc.h>
+#include <smp.h>
 
 
 #include <framebufferutil.h>
@@ -73,9 +74,9 @@ extern "C" void kernel_main(void)
 
     paging_initialize();
     
-    isr_initialize();
-    
     memory_initialize();
+    
+    isr_initialize();
 
     framebuffer_initialize();
         
@@ -134,7 +135,7 @@ extern "C" void kernel_main(void)
     }
     bootloader.Boot_log = NULL;
 
-    gdt_update_tss_rsp0(currentTask->whileTssRsp);
+    gdt_update_tss_rsp0(current_task_this_core()->whileTssRsp);
 
     Task* gui_render_task = task_create_kernel((uint64_t)gui_render_kernel_task_entry, 0);
     task_name_kernel(gui_render_task, "gui_render", 10);
@@ -144,6 +145,10 @@ extern "C" void kernel_main(void)
 
     scheduler_enabled = true;
     printf("scheduler enabled.\n"); 
+
+    smp_install_trampoline();
+    
+    smp_boot_all_aps();
 
     while (1) {
         asm volatile("pause");
