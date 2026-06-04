@@ -113,7 +113,7 @@ void *irq_routines[16] = {0};
 void *irq_install_handler(int irq, void (*handler)(struct interrupt_registers *registers)) {
     irq_routines[irq] = handler;
     return handler;
-}
+} 
 
 void irq_uninstall_handler(int irq) {
     irq_routines[irq] = 0;
@@ -125,10 +125,18 @@ void irq_handler(int irq, AsmPassedInterrupt *cpu) {
         handler((uint64_t)cpu);
         return;
     }
+
     bool last_console_state = console_is_output_enabled();
     console_set_output_enabled(false);
     printf("irq %d was called before it was initialized\n", irq);
     console_set_output_enabled(last_console_state);
+
+    // Send EOI to the legacy PICs so the interrupt does not retrigger endlessly
+    if (irq >= 8)
+    {
+        out_port_byte(0xA0, 0x20);   // slave PIC
+    out_port_byte(0x20, 0x20);       // master PIC
+    }
 }
 
 // ----------------------------------------------------------

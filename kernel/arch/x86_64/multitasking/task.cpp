@@ -16,17 +16,17 @@
 #include <utility.h>
 #include <hcf.hpp>
 
-Task* per_lapic_core_current_task[256] = {0};
+Task* volatile per_lapic_core_current_task[256] = {0};
 
 bool tasksInitiated = false;
 
 Task *firstTask;
-Task *currentTask;
+Task* volatile currentTask;
 
 Task *dummyTask;
 
 Task *netHelperTask;
-void  kernelHelpEntry();
+void  kernelHelpEntry(); 
 
 Spinlock LOCK_REAPER;
 Task    *reaperTask;
@@ -69,17 +69,15 @@ void task_attach_def_termios(Task *task) {
 // although there are locks on these two functions, they are EXTREMELY unsafe!
 Task *task_list_allocate() {
     spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
-    // Allocate a whole page for the task structure (guaranteed 16‑byte aligned)
-    Task *target = (Task *)virtual_allocate(1);   // 1 page = 4 KB
+    Task *target = (Task *)virtual_allocate(1);
     printf("[task] virtual_allocate returned %p\n", target);
     if (!target) {
         spinlock_cnt_write_release(&TASK_LL_MODIFY);
         return NULL;
     }
     printf("[task] Allocated task structure at %p\n", target);
-    memset(target, 0, PAGE_SIZE);   // clear the whole page
+    memset(target, 0, PAGE_SIZE);
 
-    asm volatile("cli"); 
     Task *browse = firstTask;
     while (browse) {
         if (!browse->next) break;
@@ -87,7 +85,6 @@ Task *task_list_allocate() {
     }
     assert(browse);
     browse->next = target;
-    asm volatile("sti");
     spinlock_cnt_write_release(&TASK_LL_MODIFY);
     return target;
 }
@@ -95,7 +92,6 @@ Task *task_list_allocate() {
 // will NEVER be the first one
 void task_list_destroy(Task *target) {
     spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
-    asm volatile("cli");
     Task *prev = firstTask;
     while (prev) {
         if (prev->next == target) break;
@@ -103,9 +99,8 @@ void task_list_destroy(Task *target) {
     }
     assert(prev);
     prev->next = target->next;
-    asm volatile("sti");
     spinlock_cnt_write_release(&TASK_LL_MODIFY);
-    virtual_free(target, 1);   // free the page
+    virtual_free(target, 1);
 }
 
 Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir,
@@ -232,26 +227,23 @@ void task_call_reaper(Task *target) {
   while (true) {
     spinlock_acquire(&LOCK_REAPER);
     if (!reaperTask) {
-      // there is space!
       reaperTask = target;
       spinlock_release(&LOCK_REAPER);
       return;
     }
     spinlock_release(&LOCK_REAPER);
-    hand_control();
+    asm volatile("pause");
   }
 }
 
 void task_kill(uint32_t id, uint16_t ret) {
   Task *task = task_get(id);
-  if (task->state == TASK_STATE_DEAD)
-    return;
-
   if (!task)
     return;
 
-  // Notify that poor parent... they must've been searching all over the
-  // place!
+  if (task->state == TASK_STATE_DEAD)
+    return;
+
   if (task->parent && !task->noInformParent) {
     spinlock_acquire(&task->parent->LOCK_CHILD_TERM);
     KilledInfo *info = (KilledInfo *)LinkedListAllocate(
@@ -267,35 +259,23 @@ void task_kill(uint32_t id, uint16_t ret) {
     atomicBitmapSet(&task->parent->sigPendingList, SIGCHLD);
   }
 
-  // vfork() children need to notify parents no matter what
   if (task->parent && task->parent->state == TASK_STATE_WAITING_VFORK)
-    task->parent->state = TASK_STATE_READY;
+    __sync_bool_compare_and_swap(&task->parent->state, TASK_STATE_WAITING_VFORK, TASK_STATE_READY);
 
   if (task->tidptr) {
-    // *task->tidptr = 0;
     atomicWrite32((uint32_t *)task->tidptr, 0);
     futexSyscall((uint32_t *)task->tidptr, FUTEX_WAKE, 1, 0, 0, 0);
   }
 
-  // close any left open files
   taskInfoFilesDiscard(task->infoFiles, task);
-
-  // if (!parentVfork)
-  //   page_directory_free(task->pagedir);
   taskInfoPdDiscard(task->infoPd);
-  // ^ only changes userspace locations so we don't need to change our pagedir
 
-  // the "reaper" thread will finish everything in a safe context
   task_call_reaper(task);
   task->state = TASK_STATE_DEAD;
 
   if (current_task_this_core() == task) {
-    // we're most likely in a syscall context, so...
-    // task_killCleanup(task); // left for sched
     asm volatile("sti");
-    // wait until we're outta here
     while (1) {
-      //   printf("GET ME OUT ");
     }
   }
 }
@@ -335,8 +315,7 @@ Task *task_get(uint32_t id) {
 }
 
 uint64_t taskIdCurr = 1;
-uint64_t task_generate_id() { return taskIdCurr++; }
-
+uint64_t task_generate_id() { return __sync_fetch_and_add(&taskIdCurr, 1); }
 
 TaskInfoFs *taskInfoFsClone(TaskInfoFs *old) {
   TaskInfoFs *new_task_info_filesystem = taskInfoFsAllocate();
@@ -683,8 +662,11 @@ void kernel_dummy_entry() {
 
 void tasks_initialize() 
 {
-  #if defined(DEBUG_TASK)
-    printf("[tasks] enter tasks_initialize\n");
+    #if defined(DEBUG_TASK)
+      printf("[tasks] enter tasks_initialize\n");
+      uint64_t rflags;
+      asm volatile("pushfq; pop %0" : "=r"(rflags));
+      printf("[tasks] RFLAGS=0x%lx (IF=%d)\n", rflags, (int)((rflags>>9)&1));
     #endif
   firstTask = (Task *)malloc(sizeof(Task));
   if (!firstTask) {
@@ -721,11 +703,19 @@ void tasks_initialize()
   size_t tssRspSize = USER_STACK_PAGES * BLOCK_SIZE;
   memset(tssRsp, 0, tssRspSize);
   current_task_this_core()->whileTssRsp = (uint64_t)tssRsp + tssRspSize;
-  task_attach_def_termios(currentTask);
-
   #if defined(DEBUG_TASK)
-    printf("[tasks] initialized tssRsp and termios \n");
-    #endif
+    printf("[tasks] tssRsp set to 0x%lx\n", current_task_this_core()->whileTssRsp);
+  #endif
+
+  task_attach_def_termios(currentTask);
+    #if defined(DEBUG_TASK)
+    printf("[tasks] termios attached\n");
+  #endif
+
+
+
+  gdt_update_tss_rsp0(current_task_this_core()->whileTssRsp);
+
 
   printf("[tasks] Current execution ready for multitasking\n");
   tasksInitiated = true;
@@ -734,7 +724,14 @@ void tasks_initialize()
 
   // create a dummy task in case the scheduler has nothing to do
   dummyTask = task_create_kernel((uint64_t)kernel_dummy_entry, 0);
+    #if defined(DEBUG_TASK)
+    printf("[tasks] dummyTask created at %p\n", dummyTask);
+  #endif
   dummyTask->core_affinity = TASK_AFFINITY_BSP; 
   dummyTask->state = TASK_STATE_DUMMY;
   task_name_kernel(dummyTask, dummyCmdline, sizeof(dummyCmdline));
+  #if defined(DEBUG_TASK)
+    printf("[tasks] dummyTask named\n");
+    printf("[tasks] leaving tasks_initialize\n");
+  #endif 
 }

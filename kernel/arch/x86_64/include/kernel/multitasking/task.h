@@ -229,7 +229,7 @@ struct __attribute__((aligned(16))) Task {
 extern SpinlockCnt TASK_LL_MODIFY;
 
 extern Task *firstTask;
-extern Task *currentTask;
+extern Task* volatile currentTask;
 
 extern Task *dummyTask;
 
@@ -241,20 +241,19 @@ extern void  kernelHelpEntry();
 extern Spinlock LOCK_REAPER;
 extern Task    *reaperTask;
 
-extern Task* per_lapic_core_current_task[256];
+extern Task* volatile per_lapic_core_current_task[256];
 
-// static inline Task* current_task_this_core() {
-//     return apic_initialized
-//                ? per_lapic_core_current_task[(apicRead(APIC_REGISTER_APICID) >> 24) & 0xFF]
-//                : currentTask;
-// }
 
 static inline Task* current_task_this_core() {
     if(apic_initialized) {
         uint8_t lapic_id = (apicRead(APIC_REGISTER_APICID) >> 24) & 0xFF;
         return per_lapic_core_current_task[lapic_id];
-    } else {
+    } else if (currentTask) {
         return currentTask;
+    }
+    else {
+        printf("[task] warning: APIC not initialized and currentTask is NULL, returning firstTask\n");
+        return firstTask;
     }
 }
 

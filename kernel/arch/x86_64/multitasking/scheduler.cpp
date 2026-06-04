@@ -53,8 +53,7 @@ void schedule(AsmPassedInterrupt* interrupt_frame) {
     asm volatile("fxsave %0" :: "m"(core_current_task->fpuenv) : "memory");
     memcpy(&core_current_task->registers, interrupt_frame, sizeof(AsmPassedInterrupt));
 
-    if (core_current_task->state == TASK_STATE_RUNNING)
-        core_current_task->state = TASK_STATE_READY;
+    __sync_bool_compare_and_swap(&core_current_task->state, TASK_STATE_RUNNING, TASK_STATE_READY);
 
     Task* next_task = scheduler_pick_next_ready_task(core_current_task, core_id);
 
@@ -111,7 +110,12 @@ void schedule(AsmPassedInterrupt* interrupt_frame) {
 }
 
 void scheduler_lapic_timer_start_on_current_ap() {
+    if (apic_initialized) {
     apicWrite(APIC_REGISTER_TIMER_DIV, 0x3);
     apicWrite(APIC_REGISTER_LVT_TIMER, 32 | APIC_LVT_TIMER_MODE_PERIODIC);
     apicWrite(APIC_REGISTER_TIMER_INITCNT, 100000);
+    }
+    else {
+        printf("[scheduler] warning: APIC not initialized, cannot start LAPIC timer for scheduler\n");
+    }
 }

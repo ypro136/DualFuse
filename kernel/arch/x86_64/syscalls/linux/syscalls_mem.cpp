@@ -40,7 +40,7 @@ static uint64_t syscallMmap(size_t addr, size_t length, int prot, int flags,
           MAP_ANONYMOUS) { // before: !addr &&
     spinlock_acquire(&current_task_this_core()->infoPd->LOCK_PD);
     size_t curr = current_task_this_core()->infoPd->mmap_end;
-    task_adjust_heap(currentTask, current_task_this_core()->infoPd->mmap_end + length,
+    task_adjust_heap(current_task_this_core(), current_task_this_core()->infoPd->mmap_end + length,
                    &current_task_this_core()->infoPd->mmap_start,
                    &current_task_this_core()->infoPd->mmap_end);
     spinlock_release(&current_task_this_core()->infoPd->LOCK_PD);
@@ -63,7 +63,7 @@ static uint64_t syscallMmap(size_t addr, size_t length, int prot, int flags,
 
     return base;*/
   } else if (fd != -1) {
-    OpenFile *file = fsUserGetNode(currentTask, fd);
+    OpenFile *file = fsUserGetNode(current_task_this_core(), fd);
     if (!file)
       return -1;
 
@@ -127,7 +127,7 @@ static uint64_t syscallBrk(uint64_t brk) {
     goto cleanup;
   }
 
-  task_adjust_heap(currentTask, brk, &current_task_this_core()->infoPd->heap_start,
+  task_adjust_heap(current_task_this_core(), brk, &current_task_this_core()->infoPd->heap_start,
                  &current_task_this_core()->infoPd->heap_end);
 
   ret = current_task_this_core()->infoPd->heap_end;
