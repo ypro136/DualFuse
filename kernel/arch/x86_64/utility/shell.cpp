@@ -21,6 +21,7 @@
 #include <text_editor.h>
 #include <scheduler.h>
 #include <gdt.h>
+#include <elf.h>
 
 #include <memtest.h>
 
@@ -92,6 +93,7 @@ void Shell::execute(char* input_command_line)
     str_toupper(argument_vector[0]);
 
     if      (strcmp(argument_vector[0], "HELP")    == 0) cmd_help();
+    else if (strcmp(argument_vector[0], "EXEC") == 0) cmd_exec(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "CLEAR")   == 0) cmd_clear();
     else if (strcmp(argument_vector[0], "ECHO")    == 0) cmd_echo(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "INFO")    == 0) cmd_info();
@@ -190,6 +192,7 @@ void Shell::cmd_help()
     println("  ECHO <text>              - Print the given text");
     println("  INFO                     - Display system information");
     println("  PAGE                     - Show memory paging information");
+    println("  EXEC <path> [args]       - Launch an ELF binary");
     println("  CREATE <file> <content>  - Create a new file with the given content");
     println("  CAT <file>               - Display the contents of a file");
     println("  LIST                     - List files in the current directory");
@@ -980,3 +983,30 @@ void Shell::cmd_memtest()
 {
     ::cmd_memtest();
 }
+
+void Shell::cmd_exec(int argument_count, char* argument_vector[])
+{
+    if (argument_count < 2) { println("usage: exec <path> [args...]"); return; }
+ 
+    char absolute_executable_path[MAX_PATH];
+    build_absolute_path(argument_vector[1], absolute_executable_path, MAX_PATH);
+ 
+    argument_vector[1] = absolute_executable_path;
+    char**   program_argument_vector = argument_vector + 1;
+    uint32_t program_argument_count  = (uint32_t)(argument_count - 1);
+ 
+    Task* launched_task = elfExecute(absolute_executable_path,
+                                 program_argument_count,
+                                 program_argument_vector,
+                                 0, nullptr, true); 
+    if (!launched_task) {
+        print("exec: failed to launch "); println(absolute_executable_path);
+        return;
+    }
+    printf("exec: launched_task.ID:%d \n", (unsigned long)launched_task->id);
+ 
+    char task_id_string[32];
+    print("exec: launched task ");
+    u64toa(launched_task->id, task_id_string, 10);
+    println(task_id_string);
+} 

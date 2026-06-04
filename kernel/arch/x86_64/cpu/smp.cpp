@@ -43,7 +43,7 @@ extern "C" void ap_entry_c(uint64_t kernel_stack_top) {
     while (!bsp_done)
     asm volatile("pause");
 
-    smpInitiateAPIC();
+    //smpInitiateAPIC();
 
     Task* my_idle_task = per_lapic_core_current_task[my_lapic_id];
     if (!my_idle_task) {

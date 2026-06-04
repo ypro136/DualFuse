@@ -243,10 +243,19 @@ extern Task    *reaperTask;
 
 extern Task* per_lapic_core_current_task[256];
 
+// static inline Task* current_task_this_core() {
+//     return apic_initialized
+//                ? per_lapic_core_current_task[(apicRead(APIC_REGISTER_APICID) >> 24) & 0xFF]
+//                : currentTask;
+// }
+
 static inline Task* current_task_this_core() {
-    return apic_initialized
-               ? per_lapic_core_current_task[(apicRead(APIC_REGISTER_APICID) >> 24) & 0xFF]
-               : currentTask;
+    if(apic_initialized) {
+        uint8_t lapic_id = (apicRead(APIC_REGISTER_APICID) >> 24) & 0xFF;
+        return per_lapic_core_current_task[lapic_id];
+    } else {
+        return currentTask;
+    }
 }
 
 // needed for libraries that still depend on some sort of errno

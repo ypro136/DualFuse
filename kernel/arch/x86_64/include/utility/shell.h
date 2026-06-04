@@ -23,6 +23,7 @@ private:
 
     void cmd_help();
     void cmd_clear();
+    void cmd_exec(int argument_count, char* argument_vector[]);
     void cmd_echo(int argc, char* argv[]);
     void cmd_info();
     void cmd_page();

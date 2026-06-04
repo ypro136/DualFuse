@@ -15,12 +15,43 @@
 #include <utility.h>
 #include <hcf.hpp>
 #include <vfs.h>
+#include <fs.h>
 
 // ELF (for now only 64) parser
- 
 
 #define ELF_DEBUG 0
 
+extern OpenFile *fsRegisterNode(Task *task, size_t id);
+
+// ---------------------------------------------------------------------------
+// Minimal console handlers (write goes to serial, read returns 0 for now)
+// ---------------------------------------------------------------------------
+static size_t console_write(OpenFile *file, uint8_t *buf, size_t len) {
+    for (size_t i = 0; i < len; i++)
+        printf("%c", buf[i]);      // uses existing serial output
+    return len;
+}
+
+static size_t console_read(OpenFile *file, uint8_t *buf, size_t len) {
+    (void)file; (void)buf; (void)len;
+    return 0;                       // no input yet
+}
+
+static size_t console_get_filesize(OpenFile *file) {
+    (void)file;
+    return 0;
+}
+
+static VfsHandlers dev_console_handlers = {
+    .read        = console_read,
+    .write       = console_write,
+    .getFilesize = console_get_filesize,
+    // all other function pointers left NULL
+};
+
+// ---------------------------------------------------------------------------
+// ELF validation
+// ---------------------------------------------------------------------------
 bool elf_check_file(Elf64_Ehdr *hdr) {
   if (!hdr)
     return false;
@@ -48,8 +79,10 @@ bool elf_check_file(Elf64_Ehdr *hdr) {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Load a PT_LOAD segment
+// ---------------------------------------------------------------------------
 void elfProcessLoad(Elf64_Phdr *elf_phdr, uint8_t *out, size_t base) {
-  // Map the (current) program page
   size_t   startRounded = (elf_phdr->p_vaddr & ~0xFFF);
   uint64_t pagesRequired = CEILING_DIVISION(
       (elf_phdr->p_vaddr - startRounded) + elf_phdr->p_memsz, 0x1000);
@@ -62,205 +95,140 @@ void elfProcessLoad(Elf64_Phdr *elf_phdr, uint8_t *out, size_t base) {
     tlb_shootdown_all();
   }
 
-  // Copy the required info
   memcpy((void *)(base + elf_phdr->p_vaddr), out + elf_phdr->p_offset,
          elf_phdr->p_filesz);
 
-  // wtf is this? (needed)
   if (elf_phdr->p_memsz > elf_phdr->p_filesz)
     memset((void *)(base + elf_phdr->p_vaddr + elf_phdr->p_filesz), 0,
            elf_phdr->p_memsz - elf_phdr->p_filesz);
 }
 
-Task *elfExecute(char *filepath, uint32_t argc, char **argv, uint32_t envc, char **envv, bool startup) {
-  // Open & read executable file
-  OpenFile *dir = fsKernelOpen(filepath, O_RDONLY, 0);
-  if (!dir) {
-    printf("[elf] Could not open %s\n", filepath);
-    return 0;
-  }
-  size_t filesize = fsGetFilesize(dir);
-#if ELF_DEBUG
-  printf("[elf] Executing %s: filesize{%d}\n", filepath, filesize);
-#endif
-  uint8_t *out = (uint8_t *)malloc(filesize);
-  fsRead(dir, out,fsGetFilesize(dir));
-  fsKernelClose(dir);
-
-  // Cast ELF32 header
-  Elf64_Ehdr *elf_ehdr = (Elf64_Ehdr *)(out);
-
-  if (!elf_check_file(elf_ehdr)) {
-    printf("[elf] File %s is not a valid cavOS ELF32 executable!\n", filepath);
-    return 0;
-  }
-
-  // Create a new page directory which is later used by the process
-  uint64_t *oldpagedir = get_page_directory();
-  uint64_t *pagedir = page_directory_allocate();
-  change_page_directory(pagedir);
-
-#if ELF_DEBUG
-  printf("\n[elf_ehdr] entry=%x type=%d arch=%d\n", elf_ehdr->e_entry,
-         elf_ehdr->e_type, elf_ehdr->e_machine);
-  printf("[early phdr] offset=%x count=%d size=%d\n", elf_ehdr->e_phoff,
-         elf_ehdr->e_phnum, elf_ehdr->e_phentsize);
-#endif
-
-  int32_t id = task_generate_id();
-  if (id == -1) {
-    printf(
-        "[elf] Cannot fetch task id... You probably reached the task limit!");
-    // optional
-    // printf("[elf] Cannot fetch task id... You probably reached the task
-    // limit!");
-    Halt();
-  }
-
-  size_t interpreterEntry = 0;
-  size_t interpreterBase = 0x100000000000; // todo: not hardcode
-  // Loop through the multiple ELF32 program header tables
-  for (int i = 0; i < elf_ehdr->e_phnum; i++) {
-    Elf64_Phdr *elf_phdr = (Elf64_Phdr *)((size_t)out + elf_ehdr->e_phoff +
-                                          i * elf_ehdr->e_phentsize);
-    if (elf_phdr->p_type == 3) {
-      char     *interpreterFilename = (char *)(out + elf_phdr->p_offset);
-      OpenFile *interpreter = fsKernelOpen(interpreterFilename, O_RDONLY, 0);
-      if (!interpreter) {
-        printf("[elf] Interpreter path{%s} could not be found!\n",
-               interpreterFilename);
-        Halt();
-      }
-      size_t size = fsGetFilesize(interpreter);
-
-      uint8_t *interpreterContents = (uint8_t *)malloc(size);
-      fsRead(interpreter, interpreterContents, fsGetFilesize(interpreter));
-      fsKernelClose(interpreter);
-
-      Elf64_Ehdr *interpreterEhdr = (Elf64_Ehdr *)(interpreterContents);
-      if (interpreterEhdr->e_type != 3) { // ET_DYN
-        printf("[elf::dyn] Interpreter{%s} isn't really of type ET_DYN!\n",
-               interpreterFilename);
-        Halt();
-      }
-      interpreterEntry = interpreterEhdr->e_entry;
-      for (int i = 0; i < interpreterEhdr->e_phnum; i++) {
-        Elf64_Phdr *interpreterPhdr =
-            (Elf64_Phdr *)((size_t)interpreterContents +
-                           interpreterEhdr->e_phoff +
-                           i * interpreterEhdr->e_phentsize);
-        if (interpreterPhdr->p_type != PT_LOAD)
-          continue;
-        elfProcessLoad(interpreterPhdr, interpreterContents, interpreterBase);
-      }
-      free(interpreterContents);
-
-      continue;
+// ---------------------------------------------------------------------------
+// Main ELF loader
+// ---------------------------------------------------------------------------
+Task *elfExecute(char *filepath, uint32_t argc, char **argv, uint32_t envc,
+                 char **envv, bool startup) {
+    FIL elf_file_handle;
+    if (f_open(&elf_file_handle, filepath, FA_READ) != FR_OK) {
+        printf("[elf] Could not open %s\n", filepath);
+        return 0;
     }
-    if (elf_phdr->p_type != PT_LOAD)
-      continue;
+    size_t filesize = f_size(&elf_file_handle);
+    uint8_t *elf_file_buffer = (uint8_t *)malloc(filesize);
+    UINT elf_bytes_read;
+    f_read(&elf_file_handle, elf_file_buffer, filesize, &elf_bytes_read);
+    f_close(&elf_file_handle);
 
-    elfProcessLoad(elf_phdr, out, 0);
+    Elf64_Ehdr *elf_ehdr = (Elf64_Ehdr *)elf_file_buffer;
 
-#if ELF_DEBUG
-    printf("[elf] Program header: type{%d} offset{%x} vaddr{%x} size{%x} "
-           "alignment{%x}\n",
-           elf_phdr->p_type, elf_phdr->p_offset, elf_phdr->p_vaddr,
-           elf_phdr->p_memsz, elf_phdr->p_align);
-#endif
-  }
+    if (!elf_check_file(elf_ehdr)) {
+        printf("[elf] %s is not a valid ELF64 executable\n", filepath);
+        free(elf_file_buffer);
+        return 0;
+    }
 
-  // For the foreseeable future ;)
-#if ELF_DEBUG
-  // for (int i = 0; i < elf_ehdr->e_shnum; i++) {
-  //   Elf64_Shdr *elf_shdr = (Elf64_Shdr *)((uint32_t)out + elf_ehdr->e_shoff +
-  //                                         i * elf_ehdr->e_shentsize);
-  //   printf("[elf] Section header: type{%d} offset{%lx}\n", elf_shdr->sh_type,
-  //          elf_shdr->sh_offset);
-  // }
-#endif
+    uint64_t *old_page_directory = get_page_directory();
+    uint64_t *new_page_directory = page_directory_allocate();
+    change_page_directory(new_page_directory);
 
-#if ELF_DEBUG
-  printf("[elf] New pagedir: offset{%x}\n", pagedir);
-#endif
+    int32_t new_task_id = task_generate_id();
+    if (new_task_id == -1) {
+        printf("[elf] task id exhausted\n");
+        Halt();
+    }
 
-  // Done loading into the pagedir
-  change_page_directory(oldpagedir);
+    size_t interpreter_entry_point = 0;
+    size_t interpreter_load_base   = 0x100000000000;
 
-  Task *target =
-      task_create(id,
-                 interpreterEntry ? (interpreterBase + interpreterEntry)
-                                  : elf_ehdr->e_entry,
-                 false, pagedir, argc, argv);
+    for (int program_header_index = 0; program_header_index < elf_ehdr->e_phnum; program_header_index++) {
+        Elf64_Phdr *program_header = (Elf64_Phdr *)((size_t)elf_file_buffer
+                                     + elf_ehdr->e_phoff
+                                     + program_header_index * elf_ehdr->e_phentsize);
 
-  // libc takes care of tls lmao
-  /*if (tls) {
-    change_page_directory(pagedir);
+        if (program_header->p_type == PT_INTERP) {
+            char *interpreter_path = (char *)(elf_file_buffer + program_header->p_offset);
+            FIL interpreter_file_handle;
+            if (f_open(&interpreter_file_handle, interpreter_path, FA_READ) != FR_OK) {
+                printf("[elf] interpreter %s not found\n", interpreter_path);
+                Halt();
+            }
+            size_t interpreter_file_size = f_size(&interpreter_file_handle);
+            uint8_t *interpreter_buffer = (uint8_t *)malloc(interpreter_file_size);
+            UINT interpreter_bytes_read;
+            f_read(&interpreter_file_handle, interpreter_buffer, interpreter_file_size, &interpreter_bytes_read);
+            f_close(&interpreter_file_handle);
 
-    size_t tls_start = tls->p_vaddr;
-    size_t tls_end = tls->p_vaddr + tls->p_memsz;
+            Elf64_Ehdr *interpreter_ehdr = (Elf64_Ehdr *)interpreter_buffer;
+            if (interpreter_ehdr->e_type != 3) { // ET_DYN
+                printf("[elf] interpreter %s is not ET_DYN\n", interpreter_path);
+                Halt();
+            }
+            interpreter_entry_point = interpreter_ehdr->e_entry;
+            for (int interp_phdr_index = 0; interp_phdr_index < interpreter_ehdr->e_phnum; interp_phdr_index++) {
+                Elf64_Phdr *interp_phdr = (Elf64_Phdr *)((size_t)interpreter_buffer
+                                          + interpreter_ehdr->e_phoff
+                                          + interp_phdr_index * interpreter_ehdr->e_phentsize);
+                if (interp_phdr->p_type != PT_LOAD)
+                    continue;
+                elfProcessLoad(interp_phdr, interpreter_buffer, interpreter_load_base);
+            }
+            free(interpreter_buffer);
+            continue;
+        }
 
-    printf("[elf::tls] Found: virt{%lx} len{%lx}\n", tls->p_vaddr,
-           tls->p_memsz);
-    uint8_t *tls = (uint8_t *)target->heap_end;
-    task_adjust_heap(target, target->heap_end + 4096);
+        if (program_header->p_type != PT_LOAD)
+            continue;
+        elfProcessLoad(program_header, elf_file_buffer, 0);
+    }
 
-    target->fsbase = (size_t)tls + 512;
-    *(uint64_t *)(tls + 512) = (size_t)tls + 512;
+    change_page_directory(old_page_directory);
 
-    uint8_t *tlsp =
-        (uint8_t *)((size_t)tls + 512 - (tls_end - tls_start)); // copy tls
-    for (uint8_t *i = (uint8_t *)tls_start; (size_t)i < tls_end; i++)
-      *tlsp++ = *i++;
+    uint64_t entry_point = interpreter_entry_point
+                         ? (interpreter_load_base + interpreter_entry_point)
+                         : elf_ehdr->e_entry;
 
-    change_page_directory(oldpagedir);
-  }*/
+    Task *new_task = task_create(new_task_id, entry_point, false,
+                                 new_page_directory, argc, argv);
 
-  // Current working directory init
-  target->cmdline = (char *)malloc(2);
-  target->cmdline[0] = '/';
-  target->cmdline[1] = '\0';
+    new_task->cmdline    = (char *)malloc(2);
+    new_task->cmdline[0] = '/';
+    new_task->cmdline[1] = '\0';
 
-  size_t executableBase = 0;
-  // User stack generation: the stack itself, AUXs, etc...
-  stackGenerateUser(target, argc, argv, envc, envv, out, filesize, elf_ehdr, interpreterEntry ? 0x100000000000 : 0, executableBase);
-  free(out);
+    size_t executable_load_base = 0;
+    stackGenerateUser(new_task, argc, argv, envc, envv,
+                      elf_file_buffer, filesize, elf_ehdr,
+                      interpreter_entry_point ? interpreter_load_base : 0,
+                      executable_load_base);
+    free(elf_file_buffer);
 
-  // void **a = (void **)(&target->firstSpecialFile);
-  // fsUserOpenSpecial(a, "/dev/stdin", target, 0, &stdio);
-  // fsUserOpenSpecial(a, "/dev/stdout", target, 1, &stdio);
-  // fsUserOpenSpecial(a, "/dev/stderr", target, 2, &stdio);
+    OpenFile *stdout_file = fsRegisterNode(new_task, 1);
+    stdout_file->flags    = O_WRONLY;
+    stdout_file->handlers = &dev_console_handlers;
+    stdout_file->mountPoint = 0;
 
-  // fsUserOpenSpecial(a, "/dev/fb0", target, -1, &fb0);
-  // fsUserOpenSpecial(a, "/dev/tty", target, -1, &stdio);
+    OpenFile *stdin_file  = fsRegisterNode(new_task, 0);
+    stdin_file->flags     = O_RDONLY;
+    stdin_file->handlers  = &dev_console_handlers;
+    stdin_file->mountPoint = 0;
 
-  int stdin = fsUserOpen(target, "/dev/stdin", O_RDWR, 0);
-  int stdout = fsUserOpen(target, "/dev/stdout", O_RDWR, 0);
-  int stderr = fsUserOpen(target, "/dev/stderr", O_RDWR, 0);
+    OpenFile *stderr_file = fsRegisterNode(new_task, 2);
+    stderr_file->flags    = O_WRONLY;
+    stderr_file->handlers = &dev_console_handlers;
+    stderr_file->mountPoint = 0;
 
-  if (stdin < 0 || stdout < 0 || stderr < 0) {
-    printf("[elf] Couldn't establish basic IO!\n");
-    Halt();
-  }
+    spinlock_cnt_write_acquire(&new_task->infoFiles->WLOCK_FILES);
+    bitmapGenericSet(new_task->infoFiles->fdBitmap, 0, true);
+    bitmapGenericSet(new_task->infoFiles->fdBitmap, 1, true);
+    bitmapGenericSet(new_task->infoFiles->fdBitmap, 2, true);
+    spinlock_cnt_write_release(&new_task->infoFiles->WLOCK_FILES);
 
-  OpenFile *fdStdin = fsUserGetNode(target, stdin);
-  OpenFile *fdStdout = fsUserGetNode(target, stdout);
-  OpenFile *fdStderr = fsUserGetNode(target, stderr);
+    task_adjust_heap(new_task,
+                     DivRoundUp(new_task->infoPd->heap_end, 0x1000) * 0x1000,
+                     &new_task->infoPd->heap_start,
+                     &new_task->infoPd->heap_end);
 
-  fdStdin->id = 0;
-  fdStdout->id = 1;
-  fdStderr->id = 2;
-  // todo fixup all of the ^
+    new_task->parent = current_task_this_core();
+    task_create_finish(new_task);
 
-  // Align it, just in case...
-  task_adjust_heap(target, DivRoundUp(target->infoPd->heap_end, 0x1000) * 0x1000,
-                 &target->infoPd->heap_start, &target->infoPd->heap_end);
-
-  // Just a sane default
-  target->parent = currentTask;
-
-  if (startup)
-    task_create_finish(target);
-
-  return target;
+    return new_task;
 }

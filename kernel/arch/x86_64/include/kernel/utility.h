@@ -9,6 +9,7 @@
 #ifndef UTILITY_H
 #define UTILITY_H
 
+extern char *boot_step_name;
 
 
 #define CEILING_DIVISION(a,b) (((a + b) - 1) / b)

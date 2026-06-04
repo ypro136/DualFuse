@@ -55,7 +55,7 @@ bool apicCheck() {
 
 void apicWrite(uint32_t offset, uint32_t value) {
   if (!apicVirt) {
-    printf("[apic] Warning: apicWrite called before APIC initialized\n");
+    printf("[apic] Warning: apicWrite called before APIC initialized by %s\n", boot_step_name);
     return;
   }
   uint32_t volatile *ptr = (uint32_t volatile *)(apicVirt + offset);
@@ -64,7 +64,7 @@ void apicWrite(uint32_t offset, uint32_t value) {
 
 uint32_t apicRead(uint32_t offset) {
   if (!apicVirt) {
-    printf("[apic] Warning: apicRead called before APIC initialized\n");
+    printf("[apic] Warning: apicRead called before APIC initialized by %s\n", boot_step_name);
     return 0;
   }
   uint32_t volatile *ptr = (uint32_t volatile *)(apicVirt + offset);
@@ -267,7 +267,6 @@ void initiateAPIC() {
 
   x2apic_mode = apicIsX2Apic();
   
-
   initiateIrqPerCore();
 
   #if defined(DEBUG_APIC)

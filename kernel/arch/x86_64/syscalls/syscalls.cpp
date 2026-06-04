@@ -177,6 +177,7 @@ extern "C" void syscall_handler(AsmPassedInterrupt *regs) {
     current_task_this_core()->syscallRsp = 0;
     current_task_this_core()->syscallRegs = 0;
     current_task_this_core()->systemCallInProgress = false;
+    return;
   }
   size_t handler = syscalls[id];
 
@@ -210,12 +211,10 @@ extern "C" void syscall_handler(AsmPassedInterrupt *regs) {
 
   if (!handler) {
     regs->rax = -ENOSYS;
-#if DEBUG_SYSCALLS_MISSING
-    printf("[syscalls] Tried to access syscall{%d} (doesn't exist)!\n", id);
-#endif
     current_task_this_core()->syscallRsp = 0;
     current_task_this_core()->syscallRegs = 0;
     current_task_this_core()->systemCallInProgress = false;
+    return;
   }
 
   long int ret = ((SyscallHandler)(handler))(regs->rdi, regs->rsi, regs->rdx,

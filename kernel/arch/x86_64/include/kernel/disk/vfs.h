@@ -3,6 +3,7 @@
 #include <linked_list.h>
 #include <linux.h>
 #include <types.h>
+#include <utility.h>
 
 #ifndef FS_CONTROLLER_H
 #define FS_CONTROLLER_H
@@ -208,6 +209,8 @@ extern LLcontrol dsMountPoint; // struct MountPoint
 
 OpenFile *fsKernelOpen(char *filename, int flags, uint32_t mode);
 bool      fsKernelClose(OpenFile *file);
+
+
 
 size_t fsUserOpen(void *task, char *filename, int flags, int mode);
 size_t fsUserClose(void *task, int fd);

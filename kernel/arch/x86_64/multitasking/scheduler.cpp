@@ -75,6 +75,14 @@ void schedule(AsmPassedInterrupt* interrupt_frame) {
         return;
     }
 
+    if (!next_task->kernel_task) {
+        printf("[sched] user task %d: rip=0x%lx cs=0x%lx rsp=0x%lx\n",
+            next_task->id,
+            next_task->registers.rip,
+            next_task->registers.cs,
+            next_task->registers.usermode_rsp);
+    }
+
     // Update per‑core current task and, if this is the BSP, the global pointer
     per_lapic_core_current_task[core_id] = next_task;
     if (core_id == apicGetBspLapicId())

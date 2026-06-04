@@ -8,7 +8,6 @@
 #include <linux.h>
 #include <liballoc.h>
 #include <paging.h>
-//#include <schedule.h>
 #include <task_stack.h>
 #include <syscalls.h>
 #include <pmm.h>
@@ -165,6 +164,8 @@ Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir
   *(uint32_t *)(&target->fpuenv[24]) = 0x1f80;        // MXCSR at offset 24 in fxsave area
   target->mxcsr = 0x1f80;
 
+  target->core_affinity = TASK_AFFINITY_BSP;
+
 
   task_attach_def_termios(target);
 
@@ -202,20 +203,22 @@ void task_adjust_heap(Task *task, size_t new_heap_end, size_t *start,
   size_t old_page_top = CEILING_DIVISION(*end, PAGE_SIZE);
   size_t new_page_top = CEILING_DIVISION(new_heap_end, PAGE_SIZE);
 
-  if (new_page_top > old_page_top) {
-    size_t num = new_page_top - old_page_top;
+  // Always try to map pages for the range [old_page_top, new_page_top).
+  // If the heap is currently empty, we must map at least the page that
+  // contains *end, even when new_page_top == old_page_top.
+  if (new_page_top >= old_page_top) {
+      size_t num = new_page_top - old_page_top;
+      if (num == 0 && *end == *start && new_heap_end > *start) 
+          num = 1;                     // first allocation – map the initial page
 
-    for (size_t i = 0; i < num; i++) {
-      size_t virt = old_page_top * PAGE_SIZE + i * PAGE_SIZE;
-      if (virtual_to_physical(virt))
-        continue;
-
-      size_t phys = physical_allocate(1);
-
-      virtual_map(virt, phys, PF_RW | PF_USER);
-
-      memset((void *)virt, 0, PAGE_SIZE);
-    }
+      for (size_t i = 0; i < num; i++) {
+          size_t virt = old_page_top * PAGE_SIZE + i * PAGE_SIZE;
+          if (virtual_to_physical(virt))   // already mapped? skip
+              continue;
+          size_t phys = physical_allocate(1);
+          virtual_map(virt, phys, PF_RW | PF_USER);
+          memset((void *)virt, 0, PAGE_SIZE);
+      }
   } else if (new_page_top < old_page_top) {
     printf("[task] New page is lower than old page: id{%d}\n", task->id);
     task_kill(task->id, 139);
