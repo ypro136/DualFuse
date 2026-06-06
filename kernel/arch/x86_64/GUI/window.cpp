@@ -206,6 +206,40 @@ void minimize_xp_window(void* ctx)
 #endif
 }
 
+bool is_mouse_on_window_resize_triangle(XPWindow* win, int x, int y)
+{
+    if (!win) return false;
+    int distance_from_right  = (win->x + win->width)  - x;
+    int distance_from_bottom = (win->y + win->height) - y;
+    return distance_from_right >= 0 &&
+           distance_from_bottom >= 0 &&
+           distance_from_right + distance_from_bottom <= RESIZE_TRIANGLE_SIZE;
+}
+
+void resize_xp_window(XPWindow* win, int new_width, int new_height)
+{
+    if (!win) return;
+    if (new_width < WINDOW_MINIMUM_WIDTH)  new_width  = WINDOW_MINIMUM_WIDTH;
+    if (new_height < WINDOW_MINIMUM_HEIGHT) new_height = WINDOW_MINIMUM_HEIGHT;
+
+    win->width  = new_width;
+    win->height = new_height;
+
+    const int btn_y    = win->y + 4;
+    const int btn_size = 16;
+    for (int i = 0; i < 3; i++)
+    {
+        if (win->buttons[i])
+        {
+            win->buttons[i]->x = win->x + win->width - (btn_size + 4) * (i + 1);
+            win->buttons[i]->y = btn_y;
+        }
+    }
+
+    if (win->context && win->on_move)
+        win->on_move(win->context, win->x, win->y + TITLE_BAR_HEIGHT);
+}
+
 void set_active_xp_window(XPWindow* win)
 {
     if (!win) return;
@@ -266,24 +300,9 @@ void draw_window_title_bar(XPWindow* win)
 
 void draw_xp_window(XPWindow* win)
 {
-    if (!win || win->minimized)
-    {
-#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-        printf("[DEBUG_GUI] draw_xp_window: skipping win:%p minimized:%d\n",
-               win, win ? win->minimized : -1);
-#endif
-        return;
-    }
-
-#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-    printf("[DEBUG_GUI] draw_xp_window: x:%d y:%d w:%d h:%d title:%s\n",
-           win->x, win->y, win->width, win->height, win->title ? win->title : "NULL");
-#endif
-
+    if (!win || win->minimized) return;
     fill_rectangle(win->x, win->y, win->width, win->height, XP_BACKGROUND);
-
     draw_window_title_bar(win);
-
     draw_beveled_border_thick(win->x, win->y, win->width, win->height,
                               XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE, XP_BUTTON_SHADOW, true);
 
@@ -291,24 +310,25 @@ void draw_xp_window(XPWindow* win)
     const int client_y      = win->y + TITLE_BAR_HEIGHT + WINDOW_BORDER_WIDTH;
     const int client_width  = win->width  - 2 * WINDOW_BORDER_WIDTH;
     const int client_height = win->height - TITLE_BAR_HEIGHT - 2 * WINDOW_BORDER_WIDTH;
-
     fill_rectangle(client_x, client_y, client_width, client_height, win->bg_color);
 
-    // Draw title-bar control buttons
+    // Resize triangle (bottom‑right corner)
+    fill_triangle(win->x + win->width - 1,
+                  win->y + win->height - 1,
+                  win->x + win->width - 1 - RESIZE_TRIANGLE_SIZE,
+                  win->y + win->height - 1,
+                  win->x + win->width - 1,
+                  win->y + win->height - 1 - RESIZE_TRIANGLE_SIZE,
+                  0xFFFF88);
+
     const int btn_y    = win->y + 4;
     const int btn_size = 16;
     draw_window_button(win->x + win->width - (btn_size + 4) * 1, btn_y, btn_size, "X", true);
     draw_window_button(win->x + win->width - (btn_size + 4) * 2, btn_y, btn_size, "[", true);
     draw_window_button(win->x + win->width - (btn_size + 4) * 3, btn_y, btn_size, "_", true);
 
-    // Draw content
     if (win->context && win->draw_frame)
-    {
-#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-        printf("[DEBUG_GUI] draw_xp_window: calling draw_frame context:%p\n", win->context);
-#endif
         win->draw_frame(win->context);
-    }
 }
  
 int draw_all_xp_windows_but_active()

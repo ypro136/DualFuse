@@ -24,6 +24,12 @@ XPWindow*      grabbed_window     = NULL;
 XPButton*      pressed_button     = NULL;
 XPDesktopIcon* pressed_icon       = NULL;
 
+XPWindow*      resize_window          = NULL;
+int            resize_start_mouse_x   = 0;
+int            resize_start_mouse_y   = 0;
+int            resize_start_width     = 0;
+int            resize_start_height    = 0;
+
 bool mouse_down_left()  { return  clickedLeft && !old_clickedLeft;  }
 bool mouse_up_left()    { return !clickedLeft &&  old_clickedLeft;  }
 bool mouse_down_right() { return  clickedRight && !old_clickedRight; }
@@ -143,6 +149,19 @@ bool GUI_input_loop()
                 x_offset_to_window = mouse_position_x - grabbed_window->x;
                 y_offset_to_window = mouse_position_y - grabbed_window->y;
             }
+            else if (is_mouse_on_window_resize_triangle(
+                         win, mouse_position_x, mouse_position_y))
+            {
+                #if defined(DEBUG_GUI)
+                printf("[DEBUG_GUI] GUI_input_loop: resize grab on window:%s\n",
+                       win->title ? win->title : "NULL");
+                #endif
+                resize_window        = win;
+                resize_start_mouse_x = mouse_position_x;
+                resize_start_mouse_y = mouse_position_y;
+                resize_start_width   = win->width;
+                resize_start_height  = win->height;
+            }
             else
             {
                 dispatch_to_active_window(true, false);
@@ -194,6 +213,7 @@ bool GUI_input_loop()
         printf("[DEBUG_GUI] GUI_input_loop: mouse up\n");
         #endif
         grabbed_window = NULL;
+        resize_window  = NULL;
 
         if (pressed_button != NULL)
         {
@@ -229,13 +249,20 @@ bool GUI_input_loop()
                 }
             }
         } 
-    } 
+    }  
 
-    if (clickedLeft && grabbed_window != NULL)
+    if (clickedLeft && grabbed_window != NULL) 
     {
         move_xp_window(grabbed_window,
                        mouse_position_x - x_offset_to_window,
                        mouse_position_y - y_offset_to_window);
+    }
+
+    if (clickedLeft && resize_window != NULL)
+    {
+        int new_width  = resize_start_width  + (mouse_position_x - resize_start_mouse_x);
+        int new_height = resize_start_height + (mouse_position_y - resize_start_mouse_y);
+        resize_xp_window(resize_window, new_width, new_height);
     }
 
     update_all_xp_panels(mouse_position_x, mouse_position_y);
@@ -243,4 +270,4 @@ bool GUI_input_loop()
     mouse_update();
 
     return should_exit;
-}
+} 

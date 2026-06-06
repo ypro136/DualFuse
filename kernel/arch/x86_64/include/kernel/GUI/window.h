@@ -4,6 +4,10 @@
 #include <gui_defs.h>
 #include <button.h>  
 
+#define RESIZE_TRIANGLE_SIZE    16
+#define WINDOW_MINIMUM_WIDTH   200
+#define WINDOW_MINIMUM_HEIGHT   80
+
 enum XPWindowType {
     WINDOW_TYPE_NONE         = 0,
     WINDOW_TYPE_CONSOLE      = 1,
@@ -56,6 +60,9 @@ void draw_window_title_bar(XPWindow* win);
 
 int  draw_all_xp_windows_but_active();
 void draw_active_xp_window();
+
+bool is_mouse_on_window_resize_triangle(XPWindow* win, int x, int y);
+void resize_xp_window(XPWindow* win, int new_width, int new_height);
 
 XPWindow* get_window_at(int x, int y);
 bool      is_mouse_on_window_title_bar(XPWindow* win, int x, int y);

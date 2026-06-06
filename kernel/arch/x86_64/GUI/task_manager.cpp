@@ -130,12 +130,37 @@ static void task_manager_update_button_positions(TaskManagerState* state, const 
 }
 
 static void task_manager_draw_process_list(TaskManagerState* state, const TaskManagerLayout& layout) {
-    int max_scroll_offset = state->snapshot_task_count - layout.visible_row_count;
-    if (max_scroll_offset < 0) max_scroll_offset = 0;
-    if (state->scroll_offset_rows > max_scroll_offset) state->scroll_offset_rows = max_scroll_offset;
-    if (state->scroll_offset_rows < 0)                 state->scroll_offset_rows = 0;
+    // ------------------------------------------------------------------
+    // 1. Count how many non‑dummy tasks exist
+    // ------------------------------------------------------------------
+    int non_dummy_count = 0;
+    for (int i = 0; i < state->snapshot_task_count; ++i) {
+        if (state->snapshot_entries[i].task_state != TASK_STATE_DUMMY)
+            non_dummy_count++;
+    }
 
-    fill_rectangle(layout.client_x, layout.client_y, layout.list_content_w, layout.header_row_h, XP_BUTTON_SHADOW);
+    // If there are no real tasks, draw empty area and return
+    if (non_dummy_count == 0) {
+        fill_rectangle(layout.client_x, layout.client_y,
+                       layout.list_content_w, layout.client_h, XP_BUTTON_FACE);
+        return;
+    }
+
+    // ------------------------------------------------------------------
+    // 2. Adjust scroll offset to work with non‑dummy tasks
+    // ------------------------------------------------------------------
+    int max_scroll_offset = non_dummy_count - layout.visible_row_count;
+    if (max_scroll_offset < 0) max_scroll_offset = 0;
+    if (state->scroll_offset_rows > max_scroll_offset)
+        state->scroll_offset_rows = max_scroll_offset;
+    if (state->scroll_offset_rows < 0)
+        state->scroll_offset_rows = 0;
+
+    // ------------------------------------------------------------------
+    // 3. Draw header
+    // ------------------------------------------------------------------
+    fill_rectangle(layout.client_x, layout.client_y,
+                   layout.list_content_w, layout.header_row_h, XP_BUTTON_SHADOW);
 
     int header_text_baseline_y = layout.client_y + TASK_MANAGER_ROW_PADDING + current_font_height;
     draw_text("PID",   layout.col_pid_x   + 2, header_text_baseline_y, 0xFFFFFF, XP_BUTTON_SHADOW);
@@ -146,15 +171,37 @@ static void task_manager_draw_process_list(TaskManagerState* state, const TaskMa
 
     int rows_start_y = layout.client_y + layout.header_row_h;
 
-    for (int visible_row_index = 0; visible_row_index < layout.visible_row_count; visible_row_index++) {
-        int snapshot_index = visible_row_index + state->scroll_offset_rows;
-        int row_y = rows_start_y + visible_row_index * layout.row_h;
-
-        if (snapshot_index >= state->snapshot_task_count) {
-            fill_rectangle(layout.client_x, row_y, layout.list_content_w, layout.row_h, XP_BUTTON_FACE);
+    // ------------------------------------------------------------------
+    // 4. Draw visible rows: for each visible row, find the corresponding
+    //    non‑dummy snapshot index by scanning the original array.
+    // ------------------------------------------------------------------
+    for (int visible_row_index = 0; visible_row_index < layout.visible_row_count; ++visible_row_index) {
+        int target_non_dummy_index = visible_row_index + state->scroll_offset_rows;
+        if (target_non_dummy_index >= non_dummy_count) {
+            // No more real tasks – fill remaining area with background
+            fill_rectangle(layout.client_x, rows_start_y + visible_row_index * layout.row_h,
+                           layout.list_content_w, layout.row_h, XP_BUTTON_FACE);
             continue;
         }
 
+        // Scan original snapshot entries to find the target_non_dummy_index-th non‑dummy task
+        int snapshot_index = -1;
+        int seen_non_dummy = 0;
+        for (int i = 0; i < state->snapshot_task_count; ++i) {
+            if (state->snapshot_entries[i].task_state != TASK_STATE_DUMMY) {
+                if (seen_non_dummy == target_non_dummy_index) {
+                    snapshot_index = i;
+                    break;
+                }
+                seen_non_dummy++;
+            }
+        }
+
+        // Should always be found because target_non_dummy_index < non_dummy_count
+        if (snapshot_index == -1)
+            continue;
+
+        int row_y = rows_start_y + visible_row_index * layout.row_h;
         bool row_is_selected = (snapshot_index == state->selected_snapshot_index);
         bool row_index_is_even = (visible_row_index % 2 == 0);
 
@@ -167,16 +214,20 @@ static void task_manager_draw_process_list(TaskManagerState* state, const TaskMa
 
         int text_baseline_y = row_y + TASK_MANAGER_ROW_PADDING + current_font_height;
 
+        // PID
         char pid_string[16];
         snprintf(pid_string, sizeof(pid_string), "%d", (int)state->snapshot_entries[snapshot_index].task_id);
         draw_text(pid_string, layout.col_pid_x + 2, text_baseline_y, row_foreground_color, row_background_color);
 
+        // State
         const char* state_string = task_manager_state_to_string(state->snapshot_entries[snapshot_index].task_state);
         draw_text(state_string, layout.col_state_x + 2, text_baseline_y, row_foreground_color, row_background_color);
 
+        // Type
         const char* type_string = state->snapshot_entries[snapshot_index].is_kernel_task ? "KERNEL" : "USER";
         draw_text(type_string, layout.col_type_x + 2, text_baseline_y, row_foreground_color, row_background_color);
 
+        // Core
         char core_string[8];
         if (state->snapshot_entries[snapshot_index].running_core >= 0)
             snprintf(core_string, sizeof(core_string), "%d", state->snapshot_entries[snapshot_index].running_core);
@@ -184,14 +235,18 @@ static void task_manager_draw_process_list(TaskManagerState* state, const TaskMa
             strcpy(core_string, "-");
         draw_text(core_string, layout.col_core_x + 2, text_baseline_y, row_foreground_color, row_background_color);
 
+        // Name
         draw_text(state->snapshot_entries[snapshot_index].task_display_name,
                   layout.col_name_x + 2, text_baseline_y,
                   row_foreground_color, row_background_color);
     }
 
-    if (state->snapshot_task_count > layout.visible_row_count) {
+    // ------------------------------------------------------------------
+    // 5. Draw scrollbar based on non‑dummy count
+    // ------------------------------------------------------------------
+    if (non_dummy_count > layout.visible_row_count) {
         int scroll_pos_pixels = state->scroll_offset_rows * layout.row_h;
-        int max_scroll_pixels = state->snapshot_task_count * layout.row_h;
+        int max_scroll_pixels = non_dummy_count * layout.row_h;
         draw_scrollbar(layout.scrollbar_x, layout.scrollbar_y, layout.scrollbar_h,
                        scroll_pos_pixels, max_scroll_pixels);
     } else {

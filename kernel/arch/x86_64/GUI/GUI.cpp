@@ -165,7 +165,8 @@ void draw_start_menu()
             case 0: icon = &terminal_icon;    break;
             case 1: icon = &folder_icon;      break;
             case 2: icon = &calculator_icon;  break;
-            case 3:                           break;
+            case 3: icon = &task_manager_icon; break;
+            case 4:                           break;
         }
 
         if (icon && icon->resized_data) {
@@ -396,7 +397,7 @@ void draw_taskbar()
                     icon = &folder_icon;
                     break;
                 case WINDOW_TYPE_TASK_MANAGER:
-                    icon = &file_icon;
+                    icon = &task_manager_icon;
                     break;
                 default:
                     icon = &file_icon;
@@ -536,8 +537,8 @@ void draw_desktop_icon(XPDesktopIcon* icon)
         image_draw(&calculator_icon, x, y, size, size);
     } else if (strcmp(icon->label, "Files") == 0 && folder_icon.resized_data) {
         image_draw(&folder_icon, x, y, size, size);
-    } else if (strcmp(icon->label, "Tasks") == 0) {
-        fill_rectangle(x + 6, y + 6, size - 12, size - 12, 0x007F7F);
+    } else if (strcmp(icon->label, "Tasks") == 0 && task_manager_icon.resized_data) {
+        image_draw(&task_manager_icon, x, y, size, size);
     } else {
         // fallback colored rectangle
         fill_rectangle(x + 6, y + 6, size - 12, size - 12, icon->icon_color);
