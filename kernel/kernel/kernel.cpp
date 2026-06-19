@@ -189,11 +189,9 @@ extern "C" void kernel_main(void)
 
     smp_install_trampoline();
     boot_step_name = "booting other cores";
-    //smp_boot_all_aps();
-
-    // task_create_named_kernel((uint64_t)kernel_one_shot_entry, (uint64_t)oneshot_test_func, "test_oneshot");
-
-    // task_create_named_kernel((uint64_t)suicide_task, 0, "test_suicide");
+    //smp_boot_all_aps(); 
+ 
+    //task_create_named_kernel((uint64_t)suicide_task, 0, "test_suicide");
 
     // dump APIC timer state
     uint32_t lvt     = apicRead(APIC_REGISTER_LVT_TIMER);

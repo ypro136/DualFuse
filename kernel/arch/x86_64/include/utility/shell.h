@@ -48,11 +48,12 @@ private:
     void cmd_i2c();
     void cmd_i2chid();
     void cmd_i2cpoll();
-
+ 
     void cmd_tasks();
     void cmd_spawn();
     void cmd_kill(int argc, char* argv[]);
     void cmd_bg();
+    void cmd_task_test();
 
     void cmd_mount();
 

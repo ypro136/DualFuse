@@ -114,7 +114,6 @@ void Shell::execute(char* input_command_line)
     else if (strcmp(argument_vector[0], "I2CHID")  == 0) cmd_i2chid();
     else if (strcmp(argument_vector[0], "I2CPOLL") == 0) cmd_i2cpoll();
     else if (strcmp(argument_vector[0], "TASKS")   == 0) cmd_tasks();
-    else if (strcmp(argument_vector[0], "TASKTEST")   == 0) cmd_task_test();
     else if (strcmp(argument_vector[0], "SPAWN")   == 0) cmd_spawn();
     else if (strcmp(argument_vector[0], "KILL")    == 0) cmd_kill(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "BG")      == 0) cmd_bg();

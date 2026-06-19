@@ -79,28 +79,7 @@ Task *task_list_allocate() {
         return NULL;
     }
     printf("[task] Allocated task structure at %p\n", target);
-    uint64_t new_phys = virtual_to_physical((uint64_t)target);
-    for (Task *t = firstTask; t != NULL; t = t->next) {
-        if (t->state == TASK_STATE_DEAD) continue;
-        uint64_t t_phys = virtual_to_physical((uint64_t)t);
-        if (t_phys == new_phys) {
-            printf("[FATAL] Task struct page 0x%lx (virt %p) already used by task %d!\n",
-                   new_phys, target, t->id);
-            Halt();
-        }
-    }
-
-    printf("[task] Allocated task structure at %p (phys 0x%lx)\n", target, new_phys);
     memset(target, 0, PAGE_SIZE);   // clear the whole page
-    target->canary = 0xDEADBEEFCAFEBABE;
-
-    volatile uint64_t *test = (uint64_t*)target;
-  uint64_t phys = virtual_to_physical((uint64_t)test);
-  if (phys != ((uint64_t)target - bootloader.hhdmOffset)) {
-      printf("[FATAL] HHDM alias broken: virt=%p expected phys=0x%lx got 0x%lx\n",
-            target, (uint64_t)target - bootloader.hhdmOffset , phys);
-      Halt();
-  }
 
     asm volatile("cli"); 
     Task *browse = firstTask;
@@ -203,26 +182,16 @@ Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir
   // just in case it ends up becoming an orphan
   target->parent = firstTask;
 
-      printf("[task_create] finished\n");
   return target;
 }
 
 Task *task_create_kernel(uint64_t rip, uint64_t rdi) {
-  asm volatile("cli");
-  register uint64_t rsp;
-  asm volatile("mov %%rsp, %0" : "=r"(rsp));
-  printf("[task] current rsp = 0x%lx\n", rsp);
-
-  Task *target = task_create(task_generate_id(), rip, true, page_directory_allocate(), 0, 0);
-  printf("[task] task_create: after list_allocate\n");
-  // if (!target->kernel_task)
-  //   stack_generate_kernel(target, rdi);  // stack_generate_kernel NOT needed for kernel tasks, TODO: maybe split into two functions? and make userspace one do the stack generation part?
-  printf("[task] task_create: after InfoPdAllocate\n");
+  Task *target =
+      task_create(task_generate_id(), rip, true, page_directory_allocate(), 0, 0);
+  stack_generate_kernel(target, rdi);
   task_create_finish(target);
-  asm volatile("sti");
   return target;
 }
-
 
 void task_name_kernel(Task *target, const char *str, int len) {
   target->cmdline = malloc(len);
@@ -291,7 +260,8 @@ void task_kill(uint32_t id, uint16_t ret) {
   if (!task)
     return;
 
-  // Notify the parent about the child's termination
+  // Notify that poor parent... they must've been searching all over the
+  // place!
   if (task->parent && !task->noInformParent) {
     spinlock_acquire(&task->parent->LOCK_CHILD_TERM);
     KilledInfo *info = (KilledInfo *)LinkedListAllocate(
@@ -312,6 +282,7 @@ void task_kill(uint32_t id, uint16_t ret) {
     task->parent->state = TASK_STATE_READY;
 
   if (task->tidptr) {
+    // *task->tidptr = 0;
     atomicWrite32((uint32_t *)task->tidptr, 0);
     futexSyscall((uint32_t *)task->tidptr, FUTEX_WAKE, 1, 0, 0, 0);
   }
@@ -319,12 +290,10 @@ void task_kill(uint32_t id, uint16_t ret) {
   // close any left open files
   taskInfoFilesDiscard(task->infoFiles, task);
 
-  // release the page directory (only userspace portions)
+  // if (!parentVfork)
+  //   page_directory_free(task->pagedir);
   taskInfoPdDiscard(task->infoPd);
-
-  // NEW: release the other two shared structures (filesystem info and signal handlers)
-  taskInfoFsDiscard(task->infoFs);
-  taskInfoSignalDiscard(task->infoSignals);
+  // ^ only changes userspace locations so we don't need to change our pagedir
 
   // the "reaper" thread will finish everything in a safe context
   task_call_reaper(task);
@@ -332,6 +301,7 @@ void task_kill(uint32_t id, uint16_t ret) {
 
   if (current_task_this_core() == task) {
     // we're most likely in a syscall context, so...
+    // task_killCleanup(task); // left for sched
     asm volatile("sti");
     // wait until we're outta here
     while (1) {

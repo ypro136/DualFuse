@@ -1,9 +1,8 @@
-//#include <stdatomic.h>
-
-#include <types.h>
-
 #ifndef SPINLOCK_H
 #define SPINLOCK_H
+
+#include <stdint.h>
+#include <stdbool.h>
 
 #define IS_LOCKED true 
 #define IS_NOT_LOCKED false
@@ -27,6 +26,14 @@ typedef struct Semaphore {
   uint32_t cnt;
   uint8_t  invalid;
 } Semaphore;
+
+typedef struct SpinlockIrq {
+    volatile uint32_t locked;
+    uint32_t          eflags;
+} SpinlockIrq;
+
+void spinlock_irq_acquire(SpinlockIrq *lock);
+void spinlock_irq_release(SpinlockIrq *lock);
 
 
 void spinlock_cnt_read_acquire(SpinlockCnt *lock);

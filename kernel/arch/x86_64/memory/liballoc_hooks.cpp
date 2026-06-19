@@ -1,4 +1,5 @@
 #include <liballoc_hooks.h>
+#include <spinlock.h>
 
 #include <vmm.h>
 
@@ -7,17 +8,19 @@ extern "C" {
 #endif
 
 
+static SpinlockIrq liballoc_spinlock = {0, 0};
+
 int   liballoc_lock()
 {
-    virtual_spinlock_acquire();
+    spinlock_irq_acquire(&liballoc_spinlock);
     return 0;
 
-}
+} 
 
 int   liballoc_unlock()
 {
 
-    virtual_spinlock_release();
+    spinlock_irq_release(&liballoc_spinlock);
 
     return 0;
 }
