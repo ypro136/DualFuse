@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-
+extern bool serial_initialized;
 extern "C" bool serial_initialize(uint16_t _port);
 bool received();
 char read();

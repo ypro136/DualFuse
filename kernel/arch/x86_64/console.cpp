@@ -67,6 +67,9 @@ Console::Console(uint32_t width, uint32_t height, uint32_t start_x, uint32_t sta
       window_x(start_x),
       window_y(start_y),
       screen_width_char(0),
+      needs_full_redraw(false),
+      render_index(0),
+      force_full_redraw(false),
       framebuffer(nullptr)
 {
     shell = new Shell(this);
@@ -90,9 +93,18 @@ void Console::clamp_cursor()
 void Console::buffer_character(char c)
 {
     spinlock_acquire(&buffer.lock);
-    if (is_visible() && buffer.write_index < CONSOLE_BUFFER_SIZE - 1)
+    if (is_visible())
     {
-        buffer.characters[buffer.write_index++] = c;
+        if (buffer.count == CONSOLE_BUFFER_SIZE)
+        {
+            // Eviction: old character at head is discarded
+            buffer.head = (buffer.head + 1) % CONSOLE_BUFFER_SIZE;
+            buffer.count--;
+            force_full_redraw = true;   // <-- new flag
+        }
+        buffer.characters[buffer.tail] = c;
+        buffer.tail = (buffer.tail + 1) % CONSOLE_BUFFER_SIZE;
+        buffer.count++;
     }
     spinlock_release(&buffer.lock);
 }
@@ -103,17 +115,64 @@ void Console::flush_buffer()
     cursor_position_x = CHAR_WIDTH;
     cursor_position_y = border_thickness + 2;
     clamp_cursor();
-    for (uint32_t i = 0; i < buffer.write_index; i++)
-        draw_character(buffer.characters[i]);
+    uint32_t idx = buffer.head;
+    for (uint32_t i = 0; i < buffer.count; i++)
+    {
+        draw_character(buffer.characters[idx]);
+        idx = (idx + 1) % CONSOLE_BUFFER_SIZE;
+    }
     spinlock_release(&buffer.lock);
 }
 
 void Console::draw_frame()
 {
     if (!is_initialized) return;
+
     spinlock_acquire(&LOCK_CONSOLE);
-    flush_buffer();
+
+    // Temporary: force full redraw every frame until delta rendering is ready 
+    // TODO: Remove this line when delta rendering is implemented for all the GUI elements, including the console. 
+    //This is a temporary measure to ensure that the console is always fully redrawn, even if only a small portion of it has changed. 
+    //Once delta rendering is fully implemented, this line can be removed to improve performance and reduce unnecessary redraws.
+    needs_full_redraw = true;
+
+    // Full redraw (move, resize, or buffer eviction) – only clears the display,
+    // NOT the character buffer.
+    if (needs_full_redraw || force_full_redraw)
+    {
+        draw_rect(0, 0, window_width, window_height, _bg_color);
+        draw_rect(0, 0, window_width, border_thickness, border_color);
+        draw_rect(0, 0, border_thickness, window_height, border_color);
+        draw_rect(window_width - border_thickness, 0,
+                  border_thickness, window_height, border_color);
+
+        cursor_position_x = CHAR_WIDTH;
+        cursor_position_y = border_thickness + 2;
+        clamp_cursor();
+
+        render_index = 0;
+        needs_full_redraw = false;
+        force_full_redraw = false;
+    }
+
+    // Snapshot buffer state under its own lock
+    uint32_t snapshot_head;
+    uint32_t snapshot_count;
+    spinlock_acquire(&buffer.lock);
+    snapshot_head  = buffer.head;
+    snapshot_count = buffer.count;
+    spinlock_release(&buffer.lock);
+
+    // Draw only characters that haven't been drawn yet
+    while (render_index < snapshot_count)
+    {
+        uint32_t buf_index = (snapshot_head + render_index) % CONSOLE_BUFFER_SIZE;
+        draw_character(buffer.characters[buf_index]);
+        ++render_index;
+    }
+
     update_cursor();
+
     spinlock_release(&LOCK_CONSOLE);
 }
 
@@ -250,10 +309,7 @@ void Console::initialize()
     cursor_position_y = border_thickness + 2;
     screen_width_char = window_width / CHAR_WIDTH;
 
-    // Load the embedded PSF font; if it fails, set psf to a fallback
     if (!psfLoadDefaults()) {
-        // Fallback to dummy header (the font data is not actually loaded,
-        // but psfPutCScaled will check psf->height and fail gracefully)
         psf = &fallback_psf_header;
         printf("[console] Warning: default PSF font load failed, using fallback\n");
     }
@@ -261,7 +317,9 @@ void Console::initialize()
     if (!shell)
         shell = new Shell(this);
 
-    buffer.write_index = 0;
+    buffer.head = 0;
+    buffer.tail = 0;
+    buffer.count = 0;
     memset(buffer.characters, 0, sizeof(buffer.characters));
     buffer.lock = ATOMIC_FLAG_INIT;
 
@@ -272,8 +330,9 @@ void Console::initialize()
 void Console::clear_screen()
 {
     if(!is_visible()) return;
-    buffer.write_index = 0;
-    memset(buffer.characters, 0, CONSOLE_BUFFER_SIZE);
+    buffer.head = 0;
+    buffer.tail = 0;
+    buffer.count = 0;
 
     cursor_position_x = CHAR_WIDTH;
     cursor_position_y = border_thickness + 2;
@@ -433,6 +492,7 @@ void Console::set_window_size(uint32_t width, uint32_t height)
     screen_width_char = window_width / CHAR_WIDTH;
     cursor_position_x = CHAR_WIDTH;
     cursor_position_y = border_thickness + 2;
+    needs_full_redraw = true;
     clamp_cursor();
 }
 
@@ -445,6 +505,7 @@ void Console::set_window_position(int32_t x, int32_t y)
 {
     window_x = x;
     window_y = y;
+    needs_full_redraw = true;
 }
 
 Console* create_console(XPWindow* window)

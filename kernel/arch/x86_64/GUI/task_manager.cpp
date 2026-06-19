@@ -254,21 +254,21 @@ static void task_manager_draw_process_list(TaskManagerState* state, const TaskMa
                        TASK_MANAGER_SCROLLBAR_W, layout.scrollbar_h, XP_BUTTON_FACE);
     }
 }
-
+ 
 static void task_manager_draw_memory_section(TaskManagerState* state, const TaskManagerLayout& layout) {
     int section_x = layout.client_x;
     int section_y = layout.memory_section_y;
     int section_w = layout.client_w;
 
     fill_rectangle(section_x, section_y, section_w, TASK_MANAGER_MEMORY_BAR_SECTION_H, XP_BUTTON_FACE);
-
+ 
     uint64_t used_mib  = (physical_used_blocks_count  * 4096ULL) / (1024ULL * 1024ULL);
     uint64_t total_mib = (physical_total_blocks_count * 4096ULL) / (1024ULL * 1024ULL);
     if (total_mib == 0) total_mib = 1;
-
+ 
     char memory_label_string[64];
     snprintf(memory_label_string, sizeof(memory_label_string),
-             "Memory: %d MiB used / %d MiB total", (int)used_mib, (int)total_mib);
+             "Memory: %d MiB used or MMIO reserved / %d MiB total", (int)used_mib, (int)total_mib);
 
     int label_baseline_y = section_y + TASK_MANAGER_ROW_PADDING + current_font_height;
     draw_text(memory_label_string, section_x + 8, label_baseline_y, XP_WINDOW_TEXT, XP_BUTTON_FACE);
@@ -315,7 +315,15 @@ static void task_manager_draw_sysinfo_and_buttons_section(TaskManagerState* stat
              "%dx%d  %dHz", SCREEN_WIDTH, SCREEN_HEIGHT, (int)frequency);
     int resolution_text_x = section_x + section_w
                           - get_text_width(resolution_freq_string)
-                          - 2 * TASK_MANAGER_BUTTON_W - 14;
+                          - 2 * TASK_MANAGER_BUTTON_W - 14
+                          + section_x + 8  + get_text_width(state->cpu_brand_string_loaded ? state->cpu_brand_string : "");
+
+    int resolution_text_out_of_bounds_by = ((section_x + section_w) - (resolution_text_x + get_text_width(resolution_freq_string)));
+ 
+    if (resolution_text_out_of_bounds_by < 0)
+    {
+        resolution_text_x = resolution_text_x + resolution_text_out_of_bounds_by;
+    } 
     if (resolution_text_x > section_x + 8)
         draw_text(resolution_freq_string, resolution_text_x, sysinfo_line_baseline_y, XP_WINDOW_TEXT, XP_BUTTON_FACE);
 
@@ -503,7 +511,13 @@ void task_manager_handle_mouse(TaskManagerState* state, int mouse_x, int mouse_y
     if (mouse_is_over_scrollbar_x_range &&
         mouse_y >= layout.scrollbar_y + layout.scrollbar_h - 16 &&
         mouse_y <= layout.scrollbar_y + layout.scrollbar_h) {
-        int max_scroll_offset = state->snapshot_task_count - layout.visible_row_count;
+
+        int non_dummy_count = 0;
+        for (int i = 0; i < state->snapshot_task_count; ++i)
+            if (state->snapshot_entries[i].task_state != TASK_STATE_DUMMY) non_dummy_count++;
+
+        int max_scroll_offset = non_dummy_count - layout.visible_row_count;
+
         if (max_scroll_offset < 0) max_scroll_offset = 0;
         if (state->scroll_offset_rows < max_scroll_offset) state->scroll_offset_rows++;
         return;
@@ -516,9 +530,35 @@ void task_manager_handle_mouse(TaskManagerState* state, int mouse_x, int mouse_y
                                           mouse_y <  layout.client_y + layout.process_list_area_h);
     if (mouse_is_in_process_list_rows) {
         int clicked_visible_row_index = (mouse_y - rows_start_y) / layout.row_h;
-        int clicked_snapshot_index    = clicked_visible_row_index + state->scroll_offset_rows;
-        if (clicked_snapshot_index >= 0 && clicked_snapshot_index < state->snapshot_task_count)
-            state->selected_snapshot_index = clicked_snapshot_index;
+
+        // Count non‑dummy tasks (mirror what the drawing function does)
+        int non_dummy_count = 0;
+        for (int i = 0; i < state->snapshot_task_count; ++i) {
+            if (state->snapshot_entries[i].task_state != TASK_STATE_DUMMY)
+                non_dummy_count++;
+        }
+
+        if (non_dummy_count == 0)
+            return;   // nothing selectable
+
+        int target_non_dummy_index = clicked_visible_row_index + state->scroll_offset_rows;
+        if (target_non_dummy_index >= 0 && target_non_dummy_index < non_dummy_count) {
+            // Find the snapshot index that corresponds to this non‑dummy index
+            int snapshot_index = -1;
+            int seen_non_dummy = 0;
+            for (int i = 0; i < state->snapshot_task_count; ++i) {
+                if (state->snapshot_entries[i].task_state != TASK_STATE_DUMMY) {
+                    if (seen_non_dummy == target_non_dummy_index) {
+                        snapshot_index = i;
+                        break;
+                    }
+                    seen_non_dummy++;
+                }
+            }
+
+            if (snapshot_index != -1)
+                state->selected_snapshot_index = snapshot_index;
+        }
     }
 }
 

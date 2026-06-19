@@ -5,6 +5,10 @@
 #include <psf.h>
 #include <liballoc.h>
 #include <image_viewer.h>
+#include <file_explorer.h>
+#include <console.h>
+#include <task_manager.h> 
+#include <calculator.h>
 
 // taskbar_sync_windows() is declared in GUI.h - forward-declare here
 // to avoid a circular include (GUI.h → window.h → GUI.h).
@@ -222,10 +226,108 @@ void resize_xp_window(XPWindow* win, int new_width, int new_height)
     if (new_width < WINDOW_MINIMUM_WIDTH)  new_width  = WINDOW_MINIMUM_WIDTH;
     if (new_height < WINDOW_MINIMUM_HEIGHT) new_height = WINDOW_MINIMUM_HEIGHT;
 
-    win->width  = new_width;
-    win->height = new_height;
+    XPWindowType window_type = win->window_type;
 
-    const int btn_y    = win->y + 4;
+    switch (window_type)
+    {
+    case WINDOW_TYPE_EXPLORER:
+        if (win->context)
+        {
+            XPFileExplorer* explorer = (XPFileExplorer*)win->context;
+            explorer->scroll_offset = 0; // Reset scroll when resizing
+
+            int minum_width = 2 * WINDOW_BORDER_WIDTH + FE_ICON_SIZE * FE_ICON_COLUMNS + (FE_ICON_COLUMNS + 1) * 45; // 10px padding
+            int minum_hight = 2 * WINDOW_BORDER_WIDTH + TITLE_BAR_HEIGHT + FE_TOOLBAR_HEIGHT + FE_ADDRESSBAR_HEIGHT + (FE_ICON_SIZE + 45) * ((explorer->visible_count / FE_ICON_COLUMNS) + 1); // 20px for spacing and text
+
+            if (new_width < minum_width)  new_width  = minum_width;
+            if (new_height < minum_hight) new_height = minum_hight;
+
+            win->width  = new_width;
+            win->height = new_height;
+        }
+        break;
+    case WINDOW_TYPE_IMAGE_VIEWER:
+        if (win->context)
+        {
+            XPImageViewer* viewer = (XPImageViewer*)win->context;
+        }
+        win->width  = new_width;
+        win->height = new_height;
+        break;
+    case WINDOW_TYPE_TEXT_EDITOR:
+        win->width  = new_width;
+        win->height = new_height;
+        break;
+    case WINDOW_TYPE_TASK_MANAGER:
+    {
+        TaskManagerState* task_state = static_cast<TaskManagerState*>(win->context);
+        if (task_state)
+        {
+            task_state->scroll_offset_rows = 0;
+
+            int font_h = current_font_height;                     // assumption: accessible
+            int row_h  = font_h + 2 * TASK_MANAGER_ROW_PADDING;
+
+            // Minimum client width required by the process list table
+            const int name_col_min_width = 75;                    // assumption: no constant in header
+            int min_client_width_table =
+                TASK_MANAGER_COL_PID_W +
+                TASK_MANAGER_COL_STATE_W +
+                TASK_MANAGER_COL_TYPE_W +
+                TASK_MANAGER_COL_CORE_W +
+                name_col_min_width +
+                TASK_MANAGER_SCROLLBAR_W;
+
+            // Minimum client width required by the two buttons in the sysinfo section
+            const int button_spacing_padding = 60;                // assumption: internal padding
+            int min_client_width_buttons = 2 * TASK_MANAGER_BUTTON_W + button_spacing_padding;
+
+            int required_client_width = min_client_width_table;
+            if (min_client_width_buttons > required_client_width)
+                required_client_width = min_client_width_buttons;
+
+            int minimum_outer_width = 2 * WINDOW_BORDER_WIDTH + required_client_width;
+            if (new_width < minimum_outer_width)
+                new_width = minimum_outer_width;
+
+            int minimum_outer_height = TITLE_BAR_HEIGHT + 2 * WINDOW_BORDER_WIDTH
+                                       + TASK_MANAGER_MEMORY_BAR_SECTION_H
+                                       + TASK_MANAGER_SYSINFO_SECTION_H
+                                       + 2 * row_h;              // header row + one data row
+            if (new_height < minimum_outer_height)
+                new_height = minimum_outer_height;
+        }
+        win->width  = new_width;
+        win->height = new_height;
+        break;
+    }
+    case WINDOW_TYPE_CONSOLE:
+    {
+        win->width  = new_width;
+        win->height = new_height;
+
+        // Notify the Console object of the new drawing area (height minus title bar).
+        Console* console = static_cast<Console*>(win->context);
+        if (console) {
+            console->set_window_size(new_width, new_height - TITLE_BAR_HEIGHT);
+        }
+        break;
+    }
+    case WINDOW_TYPE_CALC:
+    {
+        if (new_width < CALC_WIN_W)  new_width  = CALC_WIN_W;
+        if (new_height < CALC_WIN_H) new_height = CALC_WIN_H;
+        //win->width  = new_width; ignore width and height changes for calculator, keep fixed size TODO: make calculator resizable
+        //win->height = new_height;
+        break;
+    }
+    default:
+        win->width  = new_width;
+        win->height = new_height;
+        break;
+    }
+
+    const int btn_y    = win->y + 4; 
     const int btn_size = 16;
     for (int i = 0; i < 3; i++)
     {

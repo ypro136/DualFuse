@@ -5,7 +5,7 @@
 #include <cstring>
 #include <timer.h>
 #include <console.h>
-#include <bootloader.h>
+#include <bootloader.h> 
 #include <mouse.h>
 #include <panel.h>
 #include <file_explorer.h>
@@ -13,6 +13,17 @@
 #include <text_editor.h>
 #include <image_viewer.h>
 #include <task_manager.h>
+
+typedef void (*gui_window_mouse_handler_fn)(void* ctx, int x, int y, bool left, bool right);
+typedef void (*gui_window_key_handler_fn)(void* ctx, char c);
+
+struct GUIWindowInputHandlers {
+    gui_window_mouse_handler_fn on_mouse;
+    gui_window_key_handler_fn   on_key;
+};
+
+static constexpr int GUI_WINDOW_TYPE_TABLE_SIZE = WINDOW_TYPE_TASK_MANAGER + 1;
+static GUIWindowInputHandlers window_input_handler_table[GUI_WINDOW_TYPE_TABLE_SIZE];
 
 bool should_exit      = false;
 bool old_clickedLeft  = false;
@@ -41,64 +52,82 @@ static void mouse_update()
     old_clickedRight = clickedRight;
 }
 
+static void gui_input_mouse_adapter_explorer(void* ctx, int x, int y, bool left, bool right)
+{
+    fe_handle_mouse(static_cast<XPFileExplorer*>(ctx), x, y, left, right);
+}
+
+static void gui_input_mouse_adapter_calc(void* ctx, int x, int y, bool left, bool right)
+{
+    if (left)
+        calc_handle_mouse(static_cast<XPCalculator*>(ctx), x, y);
+}
+
+static void gui_input_mouse_adapter_image_viewer(void* ctx, int x, int y, bool left, bool right)
+{
+    image_viewer_handle_mouse(ctx, x, y, left, right);
+}
+
+static void gui_input_mouse_adapter_text_editor(void* ctx, int x, int y, bool left, bool right)
+{
+    text_editor_handle_mouse(static_cast<XPTextEditor*>(ctx), x, y, left, right);
+}
+
+static void gui_input_mouse_adapter_task_manager(void* ctx, int x, int y, bool left, bool right)
+{
+    task_manager_handle_mouse(static_cast<TaskManagerState*>(ctx), x, y, left, right);
+}
+
+static void gui_input_key_adapter_calc(void* ctx, char c)
+{
+    calc_input(static_cast<XPCalculator*>(ctx), c);
+}
+
+static void gui_input_key_adapter_text_editor(void* ctx, char c)
+{
+    text_editor_handle_key_input(static_cast<XPTextEditor*>(ctx), c);
+}
+
+static void gui_input_key_adapter_task_manager(void* ctx, char c)
+{
+    task_manager_handle_keyboard(static_cast<TaskManagerState*>(ctx), c);
+}
+
+void gui_input_init()
+{
+    memset(window_input_handler_table, 0, sizeof(window_input_handler_table));
+
+    window_input_handler_table[WINDOW_TYPE_EXPLORER]     = { gui_input_mouse_adapter_explorer,     nullptr };
+    window_input_handler_table[WINDOW_TYPE_CALC]         = { gui_input_mouse_adapter_calc,          gui_input_key_adapter_calc };
+    window_input_handler_table[WINDOW_TYPE_IMAGE_VIEWER] = { gui_input_mouse_adapter_image_viewer,  nullptr };
+    window_input_handler_table[WINDOW_TYPE_TEXT_EDITOR]  = { gui_input_mouse_adapter_text_editor,   gui_input_key_adapter_text_editor };
+    window_input_handler_table[WINDOW_TYPE_TASK_MANAGER] = { gui_input_mouse_adapter_task_manager,  gui_input_key_adapter_task_manager };
+}
+
 static void dispatch_to_active_window(bool left_clicked, bool right_clicked)
 {
     if (!active_xp_window || !active_xp_window->context) return;
 
-    switch (active_xp_window->window_type)
-    {
-        case WINDOW_TYPE_EXPLORER:
-            fe_handle_mouse(
-                static_cast<XPFileExplorer*>(active_xp_window->context),
-                mouse_position_x, mouse_position_y,
-                left_clicked, right_clicked);
-            break;
+    int   type = active_xp_window->window_type;
+    void* ctx  = active_xp_window->context;
 
-        case WINDOW_TYPE_CALC:
-            if (left_clicked)
-                calc_handle_mouse(
-                    static_cast<XPCalculator*>(active_xp_window->context),
-                    mouse_position_x, mouse_position_y);
-            break;
+    if (type >= GUI_WINDOW_TYPE_TABLE_SIZE) return;
+    if (!window_input_handler_table[type].on_mouse) return;
 
-        case WINDOW_TYPE_TEXT_EDITOR:
-            text_editor_handle_mouse(
-                static_cast<XPTextEditor*>(active_xp_window->context),
-                mouse_position_x, mouse_position_y,
-                left_clicked, right_clicked);
-            break;
-
-        case WINDOW_TYPE_IMAGE_VIEWER:
-            image_viewer_handle_mouse(
-                active_xp_window->context,
-                mouse_position_x, mouse_position_y,
-                left_clicked, right_clicked);
-            break;
-
-        case WINDOW_TYPE_TASK_MANAGER:
-            task_manager_handle_mouse(
-                static_cast<TaskManagerState*>(active_xp_window->context),
-                mouse_position_x, mouse_position_y,
-                left_clicked, right_clicked);
-            break;
-
-        case WINDOW_TYPE_CONSOLE:
-        case WINDOW_TYPE_NONE:
-        default:
-            break;
-    }
+    window_input_handler_table[type].on_mouse(ctx, mouse_position_x, mouse_position_y, left_clicked, right_clicked);
 }
-
-void GUI_dispatch_key(char c)
+ 
+void GUI_dispatch_key(char c) 
 {
     if (!active_xp_window || !active_xp_window->context) return;
 
-    if (active_xp_window->window_type == WINDOW_TYPE_CALC)
-        calc_input(static_cast<XPCalculator*>(active_xp_window->context), c);
-    else if (active_xp_window->window_type == WINDOW_TYPE_TEXT_EDITOR)
-        text_editor_handle_key_input(static_cast<XPTextEditor*>(active_xp_window->context), c);
-    else if (active_xp_window->window_type == WINDOW_TYPE_TASK_MANAGER)
-        task_manager_handle_keyboard(static_cast<TaskManagerState*>(active_xp_window->context), c);
+    int   type = active_xp_window->window_type;
+    void* ctx  = active_xp_window->context;
+
+    if (type >= GUI_WINDOW_TYPE_TABLE_SIZE) return;
+    if (!window_input_handler_table[type].on_key) return;
+
+    window_input_handler_table[type].on_key(ctx, c);
 }
 
 bool GUI_input_loop()
@@ -248,10 +277,10 @@ bool GUI_input_loop()
                     fired_icon->on_click();
                 }
             }
-        } 
-    }  
+        }
+    }
 
-    if (clickedLeft && grabbed_window != NULL) 
+    if (clickedLeft && grabbed_window != NULL)
     {
         move_xp_window(grabbed_window,
                        mouse_position_x - x_offset_to_window,
@@ -270,4 +299,4 @@ bool GUI_input_loop()
     mouse_update();
 
     return should_exit;
-} 
+}

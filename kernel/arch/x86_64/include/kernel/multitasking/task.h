@@ -224,6 +224,7 @@ struct __attribute__((aligned(16))) Task {
 
   Task *parent;
   Task *next;
+  uint64_t canary;   // must be last field
 };
 
 extern SpinlockCnt TASK_LL_MODIFY;
@@ -285,4 +286,12 @@ void task_list_destroy(Task *target);
 uint64_t task_generate_id();
 void task_call_reaper(Task *target);
 
+void task_call_reaper(Task *target);
+
+void task_reaper_loop(void);
+void reaper_kernel_task_entry(void);
+void kernel_one_shot_entry(void);              // no "static"!
+Task* task_create_named_kernel(uint64_t rip, uint64_t rdi, const char *name);
+static void check_stack_overlap(void *addr, size_t pages);
+ 
 #endif

@@ -14,5 +14,7 @@ bool mouse_up_left();
 bool mouse_down_right();
 bool mouse_up_right();
 
+void gui_input_init();
+
 bool GUI_input_loop();
 void GUI_dispatch_key(char c);

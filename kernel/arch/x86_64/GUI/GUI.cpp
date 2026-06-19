@@ -99,16 +99,24 @@ static int start_menu_render_height()
     return start_menu_h() + TASKBAR_HEIGHT;
 }
 
-static int start_menu_hovered_item_index = -1;
+volatile int start_menu_hovered_item_index = -1;
 void draw_start_menu()
 {
     if (!g_start_menu_open) return;
- 
+
+    /* ============================================================
+       SNAPSHOT the hover index ONCE at the very beginning.
+       This guarantees that every item is drawn with a consistent
+       hover state, even if an interrupt modifies the global
+       variable while we are in the middle of drawing.
+       ============================================================ */
+    int hovered_item = start_menu_hovered_item_index;
+
     int start_menu_position_x = start_menu_x();
     int start_menu_position_y = start_menu_render_y();
     int start_menu_width      = START_MENU_WIDTH;
     int start_menu_height     = start_menu_render_height();
- 
+
     fill_rectangle(start_menu_position_x, start_menu_position_y,
                    start_menu_width, start_menu_height, XP_BUTTON_FACE);
 
@@ -116,7 +124,7 @@ void draw_start_menu()
                               start_menu_width, start_menu_height,
                               XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE,
                               XP_BUTTON_SHADOW, true);
- 
+
     int header_height;
     if (logo_image.resized_data) {
         header_height = logo_image.resized_height + 8;
@@ -139,14 +147,15 @@ void draw_start_menu()
                   text_y + current_font_height - 4,
                   0xFFFFFF, 0x0A246A);
     }
- 
+
     for (int item_index = 0; item_index < START_MENU_ITEMS; item_index++)
     {
         int item_position_y =
             start_menu_position_y + header_height + START_MENU_PADDING +
             item_index * START_MENU_ITEM_HEIGHT;
 
-        bool item_is_hovered = (item_index == start_menu_hovered_item_index);
+        /* Use the snapshot, NOT the global variable */
+        bool item_is_hovered = (item_index == hovered_item);
 
         if (item_is_hovered)
         {
@@ -206,8 +215,12 @@ bool start_menu_handle_mouse(int mouse_position_x,
     int start_menu_width      = START_MENU_WIDTH;
     int start_menu_height     = start_menu_render_height();
 
-    start_menu_hovered_item_index = -1;
+    /* ---------------------------------------------------------
+       REMOVED the unconditional reset:
+          start_menu_hovered_item_index = -1;
+       --------------------------------------------------------- */
 
+    /* Close the menu if clicked outside its area */
     if (left_mouse_clicked &&
         (mouse_position_x < start_menu_position_x ||
          mouse_position_x > start_menu_position_x + start_menu_width ||
@@ -216,15 +229,17 @@ bool start_menu_handle_mouse(int mouse_position_x,
     {
         g_start_menu_open = false;
         return false;
-    } 
+    }
 
     int header_height;
     if (logo_image.resized_data) {
-        header_height = logo_image.resized_height + 8;   // add padding
+        header_height = logo_image.resized_height + 8;
     } else {
         header_height = (current_font_height > 0) ? (current_font_height + 8) : 24;
     }
 
+    /* Determine which item the mouse is currently over */
+    int new_hover = -1;
     for (int item_index = 0; item_index < START_MENU_ITEMS; item_index++)
     {
         int item_position_y =
@@ -239,24 +254,36 @@ bool start_menu_handle_mouse(int mouse_position_x,
 
         if (mouse_is_over_item)
         {
-            start_menu_hovered_item_index = item_index;
+            new_hover = item_index;
 
+            /* Consume the click only if an item was actually clicked */
             if (left_mouse_clicked)
             {
                 g_start_menu_open = false;
-
                 if (g_start_items[item_index].on_click)
                     g_start_items[item_index].on_click();
 
-                return true;
+                /* Menu is closing, reset hover for cleanliness */
+                start_menu_hovered_item_index = -1;
+                return true;   /* Event fully handled */
             }
         }
     }
 
-    return (mouse_position_x >= start_menu_position_x &&
-            mouse_position_x <= start_menu_position_x + start_menu_width &&
-            mouse_position_y >= start_menu_position_y &&
-            mouse_position_y <= start_menu_position_y + start_menu_height);
+    /* ---------------------------------------------------------
+       Update the global hover index ONLY if it actually changed.
+       This prevents unnecessary redraws and avoids flickering
+       caused by writing the same value repeatedly.
+       --------------------------------------------------------- */
+    if (new_hover != start_menu_hovered_item_index)
+        start_menu_hovered_item_index = new_hover;
+
+    /* ---------------------------------------------------------
+       DO NOT consume the event just because the mouse is inside
+       the menu. Return false to let the main loop proceed to
+       update_all_xp_panels() and redraw the menu normally.
+       --------------------------------------------------------- */
+    return false;
 }
 
 static void on_taskbar_window_click(void* ctx)
@@ -748,6 +775,8 @@ void initialize_xp_desktop()
     register_xp_panel(clock_panel);
 
     taskbar_sync_windows();
+
+    gui_input_init();
 
 #if defined(DEBUG_GUI)
     printf("[DEBUG_GUI] initialize_xp_desktop: done\n");

@@ -114,6 +114,7 @@ void Shell::execute(char* input_command_line)
     else if (strcmp(argument_vector[0], "I2CHID")  == 0) cmd_i2chid();
     else if (strcmp(argument_vector[0], "I2CPOLL") == 0) cmd_i2cpoll();
     else if (strcmp(argument_vector[0], "TASKS")   == 0) cmd_tasks();
+    else if (strcmp(argument_vector[0], "TASKTEST")   == 0) cmd_task_test();
     else if (strcmp(argument_vector[0], "SPAWN")   == 0) cmd_spawn();
     else if (strcmp(argument_vector[0], "KILL")    == 0) cmd_kill(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "BG")      == 0) cmd_bg();
@@ -192,7 +193,7 @@ void Shell::cmd_help()
     println("  ECHO <text>              - Print the given text");
     println("  INFO                     - Display system information");
     println("  PAGE                     - Show memory paging information");
-    println("  EXEC <path> [args]       - Launch an ELF binary");
+    println("  EXEC <path> [args]       - Launch an ELF binary WIP");
     println("  CREATE <file> <content>  - Create a new file with the given content");
     println("  CAT <file>               - Display the contents of a file");
     println("  LIST                     - List files in the current directory");
@@ -209,7 +210,7 @@ void Shell::cmd_help()
     println("  KILL <id>                - Terminate a task by its ID");
     println("  EDIT [file]              - Open text editor (optional: load file path)");
     println("  MEMTEST                  - Stress test heap allocator");
-    println("  SCHEDULER                - Toggle scheduler status");
+    println("  SCHED                    - Toggle scheduler status");
 }
 
 void Shell::cmd_scheduler_toggle(const char* argument) {
@@ -709,6 +710,16 @@ void Shell::cmd_tasks()
     }
     spinlock_cnt_read_release(&TASK_LL_MODIFY);
 }
+
+static void reaper_test_task(void) {
+    while (1) { asm volatile("pause"); }   // never dies
+}
+
+void Shell::cmd_task_test()
+{
+    task_create_named_kernel((uint64_t)reaper_test_task, 0, "i should be dead, then cleared");
+}
+
 
 static void infinite_pause_loop_kernel_task_entry(uint64_t unused_parameter)
 { 
