@@ -17,11 +17,18 @@
 
 #define AP_STACK_SIZE 0x4000
 
+volatile uint8_t smp_ready_for_ap_ticks = 0;
+
 static uint8_t *trampoline_header = nullptr;
 static volatile uint32_t ap_running = 0;
 static volatile uint8_t bsp_done = 0;
 
 static uint8_t ap_stacks[256][AP_STACK_SIZE] __attribute__((aligned(16)));
+
+static GDTEntries ap_gdt_storage[256] __attribute__((aligned(16)));
+static TSSPtr     ap_tss_storage[256] __attribute__((aligned(16)));
+
+static volatile uint8_t ap_stage[256];
 
 
 static Spinlock print_lock = {0};
@@ -36,33 +43,38 @@ static Spinlock ap_init_lock = {0};
 extern "C" void ap_entry_c(uint64_t kernel_stack_top) {
     uint32_t my_lapic_id;
     asm volatile("mov $1, %%eax; cpuid; shrl $24, %%ebx"
-             : "=b"(my_lapic_id)
-             :: "eax", "ecx", "edx");
-    __sync_fetch_and_add(&ap_running, 1);
- 
-    smp_ap_initialize_gdt_and_tss(kernel_stack_top);
+                 : "=b"(my_lapic_id)
+                 :: "eax", "ecx", "edx");
 
-    while (!bsp_done)
-    asm volatile("pause");
-
-    //smpInitiateAPIC();
-
-    Task* my_idle_task = per_lapic_core_current_task[my_lapic_id];
-    if (!my_idle_task) {
-        ap_debug("AP has no pre-created idle task, LAPIC", my_lapic_id);
-        Halt();
+    if (my_lapic_id >= 256) {
+        // LAPIC ID out of the supported range for our static tables.
+        for (;;) asm volatile("cli; hlt");
     }
 
-    // Update TSS so interrupts use the idle task’s kernel stack
+    __sync_fetch_and_add(&ap_running, 1);
+
+    smp_ap_load_gdt_and_tss(kernel_stack_top,
+                            &ap_gdt_storage[my_lapic_id],
+                            &ap_tss_storage[my_lapic_id]);
+
+    // in ap_entry_c, replace the tail with:
+    while (!bsp_done) asm volatile("pause");
+
+    // The BSP flips bsp_done only after every allocation it needs is done,
+    // so we are safe to allocate a tiny bit of our own local state here
+    // (we don't — just enable the timer and go).
+    smpInitiateAPIC();
+    Task *my_idle_task = per_lapic_core_current_task[my_lapic_id];
+    if (!my_idle_task) { for(;;) asm volatile("cli; hlt"); }
     per_core_tss[my_lapic_id]->rsp0 = my_idle_task->whileTssRsp;
 
-    scheduler_lapic_timer_start_on_current_ap();
+    // Do NOT start the timer yet — wait for the BSP to raise a second flag.
+    while (!smp_ready_for_ap_ticks) asm volatile("pause");
 
-    ap_debug("AP armed and jumping, LAPIC", my_lapic_id);
-
-    asm volatile("sti");
-    kernel_ap_idle_entry();
-
+    //scheduler_lapic_timer_start_on_current_ap();
+    //asm volatile("sti");
+    for (;;) asm volatile("cli; hlt");
+    while (1) asm volatile("pause");
 }
 
 static void clear_nx_bit(uintptr_t physical_addr) {
@@ -113,7 +125,7 @@ void smp_install_trampoline() {
 
     uint8_t *dest = (uint8_t *)(bootloader.hhdmOffset + 0x8000);
     memcpy(dest, obj_ap_trampoline_bin, obj_ap_trampoline_bin_len);
-    trampoline_header = dest + obj_ap_trampoline_bin_len - 49;
+    trampoline_header = dest + obj_ap_trampoline_bin_len - 65;
 
     // Verify identity mapping by reading through the virtual address directly
     volatile uint8_t *test = (volatile uint8_t *)0x8000;
@@ -207,17 +219,17 @@ static const uint8_t stage_markers[HANDSHAKE_STAGES] = {
     0xA5, 0xA6, 0xAA, 0xAB, 0xAC, 0xA7, 0xA8
 };
 
-// In smp_boot_all_aps(), replace the loop with:
-void smp_boot_all_aps() {
+void smp_boot_all_aps(void) {
     debug_page_table_entry(0x8000);
 
     printf("[smp] Starting APs sequentially...\n");
-    
+
     uint64_t cr3_phys;
     asm volatile("mov %%cr3, %0" : "=r"(cr3_phys));
     *(uint64_t *)(trampoline_header + 0)  = cr3_phys;
     printf("[smp] Header CR3 = 0x%lx%08lx\n",
-       (unsigned long)(cr3_phys >> 32), (unsigned long)(cr3_phys & 0xFFFFFFFF));
+           (unsigned long)(cr3_phys >> 32),
+           (unsigned long)(cr3_phys & 0xFFFFFFFF));
     *(uint64_t *)(trampoline_header + 16) = (uint64_t)&ap_entry_c;
 
     GDTPtr gdt_ptr, idt_ptr;
@@ -249,16 +261,20 @@ void smp_boot_all_aps() {
         uint32_t apic_id = smp_ap_lapic_id_list[i];
         if (apic_id == apicGetBspLapicId()) continue;
 
-        printf("[smp] --- preparing AP %u (index %d) ---\n", apic_id, i);
+        // BSP-side prep: build the AP's GDT and TSS. No allocation, no
+        // printing from the AP is needed for any of this.
+        gdt_prepare_ap_copy(&ap_gdt_storage[apic_id],
+                            &ap_tss_storage[apic_id]);
+        per_core_tss[apic_id] = &ap_tss_storage[apic_id];
 
-        *(uint64_t *)(trampoline_header + 8) = (uintptr_t)&ap_stacks[i] + AP_STACK_SIZE;
+        *(uint64_t *)(trampoline_header + 8) =
+            (uintptr_t)&ap_stacks[apic_id] + AP_STACK_SIZE;
         *(volatile uint8_t *)(trampoline_header + 44) = 0;
         for (int j = 0; j < HANDSHAKE_STAGES; j++)
-            ap_go_base[j] = 0;   // clear go flags 0x501 … 0x50A
+            ap_go_base[j] = 0;
 
         apic_send_init(apic_id);
         simple_mdelay(10);
-
         apic_send_sipi(apic_id, 0x08);
 
         bool failed = false;
@@ -267,7 +283,8 @@ void smp_boot_all_aps() {
                                         &ap_go_base[stage], 1,
                                         100000);
             if (ok) {
-                printf("[smp] AP %u stage %d: %s\n", apic_id, stage, stage_names[stage]);
+                printf("[smp] AP %u stage %d: %s\n",
+                       apic_id, stage, stage_names[stage]);
             } else {
                 printf("[smp] AP %u FAILED at stage %d (%s) – last progress was 0x%x\n",
                        apic_id, stage, stage_names[stage], *ap_progress);
@@ -277,7 +294,8 @@ void smp_boot_all_aps() {
         }
 
         if (!failed) {
-            printf("[smp] AP %u reached 64-bit C entry; waiting for commword...\n", apic_id);
+            printf("[smp] AP %u reached 64-bit C entry; waiting for commword...\n",
+                   apic_id);
             for (int t = 0; t < 100000; t++) {
                 if (*(volatile uint8_t *)(trampoline_header + 44) == 1)
                     break;
@@ -292,24 +310,31 @@ void smp_boot_all_aps() {
         }
     }
 
-    volatile uint32_t *ap_alive_marker = (volatile uint32_t *)(bootloader.hhdmOffset + 0x510);
+    volatile uint32_t *ap_alive_marker =
+        (volatile uint32_t *)(bootloader.hhdmOffset + 0x510);
     printf("[smp] AP alive marker = 0x%x\n", *ap_alive_marker);
 
     printf("[smp] free physical blocks: %ld / %ld\n",
-       (unsigned long)(physical_total_blocks_count - physical_used_blocks_count),
-       (unsigned long)physical_total_blocks_count);
-    // BSP creates all AP idle tasks sequentially — no concurrent alloc
+           (unsigned long)(physical_total_blocks_count - physical_used_blocks_count),
+           (unsigned long)physical_total_blocks_count);
+
+    // Create one idle task per AP. This must happen on the BSP so the
+    // APs find their idle task already in per_lapic_core_current_task[]
+    // when they clear the bsp_done gate.
     asm volatile("cli");
     for (int i = 0; i < smp_ap_count; i++) {
         uint32_t apic_id = smp_ap_lapic_id_list[i];
         if (apic_id == apicGetBspLapicId()) continue;
+
         printf("[smp] creating idle task for AP %d (index %d)\n", apic_id, i);
         Task* idle = task_create_kernel((uint64_t)kernel_ap_idle_entry, 0);
-        printf("[task] created kernel task %d at %p\n", idle->id, idle);
-        if (!idle) { printf("[smp] failed to create idle for AP %u\n", apic_id); Halt(); }
+        if (!idle) {
+            printf("[smp] failed to create idle for AP %u\n", apic_id);
+            Halt();
+        }
         idle->state = TASK_STATE_DUMMY;
-        idle->infoPd->pagedir = (uint64_t*)get_page_directory();
-        idle->core_affinity = TASK_AFFINITY_ANY;   // this idle task can run on any core
+        idle->infoPd->pagedir = (uint64_t *)get_page_directory();
+        idle->core_affinity   = TASK_AFFINITY_ANY;
         per_lapic_core_current_task[apic_id] = idle;
         printf("[smp] pre-created idle task for AP %u\n", apic_id);
     }

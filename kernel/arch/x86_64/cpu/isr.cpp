@@ -96,9 +96,21 @@ extern "C" uint64_t handle_tssrsp(uint64_t rsp) {
     if (!tasksInitiated) return rsp;
     Task *task = current_task_this_core();
     if (!task || !task->whileTssRsp) return rsp;
+
     AsmPassedInterrupt *cpu = (AsmPassedInterrupt *)rsp;
-    AsmPassedInterrupt *iretqRsp = (AsmPassedInterrupt *)(task->whileTssRsp - sizeof(AsmPassedInterrupt));
-    memcpy(iretqRsp, cpu, sizeof(AsmPassedInterrupt));
+
+    size_t frame_size = (cpu->cs & 3) ? sizeof(AsmPassedInterrupt)
+                                      : (sizeof(AsmPassedInterrupt) - 16);
+
+    AsmPassedInterrupt *iretqRsp =
+        (AsmPassedInterrupt *)(task->whileTssRsp - frame_size);
+
+    memmove(iretqRsp, cpu, frame_size);
+
+    if (!(cpu->cs & 3)) {
+        iretqRsp->usermode_rsp = 0;
+        iretqRsp->usermode_ss  = 0;
+    }
     return (size_t)iretqRsp;
 }
 
@@ -229,15 +241,20 @@ extern "C" void handle_interrupt(uint64_t rsp) {
             dbg_loadregs();
         }
 
-        uint64_t cr2;
-        asm volatile("movq %%cr2, %0" : "=r"(cr2));
-        printf("Fault at rip=0x%lx, cr2=0x%lx, error=0x%lx\n",
-               cpu->rip, cr2, cpu->error);
+        uint64_t cr2, cr3, cr4;
+        asm volatile("mov %%cr2, %0" : "=r"(cr2));
+        asm volatile("mov %%cr3, %0" : "=r"(cr3));
+        asm volatile("mov %%cr4, %0" : "=r"(cr4));
+        printf("\n[isr] Fault at core=%u int=%lu err=%lx rip=%lx cr2=%lx cr3=%lx cr4=%lx rfl=%lx\n",
+            apicCurrentLapicId(), cpu->interrupt, cpu->error, cpu->rip,
+            cr2, cr3, cr4, cpu->rflags);
+
         printf("current_task_this_core()=%p, current_task_this_core()->infoPd=%p, "
                "current_task_this_core()->whileTssRsp=0x%lx\n",
                current_task_this_core(),
                current_task_this_core() ? current_task_this_core()->infoPd : 0,
                current_task_this_core() ? current_task_this_core()->whileTssRsp : 0);
+
         Halt();
     } 
 

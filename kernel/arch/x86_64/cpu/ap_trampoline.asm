@@ -169,9 +169,10 @@ start_64:
 
     mov rsp, qword [data_header + 8]
 
-    mov rax, qword [data_header + 16]
-    mov rdi, qword [data_header + 8]    ; first argument = per‑AP stack top
-    mov rax, qword [data_header + 16]   ; C entry function pointer
+    mov rax, qword [data_header + 16]    ; C entry
+    mov rdi, qword [data_header + 8]     ; arg1 = per-AP stack top
+    mov rsi, qword [data_header + 49]    ; arg2 = per-AP GDT virtual address
+    mov rdx, qword [data_header + 57]    ; arg3 = per-AP TSS virtual address
     call rax
 
     cli
@@ -210,3 +211,5 @@ data_header:
     .commword:            db 0
     .bsp_cs_selector:     dw 0
     .bsp_ds_selector:     dw 0
+    .ap_gdt_virt:         dq 0
+    .ap_tss_virt:         dq 0

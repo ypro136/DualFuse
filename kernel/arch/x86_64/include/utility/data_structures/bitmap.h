@@ -16,6 +16,7 @@ typedef struct Bitmap {
 
   size_t mem_start;
   uint8_t lock_id;
+  uint64_t irq_flags;
   bool lock = IS_NOT_LOCKED;
   bool ready;
 };

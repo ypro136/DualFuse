@@ -109,6 +109,51 @@ int gdt_initialize() {
   return 0;
 }
 
+void gdt_prepare_ap_copy(GDTEntries *out_gdt, TSSPtr *out_tss) {
+    memcpy(out_gdt, &gdt, sizeof(GDTEntries));
+    memset(out_tss, 0, sizeof(TSSPtr));
+
+    uint64_t tss_addr = (uint64_t)out_tss;
+
+    // Replace the TSS descriptor with one pointing at the AP's own TSS.
+    out_gdt->tss.length       = 104;             // match encode_tss_entry()
+    out_gdt->tss.base_low     = (uint16_t)(tss_addr & 0xFFFF);
+    out_gdt->tss.base_mid     = (uint8_t)((tss_addr >> 16) & 0xFF);
+    out_gdt->tss.flags1       = 0b10001001;
+    out_gdt->tss.flags2       = 0;
+    out_gdt->tss.base_high    = (uint8_t)((tss_addr >> 24) & 0xFF);
+    out_gdt->tss.base_upper32 = (uint32_t)(tss_addr >> 32);
+    out_gdt->tss.reserved     = 0;
+}
+
+void smp_ap_load_gdt_and_tss(uint64_t kernel_stack_top,
+                             GDTEntries *ap_gdt,
+                             TSSPtr     *ap_tss) {
+    ap_tss->rsp0 = kernel_stack_top;
+
+    GDTPtr gdt_ptr;
+    gdt_ptr.limit = sizeof(GDTEntries) - 1;
+    gdt_ptr.base  = (uint64_t)ap_gdt;
+    asm volatile("lgdt %0" :: "m"(gdt_ptr) : "memory");
+
+    asm volatile(
+        "pushq $0x28\n\t"
+        "leaq 1f(%%rip), %%rax\n\t"
+        "pushq %%rax\n\t"
+        "lretq\n\t"
+        "1:\n\t"
+        "movl $0x30, %%eax\n\t"
+        "movl %%eax, %%ds\n\t"
+        "movl %%eax, %%es\n\t"
+        "movl %%eax, %%fs\n\t"
+        "movl %%eax, %%gs\n\t"
+        "movl %%eax, %%ss\n\t"
+        ::: "rax", "memory");
+
+    asm volatile("ltr %%ax" :: "a"(0x58) : "memory");
+}
+
+// not used, replased by smp_ap_load_gdt_and_tss() which takes the GDT and TSS as arguments
 void smp_ap_initialize_gdt_and_tss(uint64_t kernel_stack_top) {
     GDTEntries* per_ap_gdt = (GDTEntries*)malloc(sizeof(GDTEntries));
     if (!per_ap_gdt) {

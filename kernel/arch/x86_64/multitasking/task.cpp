@@ -40,8 +40,13 @@ static Task *reaper_queue_tail = nullptr;
 SpinlockCnt TASK_LL_MODIFY = {0};
 
 void kernel_ap_idle_entry() {
-    while (true)
-        asm volatile("pause");
+    while (true) asm volatile("pause");
+}
+
+uint64_t task_affinity_bsp(void) {
+    uint8_t bsp = apicGetBspLapicId();
+    if (bsp >= 64) return TASK_AFFINITY_ANY;   // fallback
+    return 1ULL << bsp;
 }
 
 void task_attach_def_termios(Task *task) {
@@ -137,14 +142,14 @@ Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir
   uint64_t code_selector = kernel_task ? GDT_KERNEL_CODE : (GDT_USER_CODE | DPL_USER);
   uint64_t data_selector = kernel_task ? GDT_KERNEL_DATA : (GDT_USER_DATA | DPL_USER);
 
-  target->core_affinity = TASK_AFFINITY_BSP;//TASK_AFFINITY_BSP only BSP may run
+  target->core_affinity = task_affinity_bsp();//task_affinity_bsp(); only BSP may run
 
   target->registers.ds = data_selector;
   target->registers.cs = code_selector;
   target->registers.usermode_ss = data_selector;
   target->registers.usermode_rsp = USER_STACK_BOTTOM;
 
-  target->registers.rflags = 0x200; // enable interrupts
+  target->registers.rflags = 0x202; // enable interrupts
   target->registers.rip = rip;
 
   target->id = id;
@@ -195,7 +200,7 @@ Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir
   *(uint32_t *)(&target->fpuenv[24]) = 0x1f80;        // MXCSR at offset 24 in fxsave area
   target->mxcsr = 0x1f80;
 
-  target->core_affinity = TASK_AFFINITY_BSP;
+  target->core_affinity = task_affinity_bsp();
 
 
   task_attach_def_termios(target);
@@ -596,7 +601,7 @@ Task *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, int clone_flags,
     target->infoPd = share; // share it yk!
   }
 
-  target->core_affinity = TASK_AFFINITY_BSP;   // only BSP may run
+  target->core_affinity = task_affinity_bsp();   // only BSP may run
 
   target->id = task_generate_id();
   target->tgid = target->id;
@@ -737,7 +742,7 @@ void tasks_initialize()
 
     
     currentTask = firstTask;
-    current_task_this_core()->core_affinity = TASK_AFFINITY_BSP;
+    current_task_this_core()->core_affinity = task_affinity_bsp();
   per_lapic_core_current_task[apicGetBspLapicId()] = current_task_this_core();
   current_task_this_core()->id = KERNEL_TASK_ID;
   current_task_this_core()->state = TASK_STATE_READY;
@@ -772,7 +777,7 @@ void tasks_initialize()
 
   // create a dummy task in case the scheduler has nothing to do
   dummyTask = task_create_kernel((uint64_t)kernel_dummy_entry, 0);
-  dummyTask->core_affinity = TASK_AFFINITY_BSP; 
+  dummyTask->core_affinity = task_affinity_bsp();
   dummyTask->state = TASK_STATE_DUMMY;
   task_name_kernel(dummyTask, dummyCmdline, sizeof(dummyCmdline));
 }

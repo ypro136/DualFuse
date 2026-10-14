@@ -69,14 +69,12 @@ bool virtual_free(void *ptr, int pages) {
 
 void virtual_spinlock_acquire() 
 {
-  _virtual.lock_id = 2;
   lock_bitmap(&_virtual);
-  physical_spinlock_acquire();
+  _virtual.lock_id = 2;
 }
 
 void virtual_spinlock_release() 
 {
   _virtual.lock_id = 0;
   unlock_bitmap(&_virtual);
-  physical_spinlock_release();
 }

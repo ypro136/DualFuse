@@ -70,7 +70,11 @@ extern TSSPtr* per_core_tss[256];
 #define GDT_TSS 80
 
 int  gdt_initialize();
+void smp_ap_load_gdt_and_tss(uint64_t kernel_stack_top,
+                             GDTEntries *ap_gdt,
+                             TSSPtr     *ap_tss);
 void gdt_update_tss_rsp0(uint64_t kernel_stack_top);
+void gdt_prepare_ap_copy(GDTEntries *out_gdt, TSSPtr *out_tss);
 void smp_ap_initialize_gdt_and_tss(uint64_t kernel_stack_top);
 
 

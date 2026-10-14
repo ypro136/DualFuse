@@ -131,6 +131,8 @@ extern "C" void kernel_main(void)
     boot_step_name = "initializing APIC";
     initiateAPIC();
 
+    per_lapic_core_current_task[apicGetBspLapicId()] = currentTask;
+
 	boot_step_name = "initializing timer";
     timer_initialize();
 
@@ -190,6 +192,7 @@ extern "C" void kernel_main(void)
     
     task_create_named_kernel((uint64_t)suicide_task, 0, "test_suicide");
     
+    smp_ready_for_ap_ticks = 1;
     
     // dump APIC timer state
     uint32_t lvt     = apicRead(APIC_REGISTER_LVT_TIMER);

@@ -63,6 +63,9 @@ void initiateAPIC();
 void smpInitiateAPIC();
 bool apicIsX2Apic();
 
+uint8_t apicCurrentLapicId(void);
+uint8_t apicGetBspLapicId(void);
+
 void apicSendIpiToAll(uint8_t vector);
 void tlb_shootdown_all();
 

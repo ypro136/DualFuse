@@ -35,8 +35,10 @@
 #define dummyCmdline ("dummy")
 #define lwipCmdline ("lwip")
 
-#define TASK_AFFINITY_ANY  0xFFFFFFFF
-#define TASK_AFFINITY_BSP  1
+#define TASK_AFFINITY_ANY  0xFFFFFFFFFFFFFFFFULL
+
+
+uint64_t task_affinity_bsp(void);
 
 typedef struct {
   uint64_t edi;
@@ -220,7 +222,7 @@ struct __attribute__((aligned(16))) Task {
   int      *tidptr;
 
   uint64_t extras; // extra flags
-  uint32_t core_affinity;
+  uint64_t core_affinity;
 
   Task *parent;
   Task *next;
@@ -251,12 +253,11 @@ extern Task* per_lapic_core_current_task[256];
 // }
 
 static inline Task* current_task_this_core() {
-    if(apic_initialized) {
-        uint8_t lapic_id = (apicRead(APIC_REGISTER_APICID) >> 24) & 0xFF;
+    if (apic_initialized) {
+        uint8_t lapic_id = apicCurrentLapicId();   // the function you added
         return per_lapic_core_current_task[lapic_id];
-    } else {
-        return currentTask;
     }
+    return currentTask;
 }
 
 // needed for libraries that still depend on some sort of errno

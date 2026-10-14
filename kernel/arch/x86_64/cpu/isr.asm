@@ -133,6 +133,7 @@ isr_common:
 global asm_isr_exit
 asm_isr_exit:
     pop rbp
+    mov ds, ebp
     mov es, ebp
 
     pop r15

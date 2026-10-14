@@ -104,27 +104,27 @@ void physical_memory_manager_initialize(uint64_t memory_map_Total, uint64_t memo
 }
 
 uint64_t physical_allocate(int pages) {
-  uint64_t phys = (uint64_t)bitmap_allocate(&physical, pages);
+    lock_bitmap(&physical);
+    uint64_t phys = (uint64_t)bitmap_allocate(&physical, pages);
+    unlock_bitmap(&physical);
 
-  if (!phys && pages) {
-    printf("[physical_memory_manager::alloc] Physical kernel memory ran out!\n");
-    Halt();
-  }
-
-  physical_used_blocks_count += (uint64_t)pages;
-
-  return phys;
+    if (!phys && pages) {
+        printf("[physical_memory_manager::alloc] Physical kernel memory ran out!\n");
+        Halt();
+    }
+    physical_used_blocks_count += (uint64_t)pages;
+    return phys;
 }
 
-void physical_free(uint64_t ptr, int pages) 
-{
-  if (physical_used_blocks_count >= (uint64_t)pages)
-  {
-    physical_used_blocks_count -= (uint64_t)pages;
-  }
+void physical_free(uint64_t ptr, int pages) {
+    if (physical_used_blocks_count >= (uint64_t)pages)
+        physical_used_blocks_count -= (uint64_t)pages;
 
-  mark_region(&physical, (void *)ptr, pages * BLOCK_SIZE, 0);
+    lock_bitmap(&physical);
+    mark_region(&physical, (void *)ptr, pages * BLOCK_SIZE, 0);
+    unlock_bitmap(&physical);
 }
+
 
 void physical_spinlock_acquire() 
 {

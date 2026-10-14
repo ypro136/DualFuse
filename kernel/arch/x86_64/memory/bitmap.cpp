@@ -12,27 +12,33 @@
 
 void spinlock(Bitmap *bitmap)
 {
-  bool notified_system = false;
   while (bitmap->lock)
   {
-    if (!notified_system)
-    {
-      printf("[bitmap] bitmap locked by %d! inter spinlock.\n", bitmap->lock_id);
-      notified_system = true;
-    }
+
   }
   // printf("[bitmap] bitmap unlocked! exit out of spinlock.\n");
 }
 
-void lock_bitmap (Bitmap *bitmap)
+void lock_bitmap(Bitmap *bitmap)
 {
-  spinlock(bitmap);
-  bitmap->lock = IS_LOCKED;
+    // Disable interrupts on this CPU so the timer can't preempt us
+    // while we hold the lock, which would let the scheduler switch to
+    // a task that tries to allocate and deadlocks on the same lock.
+    uint64_t flags;
+    asm volatile("pushfq; pop %0; cli" : "=r"(flags) :: "memory");
+
+    while (__sync_lock_test_and_set((uint8_t *)&bitmap->lock, 1)) {
+        while (*(volatile uint8_t *)&bitmap->lock)
+            asm volatile("pause");
+    }
+    bitmap->irq_flags = flags;
 }
 
-void unlock_bitmap (Bitmap *bitmap)
+void unlock_bitmap(Bitmap *bitmap)
 {
-  bitmap->lock = IS_NOT_LOCKED;
+    __sync_lock_release((uint8_t *)&bitmap->lock);
+    if (bitmap->irq_flags & 0x200)
+        asm volatile("sti");
 }
 
 /* Conversion utilities */

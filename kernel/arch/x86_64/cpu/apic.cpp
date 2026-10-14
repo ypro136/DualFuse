@@ -27,6 +27,8 @@ uint8_t smp_ap_lapic_id_list[256] = {0};
 uint8_t smp_ap_count = 0;
 uint8_t per_lapic_core_type[256] = {0};
 
+static uint8_t bsp_lapic_id_cached = 0xFF;
+
 bool apic_initialized = false;
 
 
@@ -34,6 +36,24 @@ bool apic_initialized = false;
  {
     uint64_t msr = rdmsr(IA32_APIC_BASE_MSR);
     return (msr & IA32_APIC_BASE_MSR_X2APIC) != 0;
+}
+
+// apicGetBspLapicId() to mean "me".
+uint8_t apicCurrentLapicId(void) {
+    if (!apicVirt && !(rdmsr(IA32_APIC_BASE_MSR) & IA32_APIC_BASE_MSR_X2APIC)) {
+        // Not yet initialized in MMIO mode; best we can do is 0.
+        return 0;
+    }
+    if (x2apic_mode) {
+        // x2APIC: APIC ID is in MSR 0x802.
+        return (uint8_t)(rdmsr(0x802) & 0xFF);
+    }
+    return (apicRead(APIC_REGISTER_ID) >> 24) & 0xFF;
+}
+
+// BSP's LAPIC ID — constant after initiateAPIC() has run on the BSP.
+uint8_t apicGetBspLapicId(void) {
+    return bsp_lapic_id_cached;
 }
 
 /*
@@ -112,10 +132,29 @@ IOAPIC *ioApicFetch(uint8_t irq) {
 
 /* Base stuff */
 
-size_t apicGetBase() { return rdmsr(IA32_APIC_BASE_MSR) & 0xFFFFF000; }
-void   apicSetBase(size_t apic) {
-  wrmsr(IA32_APIC_BASE_MSR,
-          apic | IA32_APIC_BASE_MSR_ENABLE | IA32_APIC_BASE_MSR_BSP);
+size_t apicGetBase(void) {
+    return (size_t)(rdmsr(IA32_APIC_BASE_MSR) & 0x0000000FFFFFF000ULL);
+}
+
+void apicSetBase(size_t apic) {
+    uint64_t cur = rdmsr(IA32_APIC_BASE_MSR);
+
+    // Preserve BSP and x2APIC — do not invent either.
+    uint64_t preserved = cur & (IA32_APIC_BASE_MSR_BSP |
+                                IA32_APIC_BASE_MSR_X2APIC);
+
+    // When x2APIC is active, bits 12-35 of the MSR are architecturally
+    // ignored. Leave the base field alone; writing it has no effect and
+    // some CPUs log it as a reserved write.
+    uint64_t base;
+    if (cur & IA32_APIC_BASE_MSR_X2APIC) {
+        base = cur & 0x0000000FFFFFF000ULL;
+    } else {
+        base = (uint64_t)apic & 0x0000000FFFFFF000ULL;
+    }
+
+    wrmsr(IA32_APIC_BASE_MSR,
+          base | IA32_APIC_BASE_MSR_ENABLE | preserved);
 }
 
 uint32_t apicCurrentCore() {
@@ -125,10 +164,6 @@ uint32_t apicCurrentCore() {
   }
 
   return (apicRead(APIC_REGISTER_ID) >> 24) & 0xFF;
-}
-
-uint8_t apicGetBspLapicId() {
-    return (apicRead(APIC_REGISTER_ID) >> 24) & 0xFF;
 }
 
 /* PCI routing - TODO: Implement when needed without UACPI */
@@ -255,142 +290,145 @@ void apicPrintCb(void *data, void *ctx) {
   IOAPIC *apic = data;
 }
 
-void initiateAPIC() {
-  if (!apicCheck()) {
-    printf("[apic] Warning: APIC is not supported!\n");
-    Halt();
-  }
-  #if defined(DEBUG_APIC)
-  printf("[apic] APIC is supported, beginning initialization...\n");
-  printf("[apic] Initializing IRQ per core...\n");
-  #endif
+void initiateAPIC(void) {
+    if (!apicCheck()) {
+        printf("[apic] Warning: APIC is not supported!\n");
+        Halt();
+    }
 
-  x2apic_mode = apicIsX2Apic();
-  
-  initiateIrqPerCore();
+    // If you have not implemented x2APIC MSR paths yet, force xAPIC mode
+    // and be done with it. Delete this block once you implement the MSR
+    // versions of apicRead/apicWrite.
+    {
+        uint64_t cur = rdmsr(IA32_APIC_BASE_MSR);
+        if (cur & IA32_APIC_BASE_MSR_X2APIC) {
+            cur &= ~IA32_APIC_BASE_MSR_X2APIC;
+            wrmsr(IA32_APIC_BASE_MSR, cur);
+        }
+    }
 
-  #if defined(DEBUG_APIC)
-  printf("[apic] IRQ per core initialized\n");
-  printf("[apic] Reading APIC base from MSR...\n");
-  #endif
+    x2apic_mode = apicIsX2Apic();   // now reliably false
 
-  apicPhys = apicGetBase();
+    initiateIrqPerCore();
 
-  if (!apicPhys || apicPhys > 0xFFFFFFFF) {
-    printf("[apic] Invalid APIC address: %lx, using fallback 0xFEE00000\n", apicPhys);
-    apicPhys = 0xFEE00000;
-  }
-
-  apicVirt = bootloader.hhdmOffset + apicPhys;
-
-  AcpiMadt* madt = acpiGetMadt();
-
-  if (!madt) {
-    printf("[apic] MADT not available - initializing basic LAPIC only\n");
-    apicSetBase(apicPhys);
-    uint32_t svr = apicRead(0xF0);
-    apicWrite(0xF0, svr | 0x1FF);
-    return;
-  }
-
-  if (madt->lapic_address != apicPhys) {
-    printf("[apic] Warning! MADT physical address doesn't match fetched one! "
-           "madt_phys{%lx} rdmsr_phys{%lx}\n",
-           madt->lapic_address, apicPhys);
-    apicPhys = madt->lapic_address;
+    apicPhys = apicGetBase();
+    if (!apicPhys || apicPhys > 0xFFFFFFFF) {
+        printf("[apic] Invalid APIC address: %lx, using fallback 0xFEE00000\n", apicPhys);
+        apicPhys = 0xFEE00000;
+    }
     apicVirt = bootloader.hhdmOffset + apicPhys;
-  }
 
-  LinkedListInit(&dsIoapic, sizeof(IOAPIC));
-
-  // ---- First MADT pass: IOAPICs & overrides (existing code) ----
-  size_t curr = (size_t)madt + sizeof(AcpiMadt);
-  size_t end = curr + madt->hdr.length;
-  int    ioapics = 0;
-
-  while (curr < end) {
-    AcpiEntryHdr *browse = (AcpiEntryHdr *)curr;
-
-    #if defined(DEBUG_APIC)
-    printf("[apic] MADT browse type is: %u\n", browse->type);
-    #endif
-
-    if (browse->type == ACPI_MADT_ENTRY_TYPE_IOAPIC) {
-      AcpiMadtIoapic *specialized = (AcpiMadtIoapic *)browse;
-      IOAPIC *ioapic = (IOAPIC *)LinkedListAllocate(&dsIoapic, sizeof(IOAPIC));
-      ioapic->id = specialized->id;
-      ioapic->ioapicPhys = specialized->address;
-      ioapic->ioapicVirt = bootloader.hhdmOffset + ioapic->ioapicPhys;
-      ioapic->ioapicRedStart = specialized->gsi_base;
-      int capacity = (ioApicRead(ioapic->ioapicVirt, 1) >> 16) & 0xFF;
-      ioapic->ioapicRedEnd = ioapic->ioapicRedStart + capacity;
-      ioapics++;
-    } else if (browse->type == ACPI_MADT_ENTRY_TYPE_LAPIC_ADDRESS_OVERRIDE) {
-      AcpiMadtLapicAddressOverride *specialized =
-          (AcpiMadtLapicAddressOverride *)browse;
-      printf("[apic] Warning! Local APIC override! old{%lx} new{%lx}\n",
-             apicPhys, specialized->lapic_address);
-      apicPhys = specialized->lapic_address;
-      apicVirt = bootloader.hhdmOffset + apicPhys;
+    AcpiMadt* madt = acpiGetMadt();
+    if (!madt) {
+        printf("[apic] MADT not available - initializing basic LAPIC only\n");
+        apicSetBase(apicPhys);
+        apicWrite(0xF0, apicRead(0xF0) | 0x1FF);
+        bsp_lapic_id_cached = apicCurrentLapicId();
+        apic_initialized = true;
+        return;
     }
-    curr += browse->length;
-  }
 
-  if (ioapics == 0)
-    printf("[apic] No I/O APICs found - skipping I/O APIC setup\n");
-
-  if (ioapics) LinkedListTraverse(&dsIoapic, apicPrintCb, 0);
-  printf("\n");
-
-  // Enable LAPIC
-  apicSetBase(apicPhys);
-  apicWrite(0xF0, apicRead(0xF0) | 0x1FF);
-
-  // ---- Phase 1: Collect enabled LAPIC IDs & BSP core type ----
-  uint8_t bsp_lapic_id = apicGetBspLapicId();
-  curr = (size_t)madt + sizeof(AcpiMadt); // rewind
-  while (curr < end) {
-    AcpiEntryHdr *browse = (AcpiEntryHdr *)curr;
-    if (browse->type == ACPI_MADT_ENTRY_TYPE_LAPIC) {
-      AcpiMadtLapic *lapic = (AcpiMadtLapic *)browse;
-      // must be enabled (bit 0 of flags) and not the BSP itself
-      if ((lapic->flags & 1) && lapic->lapic_id != bsp_lapic_id) {
-        smp_ap_lapic_id_list[smp_ap_count++] = lapic->lapic_id;
-      }
+    if (madt->lapic_address != apicPhys) {
+        printf("[apic] Warning! MADT physical address doesn't match fetched one! "
+               "madt_phys{%lx} rdmsr_phys{%lx}\n",
+               madt->lapic_address, apicPhys);
+        apicPhys = madt->lapic_address;
+        apicVirt = bootloader.hhdmOffset + apicPhys;
     }
-    curr += browse->length;
-  }
 
-  // BSP core type via CPUID 0x1A
-  {
-    uint32_t eax = 0x1A, ebx = 0, ecx = 0, edx = 0;
-    cpuid(&eax, &ebx, &ecx, &edx);
-    uint8_t bsp_core_type = (eax >> 24) & 0xFF;
-    if (bsp_core_type == CORE_TYPE_PCORE || bsp_core_type == CORE_TYPE_ECORE)
-      per_lapic_core_type[bsp_lapic_id] = bsp_core_type;
-  }
+    LinkedListInit(&dsIoapic, sizeof(IOAPIC));
 
-  // Debug gate – must print this before proceeding
-  printf("[smp] found %u APs: lapic_ids=[", smp_ap_count);
-  for (int i = 0; i < smp_ap_count; i++) {
-    printf("%u", smp_ap_lapic_id_list[i]);
-    if (i < smp_ap_count - 1) printf(", ");
-  }
-  printf("]\n");
+    // ---- Pass 1: IOAPICs & LAPIC address overrides ----
+    size_t curr = (size_t)madt + sizeof(AcpiMadt);
+    size_t end  = curr + madt->hdr.length;
+    int    ioapics = 0;
 
-  apic_initialized = true;
+    while (curr < end) {
+        AcpiEntryHdr *browse = (AcpiEntryHdr *)curr;
+        if (browse->type == ACPI_MADT_ENTRY_TYPE_IOAPIC) {
+            AcpiMadtIoapic *specialized = (AcpiMadtIoapic *)browse;
+            IOAPIC *ioapic = (IOAPIC *)LinkedListAllocate(&dsIoapic, sizeof(IOAPIC));
+            ioapic->id             = specialized->id;
+            ioapic->ioapicPhys     = specialized->address;
+            ioapic->ioapicVirt     = bootloader.hhdmOffset + ioapic->ioapicPhys;
+            ioapic->ioapicRedStart = specialized->gsi_base;
+            int capacity = (ioApicRead(ioapic->ioapicVirt, 1) >> 16) & 0xFF;
+            ioapic->ioapicRedEnd   = ioapic->ioapicRedStart + capacity;
+            ioapics++;
+        } else if (browse->type == ACPI_MADT_ENTRY_TYPE_LAPIC_ADDRESS_OVERRIDE) {
+            AcpiMadtLapicAddressOverride *specialized =
+                (AcpiMadtLapicAddressOverride *)browse;
+            printf("[apic] Warning! Local APIC override! old{%lx} new{%lx}\n",
+                   apicPhys, specialized->lapic_address);
+            apicPhys = specialized->lapic_address;
+            apicVirt = bootloader.hhdmOffset + apicPhys;
+        }
+        curr += browse->length;
+    }
 
-  // Disable legacy 8259 PIC
-  out_port_byte(0x21, 0xff);
-  out_port_byte(0xa1, 0xff);
+    if (ioapics == 0)
+        printf("[apic] No I/O APICs found - skipping I/O APIC setup\n");
 
-  printf("APIC initialized.\n");
+    // Enable the BSP's LAPIC.
+    apicSetBase(apicPhys);
+    apicWrite(0xF0, apicRead(0xF0) | 0x1FF);
+
+    // Cache the BSP's LAPIC ID now that the LAPIC is enabled.
+    bsp_lapic_id_cached = apicCurrentLapicId();
+
+    // ---- Pass 2: collect enabled AP LAPIC IDs ----
+    uint8_t bsp_lapic_id = bsp_lapic_id_cached;
+    curr = (size_t)madt + sizeof(AcpiMadt);   // rewind
+    end  = curr + madt->hdr.length;
+    while (curr < end) {
+        AcpiEntryHdr *browse = (AcpiEntryHdr *)curr;
+        if (browse->type == ACPI_MADT_ENTRY_TYPE_LAPIC) {
+            AcpiMadtLapic *lapic = (AcpiMadtLapic *)browse;
+            if ((lapic->flags & 1) && lapic->lapic_id != bsp_lapic_id) {
+                smp_ap_lapic_id_list[smp_ap_count++] = lapic->lapic_id;
+            }
+        }
+        curr += browse->length;
+    }
+
+    // BSP core type via CPUID 0x1A
+    {
+        uint32_t eax = 0x1A, ebx = 0, ecx = 0, edx = 0;
+        cpuid(&eax, &ebx, &ecx, &edx);
+        uint8_t bsp_core_type = (eax >> 24) & 0xFF;
+        if (bsp_core_type == CORE_TYPE_PCORE || bsp_core_type == CORE_TYPE_ECORE)
+            per_lapic_core_type[bsp_lapic_id] = bsp_core_type;
+    }
+
+    printf("[smp] found %u APs: lapic_ids=[", smp_ap_count);
+    for (int i = 0; i < smp_ap_count; i++) {
+        printf("%u", smp_ap_lapic_id_list[i]);
+        if (i < smp_ap_count - 1) printf(", ");
+    }
+    printf("]\n");
+
+    // Re-read x2APIC state one final time before any IPIs are sent.
+    x2apic_mode = apicIsX2Apic();
+
+    apic_initialized = true;
+
+    // Disable legacy 8259 PIC.
+    out_port_byte(0x21, 0xff);
+    out_port_byte(0xa1, 0xff);
+
+    printf("APIC initialized.\n");
 }
 
-void smpInitiateAPIC() {
-  // enable lapic
-  apicSetBase(apicPhys);
-  apicWrite(0xF0, apicRead(0xF0) | 0x1FF);
+void smpInitiateAPIC(void) {
+    if (x2apic_mode) {
+        // In x2APIC mode the SVR is still at MMIO offset 0xF0 logically,
+        // but must be accessed via MSR 0x80F (SVR). If you haven't
+        // implemented the MSR helpers yet, force xAPIC mode instead.
+        uint64_t svr = rdmsr(0x80F);
+        wrmsr(0x80F, svr | 0x1FF);
+    } else {
+        apicWrite(0xF0, apicRead(0xF0) | 0x1FF);
+    }
 }
 
 void apicSendIpiToAll(uint8_t vector) {
