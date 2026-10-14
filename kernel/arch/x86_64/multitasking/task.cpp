@@ -31,7 +31,9 @@ Task *netHelperTask;
 void  kernelHelpEntry();
 
 Spinlock LOCK_REAPER;
-Task    *reaperTask;
+
+static Task *reaper_queue_head = nullptr;
+static Task *reaper_queue_tail = nullptr;
 
 // Task manager allowing for task management
 
@@ -39,7 +41,7 @@ SpinlockCnt TASK_LL_MODIFY = {0};
 
 void kernel_ap_idle_entry() {
     while (true)
-        asm volatile("sti; hlt");
+        asm volatile("pause");
 }
 
 void task_attach_def_termios(Task *task) {
@@ -102,7 +104,6 @@ Task *task_list_allocate() {
       Halt();
   }
 
-    asm volatile("cli"); 
     Task *browse = firstTask;
     while (browse) {
         if (!browse->next) break;
@@ -110,7 +111,6 @@ Task *task_list_allocate() {
     }
     assert(browse);
     browse->next = target;
-    asm volatile("sti");
     spinlock_cnt_write_release(&TASK_LL_MODIFY);
     return target;
 }
@@ -118,7 +118,6 @@ Task *task_list_allocate() {
 // will NEVER be the first one
 void task_list_destroy(Task *target) {
     spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
-    asm volatile("cli");
     Task *prev = firstTask;
     while (prev) {
         if (prev->next == target) break;
@@ -126,10 +125,9 @@ void task_list_destroy(Task *target) {
     }
     assert(prev);
     prev->next = target->next;
-    asm volatile("sti");
     spinlock_cnt_write_release(&TASK_LL_MODIFY);
     virtual_free(target, 1);   // free the page
-}
+} 
 
 Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir, uint32_t argc, char **argv) {
   printf("[task_create] start\n");
@@ -139,7 +137,7 @@ Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir
   uint64_t code_selector = kernel_task ? GDT_KERNEL_CODE : (GDT_USER_CODE | DPL_USER);
   uint64_t data_selector = kernel_task ? GDT_KERNEL_DATA : (GDT_USER_DATA | DPL_USER);
 
-  target->core_affinity = TASK_AFFINITY_BSP;   // only BSP may run
+  target->core_affinity = TASK_AFFINITY_BSP;//TASK_AFFINITY_BSP only BSP may run
 
   target->registers.ds = data_selector;
   target->registers.cs = code_selector;
@@ -172,6 +170,8 @@ Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir
   size_t tssRspSize = USER_STACK_PAGES * BLOCK_SIZE;
   memset(tssRsp, 0, tssRspSize);
   target->whileTssRsp = (uint64_t)tssRsp + tssRspSize;
+  if (kernel_task)
+    target->registers.usermode_rsp = (uint64_t)tssRsp + tssRspSize / 2;
 
   void  *syscalltssRsp = virtual_allocate(USER_STACK_PAGES);
   size_t syscalltssRspSize = USER_STACK_PAGES * BLOCK_SIZE;
@@ -208,7 +208,6 @@ Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir
 }
 
 Task *task_create_kernel(uint64_t rip, uint64_t rdi) {
-  asm volatile("cli");
   register uint64_t rsp;
   asm volatile("mov %%rsp, %0" : "=r"(rsp));
   printf("[task] current rsp = 0x%lx\n", rsp);
@@ -219,7 +218,6 @@ Task *task_create_kernel(uint64_t rip, uint64_t rdi) {
   //   stack_generate_kernel(target, rdi);  // stack_generate_kernel NOT needed for kernel tasks, TODO: maybe split into two functions? and make userspace one do the stack generation part?
   printf("[task] task_create: after InfoPdAllocate\n");
   task_create_finish(target);
-  asm volatile("sti");
   return target;
 }
 
@@ -270,26 +268,26 @@ void task_adjust_heap(Task *task, size_t new_heap_end, size_t *start,
 }
 
 void task_call_reaper(Task *target) {
-  while (true) {
+    target->reaper_next = nullptr;
     spinlock_acquire(&LOCK_REAPER);
-    if (!reaperTask) {
-      // there is space!
-      reaperTask = target;
-      spinlock_release(&LOCK_REAPER);
-      return;
+    if (!reaper_queue_head) {
+        reaper_queue_head = target;
+        reaper_queue_tail = target;
+    } else {
+        reaper_queue_tail->reaper_next = target;
+        reaper_queue_tail = target;
     }
     spinlock_release(&LOCK_REAPER);
-    hand_control();
-  }
 }
 
 void task_kill(uint32_t id, uint16_t ret) {
   Task *task = task_get(id);
+  if (!task)
+    return;
+
   if (task->state == TASK_STATE_DEAD)
     return;
 
-  if (!task)
-    return;
 
   // Notify the parent about the child's termination
   if (task->parent && !task->noInformParent) {
@@ -302,14 +300,14 @@ void task_kill(uint32_t id, uint16_t ret) {
     if (task->parent->state == TASK_STATE_WAITING_CHILD ||
         (task->parent->state == TASK_STATE_WAITING_CHILD_SPECIFIC &&
          task->parent->waitingForPid == task->id))
-      task->parent->state = TASK_STATE_READY;
+      __sync_lock_test_and_set((uint8_t *)&task->parent->state, (uint8_t)TASK_STATE_READY);
     spinlock_release(&task->parent->LOCK_CHILD_TERM);
     atomicBitmapSet(&task->parent->sigPendingList, SIGCHLD);
   }
 
   // vfork() children need to notify parents no matter what
   if (task->parent && task->parent->state == TASK_STATE_WAITING_VFORK)
-    task->parent->state = TASK_STATE_READY;
+    __sync_lock_test_and_set((uint8_t *)&task->parent->state, (uint8_t)TASK_STATE_READY);
 
   if (task->tidptr) {
     atomicWrite32((uint32_t *)task->tidptr, 0);
@@ -375,7 +373,7 @@ Task *task_get(uint32_t id) {
 }
 
 uint64_t taskIdCurr = 1;
-uint64_t task_generate_id() { return taskIdCurr++; }
+uint64_t task_generate_id() { return __sync_fetch_and_add(&taskIdCurr, (uint64_t)1); }
 
 
 TaskInfoFs *taskInfoFsClone(TaskInfoFs *old) {
@@ -782,36 +780,31 @@ void tasks_initialize()
 // Safely free everything a dead task still holds.
 // Must be called repeatedly from a kernel context (BSP idle loop or a dedicated reaper task).
 void task_reaper_loop(void) {
-    spinlock_acquire(&LOCK_REAPER);
+    while (true) {
+        spinlock_acquire(&LOCK_REAPER);
+        Task *victim = reaper_queue_head;
+        if (victim) {
+            reaper_queue_head = victim->reaper_next;
+            if (!reaper_queue_head)
+                reaper_queue_tail = nullptr;
+        }
+        spinlock_release(&LOCK_REAPER);
 
-    while (reaperTask != NULL) {
-        Task *victim = reaperTask;
-        reaperTask = NULL;                 // let new victims be queued
-        spinlock_release(&LOCK_REAPER);    // release early, work on our copy
+        if (!victim)
+            return;
 
-        // Free the user and syscall stacks (compute base from top)
         if (victim->whileTssRsp) {
-            void *base = (void *)(victim->whileTssRsp -
-                                  USER_STACK_PAGES * BLOCK_SIZE);
+            void *base = (void *)(victim->whileTssRsp - USER_STACK_PAGES * BLOCK_SIZE);
             virtual_free(base, USER_STACK_PAGES);
         }
         if (victim->whileSyscallRsp) {
-            void *base = (void *)(victim->whileSyscallRsp -
-                                  USER_STACK_PAGES * BLOCK_SIZE);
+            void *base = (void *)(victim->whileSyscallRsp - USER_STACK_PAGES * BLOCK_SIZE);
             virtual_free(base, USER_STACK_PAGES);
         }
-
-        // Free the command line and executable name (both are malloc'd)
         if (victim->cmdline)  free(victim->cmdline);
         if (victim->execname) free(victim->execname);
-
-        // Remove from the global task list and free the 4K page
         task_list_destroy(victim);
-
-        spinlock_acquire(&LOCK_REAPER);    // reacquire for next victim
     }
-
-    spinlock_release(&LOCK_REAPER);
 }
 
 // Optional dedicated reaper task entry – use only if you want a
@@ -819,7 +812,7 @@ void task_reaper_loop(void) {
 void reaper_kernel_task_entry(void) {
     while (1) {
         task_reaper_loop();
-        asm volatile("pause");
+        hand_control();
     }
 }
 

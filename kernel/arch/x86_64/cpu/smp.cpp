@@ -35,8 +35,10 @@ static Spinlock ap_init_lock = {0};
 
 extern "C" void ap_entry_c(uint64_t kernel_stack_top) {
     uint32_t my_lapic_id;
-    asm volatile("mov $1, %%eax; cpuid; shrl $24, %%ebx" : "=b"(my_lapic_id));
-    __atomic_fetch_add(&ap_running, 1, __ATOMIC_SEQ_CST);
+    asm volatile("mov $1, %%eax; cpuid; shrl $24, %%ebx"
+             : "=b"(my_lapic_id)
+             :: "eax", "ecx", "edx");
+    __sync_fetch_and_add(&ap_running, 1);
  
     smp_ap_initialize_gdt_and_tss(kernel_stack_top);
 
@@ -58,13 +60,9 @@ extern "C" void ap_entry_c(uint64_t kernel_stack_top) {
 
     ap_debug("AP armed and jumping, LAPIC", my_lapic_id);
 
-    uint64_t idle_rsp = my_idle_task->whileTssRsp;
-    asm volatile(
-        "mov %0, %%rsp\n\t"
-        "jmp *%1"
-        :
-        : "m"(idle_rsp), "r"((uint64_t)kernel_ap_idle_entry)
-        : "memory");
+    asm volatile("sti");
+    kernel_ap_idle_entry();
+
 }
 
 static void clear_nx_bit(uintptr_t physical_addr) {

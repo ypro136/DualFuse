@@ -43,6 +43,7 @@ private:
     void cmd_memtest();
     void cmd_scheduler_toggle(const char* argument);
     void cmd_cores();
+    void cmd_ap_state();
 
     void cmd_madt();
     void cmd_i2c();
@@ -53,6 +54,7 @@ private:
     void cmd_spawn();
     void cmd_kill(int argc, char* argv[]);
     void cmd_bg();
+    void cmd_task_test();
 
     void cmd_mount();
 

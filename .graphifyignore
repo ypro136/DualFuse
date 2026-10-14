@@ -1,0 +1,19 @@
+# Ignore images
+*.png
+*.jpg
+*.webp
+*.gif
+*.jpeg
+*.svg
+*.bmp
+*.ico
+
+# Ignore ALL docs
+*.md
+*.mdx
+*.qmd
+*.html
+*.txt
+*.rst
+*.yaml
+*.yml

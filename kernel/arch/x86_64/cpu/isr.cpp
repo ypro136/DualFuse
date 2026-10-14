@@ -60,9 +60,7 @@ void isr_initialize() {
     printf("idt and isr initialized.\n");
 }
 
-// ----------------------------------------------------------
 // User‑task fault handling
-// ----------------------------------------------------------
 void handle_task_fault(AsmPassedInterrupt *regs) {
     bool last_console_state;
     if (regs->interrupt == 14) {
@@ -84,9 +82,7 @@ void handle_task_fault(AsmPassedInterrupt *regs) {
     task_kill(current_task_this_core()->id, 139);
 }
 
-// ----------------------------------------------------------
 // TSS RSP helpers for syscalls / interrupts
-// ----------------------------------------------------------
 extern "C" uint64_t handle_syscall_tssrsp(uint64_t rsp) {
     if (!tasksInitiated) return rsp;
     Task *task = current_task_this_core();
@@ -99,15 +95,14 @@ extern "C" uint64_t handle_syscall_tssrsp(uint64_t rsp) {
 extern "C" uint64_t handle_tssrsp(uint64_t rsp) {
     if (!tasksInitiated) return rsp;
     Task *task = current_task_this_core();
+    if (!task || !task->whileTssRsp) return rsp;
     AsmPassedInterrupt *cpu = (AsmPassedInterrupt *)rsp;
     AsmPassedInterrupt *iretqRsp = (AsmPassedInterrupt *)(task->whileTssRsp - sizeof(AsmPassedInterrupt));
     memcpy(iretqRsp, cpu, sizeof(AsmPassedInterrupt));
     return (size_t)iretqRsp;
 }
 
-// ----------------------------------------------------------
 // IRQ handler table & installer
-// ----------------------------------------------------------
 void *irq_routines[16] = {0};
 
 void *irq_install_handler(int irq, void (*handler)(struct interrupt_registers *registers)) {
@@ -131,9 +126,7 @@ void irq_handler(int irq, AsmPassedInterrupt *cpu) {
     console_set_output_enabled(last_console_state);
 }
 
-// ----------------------------------------------------------
 // Main interrupt dispatcher
-// ----------------------------------------------------------
 extern "C" void handle_interrupt(uint64_t rsp) {
     AsmPassedInterrupt *cpu = (AsmPassedInterrupt *)rsp;
 
@@ -201,14 +194,15 @@ extern "C" void handle_interrupt(uint64_t rsp) {
 
             // Scheduler deliberate page‑fault: let it pass through
             if (cr2 == SCHED_PAGE_FAULT_MAGIC_ADDRESS) {
-                // Only kernel tasks should use this; if it's a kernel
-                // task we simply return – the scheduler will be
-                // triggered on the next timer tick if needed.
-                if (current_task_this_core() &&
-                    current_task_this_core()->kernel_task) {
+                Task *hand_control_task = current_task_this_core();
+                if (hand_control_task &&
+                    hand_control_task->kernel_task &&
+                    hand_control_task->schedPageFault) {
+                    hand_control_task->schedPageFault = false;
+                    schedule(cpu);
                     return;
                 }
-                // Fall through – treat as a real fault for user tasks
+                // Fall through – real fault for anything else
             }
 
             // Print page‑fault details before halting (if it gets that far)

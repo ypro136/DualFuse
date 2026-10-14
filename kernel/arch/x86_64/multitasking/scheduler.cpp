@@ -18,7 +18,7 @@ static Task* scheduler_pick_next_ready_task(Task* start_after, uint32_t core_id)
     Task* candidate = start_after->next ? start_after->next : firstTask;
     for (int i = 0; i < 512; i++) {
         // skip tasks that cannot run on this core
-        if (!(candidate->core_affinity & (1 << core_id))) {
+        if (!(candidate->core_affinity & (1u << core_id))) {
             candidate = candidate->next ? candidate->next : firstTask;
             continue;
         }
@@ -36,6 +36,51 @@ static Task* scheduler_pick_next_ready_task(Task* start_after, uint32_t core_id)
     return nullptr;
 }
 
+void switch_task(AsmPassedInterrupt* interrupt_frame,
+                        Task* next_task,
+                        uint32_t core_id) {
+    if (!next_task->infoPd || !next_task->infoPd->pagedir) {
+        printf("schedule: next_task %d has invalid infoPd\n", next_task->id);
+        next_task->state = TASK_STATE_DEAD;
+        return;
+    }
+
+    if (!next_task->kernel_task) {
+        printf("[sched] user task %d: rip=0x%lx cs=0x%lx rsp=0x%lx\n",
+            next_task->id,
+            next_task->registers.rip,
+            next_task->registers.cs,
+            next_task->registers.usermode_rsp);
+    }
+
+    // Update per-core current task and, if this is the BSP, the global pointer
+    per_lapic_core_current_task[core_id] = next_task;
+    if (core_id == apicGetBspLapicId())
+        currentTask = next_task;
+
+#if defined(DEBUG_SCHEDULER) && defined(DEBUG_LOOPING)
+    printf("[sched] core %u switching to task %d (rip=0x%lx)\n",
+           core_id, next_task->id, next_task->registers.rip);
+    if (next_task->whileTssRsp < 0xFFFF800000000000ULL) {
+        printf("[sched] next task %d has bad whileTssRsp: 0x%lx\n",
+               next_task->id, next_task->whileTssRsp);
+        Halt();
+    }
+#endif
+
+    asm volatile("fxrstor %0" :: "m"(next_task->fpuenv) : "memory");
+    per_core_tss[core_id]->rsp0 = next_task->whileTssRsp;
+    change_page_directory(next_task->infoPd->pagedir);
+
+    per_core_in_interrupt[core_id] = 0;
+    memcpy(interrupt_frame, &next_task->registers, sizeof(AsmPassedInterrupt));
+
+#if defined(DEBUG_SCHEDULER) && defined(DEBUG_LOOPING)
+    printf("[sched] core %u restored task %d rip=0x%lx\n",
+           core_id, next_task->id, next_task->registers.rip);
+#endif
+}
+
 void schedule(AsmPassedInterrupt* interrupt_frame) {
     if (!tasksInitiated || !scheduler_enabled)
         return;
@@ -47,8 +92,11 @@ void schedule(AsmPassedInterrupt* interrupt_frame) {
     #endif
 
     Task* core_current_task = per_lapic_core_current_task[core_id];
-    if (!core_current_task)
+    if (!core_current_task) 
+    {
+        per_core_in_interrupt[core_id] = 0;
         return;
+    }
 
     asm volatile("fxsave %0" :: "m"(core_current_task->fpuenv) : "memory");
     memcpy(&core_current_task->registers, interrupt_frame, sizeof(AsmPassedInterrupt));
@@ -69,45 +117,7 @@ void schedule(AsmPassedInterrupt* interrupt_frame) {
         return;
     }
 
-    if (!next_task->infoPd || !next_task->infoPd->pagedir) {
-        printf("schedule: next_task %d has invalid infoPd\n", next_task->id);
-        next_task->state = TASK_STATE_DEAD;
-        return;
-    }
-
-    if (!next_task->kernel_task) {
-        printf("[sched] user task %d: rip=0x%lx cs=0x%lx rsp=0x%lx\n",
-            next_task->id,
-            next_task->registers.rip,
-            next_task->registers.cs,
-            next_task->registers.usermode_rsp);
-    }
-
-    // Update per‑core current task and, if this is the BSP, the global pointer
-    per_lapic_core_current_task[core_id] = next_task;
-    if (core_id == apicGetBspLapicId())
-        currentTask = next_task;
-
-#if defined(DEBUG_SCHEDULER) && defined(DEBUG_LOOPING)
-    printf("[sched] core %u switching to task %d (rip=0x%lx)\n",
-           core_id, next_task->id, next_task->registers.rip);
-    if (next_task->whileTssRsp < 0xFFFF800000000000ULL) {
-        printf("[sched] next task %d has bad whileTssRsp: 0x%lx\n",
-               next_task->id, next_task->whileTssRsp);
-        Halt();
-    }
-#endif
-
-    asm volatile("fxrstor %0" :: "m"(next_task->fpuenv) : "memory");
-    per_core_tss[core_id]->rsp0 = next_task->whileTssRsp;
-    change_page_directory(next_task->infoPd->pagedir);
-
-    memcpy(interrupt_frame, &next_task->registers, sizeof(AsmPassedInterrupt));
-
-#if defined(DEBUG_SCHEDULER) && defined(DEBUG_LOOPING)
-    printf("[sched] core %u restored task %d rip=0x%lx\n",
-           core_id, next_task->id, next_task->registers.rip);
-#endif
+    switch_task(interrupt_frame, next_task, core_id);
 }
 
 void scheduler_lapic_timer_start_on_current_ap() {

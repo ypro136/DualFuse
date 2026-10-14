@@ -122,7 +122,8 @@ void Shell::execute(char* input_command_line)
     else if (strcmp(argument_vector[0], "EDIT")    == 0) cmd_edit(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "MEMTEST") == 0) cmd_memtest();
     else if (strcmp(argument_vector[0], "CORES") == 0) cmd_cores();
-    else if (strcmp(argument_vector[0], "SCHED") == 0) cmd_scheduler_toggle(argument_vector[1]);
+    else if (strcmp(argument_vector[0], "APSTATE") == 0) cmd_ap_state();
+    else if (strcmp(argument_vector[0], "SCHED") == 0) cmd_scheduler_toggle(argument_count > 1 ? argument_vector[1] : nullptr);
     else { print("Unknown command: "); println(argument_vector[0]); }
 }
 
@@ -214,6 +215,7 @@ void Shell::cmd_help()
 }
 
 void Shell::cmd_scheduler_toggle(const char* argument) {
+    if (!argument) { printf("scheduler: %s\n", scheduler_enabled ? "enabled" : "disabled"); return; }
     if (strcmp(argument, "ON") == 0 || strcmp(argument, "on") == 0) {
         gdt_update_tss_rsp0(current_task_this_core()->whileTssRsp);
         scheduler_enabled = true;
@@ -743,6 +745,44 @@ void Shell::cmd_spawn()
 
     u64toa(new_kernel_task->id, spawned_task_id_buffer, 10);
     println(spawned_task_id_buffer);
+}
+
+static void shell_print_ap_state_row(Shell* sh, uint32_t lapic_id, bool is_bsp)
+{
+    char buf[32];
+    u64toa(lapic_id, buf, 10); sh->print(buf);
+    sh->print(is_bsp ? "*  " : "   ");
+    Task* t = per_lapic_core_current_task[lapic_id];
+    if (t) {
+        u64toa(t->id, buf, 10); sh->print(buf);
+        for (int p = (int)strlen(buf); p < 6; p++) sh->print(" ");
+        const char* state_str = task_state_to_string(t->state);
+        sh->print(state_str);
+        for (int p = (int)strlen(state_str); p < 19; p++) sh->print(" ");
+        sh->print("aff=0x"); u64toa(t->core_affinity, buf, 16); sh->print(buf);
+    } else {
+        sh->print("null  -                  aff=-   ");
+    }
+    sh->print("  rsp0=");
+    if (per_core_tss[lapic_id]) {
+        sh->print("0x"); u64toa(per_core_tss[lapic_id]->rsp0, buf, 16); sh->print(buf);
+    } else {
+        sh->print("null");
+    }
+    sh->println("");
+}
+
+void Shell::cmd_ap_state()
+{
+    uint32_t bsp_lapic_id = apicGetBspLapicId();
+    println("LAPIC  TASK  STATE              AFF        TSS_RSP0");
+    shell_print_ap_state_row(this, bsp_lapic_id, true);
+    for (int i = 0; i < smp_ap_count; i++) {
+        uint32_t ap_id = smp_ap_lapic_id_list[i];
+        if (ap_id != bsp_lapic_id)
+            shell_print_ap_state_row(this, ap_id, false);
+    }
+    println("(* = BSP)");
 }
 
 void Shell::cmd_cores()

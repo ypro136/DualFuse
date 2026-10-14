@@ -79,7 +79,7 @@ override LDFLAGS := -static -z text -Wl,--no-relax,-Y,$(SYSROOT)/usr/lib,--gc-se
 # -DDEBUG_INTERRUPT -DDEBUG_APIC -DDEBUG_GUI -DDEBUG_FRAMEBUFFER -DDEBUG_MOUSE -DDEBUG_LOOPING -DDEBUG_FILE_EXPLORER 
 # -DDEBUG_SSFN -DDEBUG_IMAGE_VIEWER -DDEBUG_SCHEDULER -DDEBUG_SMP -DDEBUG_SMP_AP
 
-CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -D__is_x86_64 -DLIMINE_API_REVISION=1 -Iinclude	-Iinclude/ -I./include/ -DDEBUG_SCHEDULER #-DDEBUG_LOOPING
+CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -D__is_x86_64 -DLIMINE_API_REVISION=1 -Iinclude	-Iinclude/ -I./include/ -DDEBUG_SCHEDULER -DDEBUG_SMP -DDEBUG_SMP_AP -DDEBUG_ISR -DDEBUG_TASK #-DDEBUG_LOOPING
 LIBS:=$(LIBS) -lc -lgcc
 
 ARCHDIR=arch/$(ARCH)
@@ -228,7 +228,7 @@ clean: clean_errorout
 	-rm -f bin/$(OUTPUT).kernel
 	-rm -f $(DESTDIR)$(BOOTDIR)$(OUTPUT).kernel
 #	-rm -f .stamp-headers
-	-rm -rf bin
+	-rm -rf bin/*
 
 clean_errorout:
 	-rm -f errorout.log

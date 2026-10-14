@@ -123,9 +123,11 @@ void smp_ap_initialize_gdt_and_tss(uint64_t kernel_stack_top) {
         Halt();
     }
     per_ap_tss->rsp0 = kernel_stack_top;            // the only non‑zero field we need
-
+ 
     uint32_t my_lapic_id;
-    asm volatile("mov $1, %%eax; cpuid; shrl $24, %%ebx" : "=b"(my_lapic_id));
+    asm volatile("mov $1, %%eax; cpuid; shrl $24, %%ebx"
+             : "=b"(my_lapic_id)
+             :: "eax", "ecx", "edx");
     per_core_tss[my_lapic_id] = per_ap_tss;
 
     // Point the TSS descriptor inside the new GDT to the new TSS

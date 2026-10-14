@@ -35,7 +35,7 @@
 #define dummyCmdline ("dummy")
 #define lwipCmdline ("lwip")
 
-#define TASK_AFFINITY_ANY  0xFF
+#define TASK_AFFINITY_ANY  0xFFFFFFFF
 #define TASK_AFFINITY_BSP  1
 
 typedef struct {
@@ -220,10 +220,11 @@ struct __attribute__((aligned(16))) Task {
   int      *tidptr;
 
   uint64_t extras; // extra flags
-  uint8_t  core_affinity;   // bitmask of allowed cores (0 = BSP only, 0xFF = any)
+  uint32_t core_affinity;
 
   Task *parent;
   Task *next;
+  Task *reaper_next;
   uint64_t canary;   // must be last field
 };
 
@@ -240,7 +241,6 @@ extern Task *netHelperTask;
 extern void  kernelHelpEntry();
 
 extern Spinlock LOCK_REAPER;
-extern Task    *reaperTask;
 
 extern Task* per_lapic_core_current_task[256];
 

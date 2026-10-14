@@ -71,8 +71,7 @@ static void oneshot_test_func(void) {
 }
 
 static void suicide_task(void) {
-    task_kill(current_task_this_core()->id, 0);
-    while (1) {}
+    while (1) {asm volatile("pause");}
 }
 // =====================================================================
 
@@ -182,24 +181,25 @@ extern "C" void kernel_main(void)
     task_create_named_kernel((uint64_t)gui_render_kernel_task_entry, 0, "gui_render");
     task_create_named_kernel((uint64_t)gui_input_kernel_task_entry, 0, "gui_input");
 
-    scheduler_enabled = true;
-    asm volatile("sti");
-    scheduler_lapic_timer_start_on_current_ap();
-    printf("scheduler enabled.\n"); 
-
+    
     smp_install_trampoline();
     boot_step_name = "booting other cores";
-    //smp_boot_all_aps();
-
-    // task_create_named_kernel((uint64_t)kernel_one_shot_entry, (uint64_t)oneshot_test_func, "test_oneshot");
-
-    // task_create_named_kernel((uint64_t)suicide_task, 0, "test_suicide");
-
+    smp_boot_all_aps();
+    
+    //task_create_named_kernel((uint64_t)kernel_one_shot_entry, (uint64_t)oneshot_test_func, "test_oneshot");
+    
+    task_create_named_kernel((uint64_t)suicide_task, 0, "test_suicide");
+    
+    
     // dump APIC timer state
     uint32_t lvt     = apicRead(APIC_REGISTER_LVT_TIMER);
     uint32_t initcnt = apicRead(APIC_REGISTER_TIMER_INITCNT);
     uint32_t curcnt  = apicRead(APIC_REGISTER_TIMER_CURRCNT);
     printf("APIC Timer before idle: LVT=0x%x INITCNT=0x%x CURCNT=0x%x\n", lvt, initcnt, curcnt);
+    
+    scheduler_enabled = true;
+    scheduler_lapic_timer_start_on_current_ap();
+    printf("scheduler enabled.\n"); 
 
     boot_step_name = "boot done. post-boot BSP idle loop (reaper)";
     while (1) {
