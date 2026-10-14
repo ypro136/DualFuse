@@ -7,6 +7,7 @@ extern Image folder_icon;
 extern Image file_icon;
 extern Image terminal_icon;
 extern Image calculator_icon;
+extern Image task_manager_icon;
 extern Image logo_image;
 
 // Load all icons from /assets/ (call once after filesystem_mount)

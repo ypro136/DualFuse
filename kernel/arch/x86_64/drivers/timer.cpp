@@ -26,19 +26,16 @@ const uint32_t frequency = 60;
 volatile bool frame_ready = false;
 uint64_t GUI_frame = 1;
 
-volatile bool copy_happened = false;  // debug only
-
 
 void timer_irq_0(struct interrupt_registers *registers)
 {
-    timerTicks += 1;
+    __sync_fetch_and_add(&timerTicks, 1);
     hidI2cTickPoll();
     if (frame_ready)
     {
         frame_ready = false;
         copy_buffer_to_screan();
         GUI_frame++;
-        copy_happened = true;
     }
 }
 

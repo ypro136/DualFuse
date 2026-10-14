@@ -5,7 +5,7 @@
 
 #include <stdint.h>
 
-#define BLOCK_SIZE  512
+#define BLOCK_SIZE  4096
 #define MAX_FILES   128
 #define MAX_NAME    32
 #define MAX_PATH    256

@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <isr.h>
+
 #include <string.h>
 
 typedef struct {
@@ -25,5 +27,6 @@ typedef struct {
 
 void set_idt_gate(uint32_t index, uint64_t handler, uint8_t flags);
 void set_idt();
+void tlb_shootdown_handler(AsmPassedInterrupt* interrupt_frame);
 
 #endif

@@ -12,7 +12,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <linux.h>
-
+#include <apic.h>
+ 
 #include <string.h>
 #include <types.h>
 #include <signal.h>
@@ -33,6 +34,9 @@
 #define helperCmdline ("kernel")
 #define dummyCmdline ("dummy")
 #define lwipCmdline ("lwip")
+
+#define TASK_AFFINITY_ANY  0xFFFFFFFF
+#define TASK_AFFINITY_BSP  1
 
 typedef struct {
   uint64_t edi;
@@ -55,6 +59,7 @@ typedef enum TASK_STATE {
   TASK_STATE_SIGKILLED = 9,
   TASK_STATE_FUTEX = 10,
   TASK_STATE_DUMMY = 69,
+  TASK_STATE_RUNNING = 11,
 } TASK_STATE;
 
 typedef struct KilledInfo {
@@ -147,7 +152,7 @@ typedef struct TaskSysInterrupted {
 #define EXTRAS_DISABLE_FUTEX (1 << 0)
 #define EXTRAS_INVOLUTARY_WAKEUP (1 << 1)
 
-struct Task {
+struct __attribute__((aligned(16))) Task {
   uint64_t id;
   int      pgid;
   int      tgid;
@@ -215,9 +220,12 @@ struct Task {
   int      *tidptr;
 
   uint64_t extras; // extra flags
+  uint32_t core_affinity;
 
   Task *parent;
   Task *next;
+  Task *reaper_next;
+  uint64_t canary;   // must be last field
 };
 
 extern SpinlockCnt TASK_LL_MODIFY;
@@ -233,11 +241,29 @@ extern Task *netHelperTask;
 extern void  kernelHelpEntry();
 
 extern Spinlock LOCK_REAPER;
-extern Task    *reaperTask;
+
+extern Task* per_lapic_core_current_task[256];
+
+// static inline Task* current_task_this_core() {
+//     return apic_initialized
+//                ? per_lapic_core_current_task[(apicRead(APIC_REGISTER_APICID) >> 24) & 0xFF]
+//                : currentTask;
+// }
+
+static inline Task* current_task_this_core() {
+    if(apic_initialized) {
+        uint8_t lapic_id = (apicRead(APIC_REGISTER_APICID) >> 24) & 0xFF;
+        return per_lapic_core_current_task[lapic_id];
+    } else {
+        return currentTask;
+    }
+}
 
 // needed for libraries that still depend on some sort of errno
 // should be safe as it's per-thread
-#define errno (currentTask->kernelErrno)
+#define errno (current_task_this_core()->kernelErrno)
+
+void kernel_ap_idle_entry();
 
 void task_spinlock_exit(Task *task, Spinlock *lock);
 void tasks_initialize();
@@ -260,4 +286,12 @@ void task_list_destroy(Task *target);
 uint64_t task_generate_id();
 void task_call_reaper(Task *target);
 
+void task_call_reaper(Task *target);
+
+void task_reaper_loop(void);
+void reaper_kernel_task_entry(void);
+void kernel_one_shot_entry(void);              // no "static"!
+Task* task_create_named_kernel(uint64_t rip, uint64_t rdi, const char *name);
+static void check_stack_overlap(void *addr, size_t pages);
+ 
 #endif

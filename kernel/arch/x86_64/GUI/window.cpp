@@ -4,6 +4,11 @@
 #include <framebufferutil.h>
 #include <psf.h>
 #include <liballoc.h>
+#include <image_viewer.h>
+#include <file_explorer.h>
+#include <console.h>
+#include <task_manager.h> 
+#include <calculator.h>
 
 // taskbar_sync_windows() is declared in GUI.h - forward-declare here
 // to avoid a circular include (GUI.h → window.h → GUI.h).
@@ -111,65 +116,52 @@ XPWindow* create_xp_window(int x, int y, int width, int height,
 
 void close_xp_window(void* ctx)
 {
-#if defined(DEBUG_GUI)
+    #if defined(DEBUG_GUI)
     printf("[DEBUG_GUI] close_xp_window: ctx:%p\n", ctx);
-#endif
-
+    #endif
+ 
     XPWindow* window = (XPWindow*)ctx;
-    if (!window)
-    {
-#if defined(DEBUG_GUI)
-        printf("[DEBUG_GUI] close_xp_window: window is NULL, aborting\n");
-#endif
-        return;
-    }
-
-    // Remove from global array
-    for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++)
-    {
-        if (window_arr[i] == window)
-        {
+    if (!window) return;
+ 
+    for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++) {
+        if (window_arr[i] == window) {
             window_arr[i] = NULL;
-#if defined(DEBUG_GUI)
-            printf("[DEBUG_GUI] close_xp_window: removed from window_arr slot:%d\n", i);
-#endif
             break;
         }
     }
-
-    // Free title-bar buttons
-    for (int i = 0; i < MAX_NUM_OF_BUTTONS_FOR_WINDOWS; i++)
-    {
-        if (window->buttons[i] != NULL)
-        {
+ 
+    for (int i = 0; i < MAX_NUM_OF_BUTTONS_FOR_WINDOWS; i++) {
+        if (window->buttons[i] != NULL) {
             free(window->buttons[i]);
             window->buttons[i] = NULL;
         }
     }
-
-    free(window->context);
+ 
+    if (window->context) {
+        switch (window->window_type) {
+            case WINDOW_TYPE_IMAGE_VIEWER:
+                destroy_image_viewer((XPImageViewer*)window->context);
+                break;
+            default:
+                free(window->context);
+                break;
+        }
+    }
+ 
     free(window);
-
-#if defined(DEBUG_GUI)
-    printf("[DEBUG_GUI] close_xp_window: freed, searching for next active\n");
-#endif
-
+ 
     taskbar_sync_windows();
-    // Promote the first remaining window to active
-    for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++)
-    {
-        if (window_arr[i] != NULL)
-        {
+ 
+    for (int i = 0; i < MAX_NUM_OF_WINDOWS; i++) {
+        if (window_arr[i] != NULL) {
             set_active_xp_window(window_arr[i]);
             return;
         }
     }
-    
+ 
     active_xp_window = NULL;
-#if defined(DEBUG_GUI)
-    printf("[DEBUG_GUI] close_xp_window: no windows left\n");
-#endif
 }
+
 
 void maximize_xp_window(void* ctx)
 {
@@ -216,6 +208,138 @@ void minimize_xp_window(void* ctx)
 #if defined(DEBUG_GUI)
     printf("[DEBUG_GUI] minimize_xp_window: minimized=%d\n", window->minimized);
 #endif
+}
+
+bool is_mouse_on_window_resize_triangle(XPWindow* win, int x, int y)
+{
+    if (!win) return false;
+    int distance_from_right  = (win->x + win->width)  - x;
+    int distance_from_bottom = (win->y + win->height) - y;
+    return distance_from_right >= 0 &&
+           distance_from_bottom >= 0 &&
+           distance_from_right + distance_from_bottom <= RESIZE_TRIANGLE_SIZE;
+}
+
+void resize_xp_window(XPWindow* win, int new_width, int new_height)
+{
+    if (!win) return;
+    if (new_width < WINDOW_MINIMUM_WIDTH)  new_width  = WINDOW_MINIMUM_WIDTH;
+    if (new_height < WINDOW_MINIMUM_HEIGHT) new_height = WINDOW_MINIMUM_HEIGHT;
+
+    XPWindowType window_type = win->window_type;
+
+    switch (window_type)
+    {
+    case WINDOW_TYPE_EXPLORER:
+        if (win->context)
+        {
+            XPFileExplorer* explorer = (XPFileExplorer*)win->context;
+            explorer->scroll_offset = 0; // Reset scroll when resizing
+
+            int minum_width = 2 * WINDOW_BORDER_WIDTH + FE_ICON_SIZE * FE_ICON_COLUMNS + (FE_ICON_COLUMNS + 1) * 45; // 10px padding
+            int minum_hight = 2 * WINDOW_BORDER_WIDTH + TITLE_BAR_HEIGHT + FE_TOOLBAR_HEIGHT + FE_ADDRESSBAR_HEIGHT + (FE_ICON_SIZE + 45) * ((explorer->visible_count / FE_ICON_COLUMNS) + 1); // 20px for spacing and text
+
+            if (new_width < minum_width)  new_width  = minum_width;
+            if (new_height < minum_hight) new_height = minum_hight;
+
+            win->width  = new_width;
+            win->height = new_height;
+        }
+        break;
+    case WINDOW_TYPE_IMAGE_VIEWER:
+        if (win->context)
+        {
+            XPImageViewer* viewer = (XPImageViewer*)win->context;
+        }
+        win->width  = new_width;
+        win->height = new_height;
+        break;
+    case WINDOW_TYPE_TEXT_EDITOR:
+        win->width  = new_width;
+        win->height = new_height;
+        break;
+    case WINDOW_TYPE_TASK_MANAGER:
+    {
+        TaskManagerState* task_state = static_cast<TaskManagerState*>(win->context);
+        if (task_state)
+        {
+            task_state->scroll_offset_rows = 0;
+
+            int font_h = current_font_height;                     // assumption: accessible
+            int row_h  = font_h + 2 * TASK_MANAGER_ROW_PADDING;
+
+            // Minimum client width required by the process list table
+            const int name_col_min_width = 75;                    // assumption: no constant in header
+            int min_client_width_table =
+                TASK_MANAGER_COL_PID_W +
+                TASK_MANAGER_COL_STATE_W +
+                TASK_MANAGER_COL_TYPE_W +
+                TASK_MANAGER_COL_CORE_W +
+                name_col_min_width +
+                TASK_MANAGER_SCROLLBAR_W;
+
+            // Minimum client width required by the two buttons in the sysinfo section
+            const int button_spacing_padding = 60;                // assumption: internal padding
+            int min_client_width_buttons = 2 * TASK_MANAGER_BUTTON_W + button_spacing_padding;
+
+            int required_client_width = min_client_width_table;
+            if (min_client_width_buttons > required_client_width)
+                required_client_width = min_client_width_buttons;
+
+            int minimum_outer_width = 2 * WINDOW_BORDER_WIDTH + required_client_width;
+            if (new_width < minimum_outer_width)
+                new_width = minimum_outer_width;
+
+            int minimum_outer_height = TITLE_BAR_HEIGHT + 2 * WINDOW_BORDER_WIDTH
+                                       + TASK_MANAGER_MEMORY_BAR_SECTION_H
+                                       + TASK_MANAGER_SYSINFO_SECTION_H
+                                       + 2 * row_h;              // header row + one data row
+            if (new_height < minimum_outer_height)
+                new_height = minimum_outer_height;
+        }
+        win->width  = new_width;
+        win->height = new_height;
+        break;
+    }
+    case WINDOW_TYPE_CONSOLE:
+    {
+        win->width  = new_width;
+        win->height = new_height;
+
+        // Notify the Console object of the new drawing area (height minus title bar).
+        Console* console = static_cast<Console*>(win->context);
+        if (console) {
+            console->set_window_size(new_width, new_height - TITLE_BAR_HEIGHT);
+        }
+        break;
+    }
+    case WINDOW_TYPE_CALC:
+    {
+        if (new_width < CALC_WIN_W)  new_width  = CALC_WIN_W;
+        if (new_height < CALC_WIN_H) new_height = CALC_WIN_H;
+        //win->width  = new_width; ignore width and height changes for calculator, keep fixed size TODO: make calculator resizable
+        //win->height = new_height;
+        break;
+    }
+    default:
+        win->width  = new_width;
+        win->height = new_height;
+        break;
+    }
+
+    const int btn_y    = win->y + 4; 
+    const int btn_size = 16;
+    for (int i = 0; i < 3; i++)
+    {
+        if (win->buttons[i])
+        {
+            win->buttons[i]->x = win->x + win->width - (btn_size + 4) * (i + 1);
+            win->buttons[i]->y = btn_y;
+        }
+    }
+
+    if (win->context && win->on_move)
+        win->on_move(win->context, win->x, win->y + TITLE_BAR_HEIGHT);
 }
 
 void set_active_xp_window(XPWindow* win)
@@ -278,24 +402,9 @@ void draw_window_title_bar(XPWindow* win)
 
 void draw_xp_window(XPWindow* win)
 {
-    if (!win || win->minimized)
-    {
-#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-        printf("[DEBUG_GUI] draw_xp_window: skipping win:%p minimized:%d\n",
-               win, win ? win->minimized : -1);
-#endif
-        return;
-    }
-
-#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-    printf("[DEBUG_GUI] draw_xp_window: x:%d y:%d w:%d h:%d title:%s\n",
-           win->x, win->y, win->width, win->height, win->title ? win->title : "NULL");
-#endif
-
+    if (!win || win->minimized) return;
     fill_rectangle(win->x, win->y, win->width, win->height, XP_BACKGROUND);
-
     draw_window_title_bar(win);
-
     draw_beveled_border_thick(win->x, win->y, win->width, win->height,
                               XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE, XP_BUTTON_SHADOW, true);
 
@@ -303,24 +412,25 @@ void draw_xp_window(XPWindow* win)
     const int client_y      = win->y + TITLE_BAR_HEIGHT + WINDOW_BORDER_WIDTH;
     const int client_width  = win->width  - 2 * WINDOW_BORDER_WIDTH;
     const int client_height = win->height - TITLE_BAR_HEIGHT - 2 * WINDOW_BORDER_WIDTH;
-
     fill_rectangle(client_x, client_y, client_width, client_height, win->bg_color);
 
-    // Draw title-bar control buttons
+    // Resize triangle (bottom‑right corner)
+    fill_triangle(win->x + win->width - 1,
+                  win->y + win->height - 1,
+                  win->x + win->width - 1 - RESIZE_TRIANGLE_SIZE,
+                  win->y + win->height - 1,
+                  win->x + win->width - 1,
+                  win->y + win->height - 1 - RESIZE_TRIANGLE_SIZE,
+                  0xFFFF88);
+
     const int btn_y    = win->y + 4;
     const int btn_size = 16;
     draw_window_button(win->x + win->width - (btn_size + 4) * 1, btn_y, btn_size, "X", true);
     draw_window_button(win->x + win->width - (btn_size + 4) * 2, btn_y, btn_size, "[", true);
     draw_window_button(win->x + win->width - (btn_size + 4) * 3, btn_y, btn_size, "_", true);
 
-    // Draw content
     if (win->context && win->draw_frame)
-    {
-#if defined(DEBUG_GUI) && defined(DEBUG_LOOPING)
-        printf("[DEBUG_GUI] draw_xp_window: calling draw_frame context:%p\n", win->context);
-#endif
         win->draw_frame(win->context);
-    }
 }
  
 int draw_all_xp_windows_but_active()

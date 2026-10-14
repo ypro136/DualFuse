@@ -11,6 +11,7 @@
 #include <ramdisk.h>
 #include <timer.h>
 #include <image_viewer.h>
+#include <text_editor.h>
 #include <icons.h>
 
 
@@ -85,6 +86,12 @@ static bool is_png_file(const char* filename) {
     return (dot && strcasecmp(dot, ".png") == 0);
 }
 
+static bool is_txt_file(const char* filename) {
+    const char* dot = strrchr(filename, '.');
+    return (dot && (strcasecmp(dot, ".txt") == 0 || strcasecmp(dot, ".log") == 0));
+}
+
+
 // --- Directory listing using FatFs ---
 static void explorer_load_directory(XPFileExplorer* explorer)
 {
@@ -125,6 +132,8 @@ static void explorer_load_directory(XPFileExplorer* explorer)
     explorer->scroll_offset = 0;
     explorer->ctx_open = false;
     explorer->bgx_open = false;
+
+    resize_xp_window(explorer->window, explorer->window->width, explorer->window->height); // Trigger resize to recalculate minimum size based on content
 }
 
 XPFileExplorer* create_file_explorer(XPWindow* window)
@@ -158,7 +167,8 @@ static void draw_classic_toolbar(XPFileExplorer* explorer)
 {
     int x = explorer_client_area_x(explorer);
     int y = explorer_toolbar_y(explorer);
-    int w = explorer_client_area_width(explorer) / 10;
+    int w = get_text_width(" Back ") + 10; // Ensure font metrics are initialized
+    
 
     fill_rectangle(x, y, w, FE_TOOLBAR_HEIGHT, 0xC0C0C0);
     draw_beveled_border_thick(x, y, w, FE_TOOLBAR_HEIGHT,0xFFFFFF, 0xC0C0C0, 0x808080, true);
@@ -544,9 +554,16 @@ void fe_handle_mouse(XPFileExplorer* explorer,
                 strcat(full_path, "/");
             strcat(full_path, explorer->visible_names[slot]);
             if (is_png_file(explorer->visible_names[slot]))
-                {open_image_in_viewer(full_path);}
-            else
-                {fs_start(full_path, nullptr);}
+                {
+                    open_image_in_viewer(full_path);
+                }
+            else if(is_txt_file(explorer->visible_names[slot]))
+            {
+                text_editor_open_window(full_path);
+            } else
+                {
+                    fs_start(full_path, nullptr);
+                }
         }
     }
 }
@@ -560,7 +577,10 @@ void file_explorer_draw_frame_wrapper(void* context)
     file_explorer_draw_frame((XPFileExplorer*)context);
 }
 
-void file_explorer_on_move(void* context, int x, int y) {}
+void file_explorer_on_move(void* context, int x, int y) 
+{
+
+}
 void file_explorer_set_active(void* context) {}
 
 void on_file_explorer_icon_click()

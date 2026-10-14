@@ -64,11 +64,13 @@
 // Processes' heap & stack locations
 #define USER_MMAP_START 0x700000000000
 #define USER_HEAP_START 0x600000000000
-#define USER_STACK_BOTTOM 0x800000000000
+#define USER_STACK_BOTTOM 0x00007FFFFFFFF000 // was 0x800000000000
 
-#define P_PHYS_ADDR(x) ((x) & ~0xFFF)
+#define P_PHYS_ADDR(x) ((x) & ~0xFFF) 
 
-void paging_initialize();
+void paging_initialize(); 
+
+void debug_page_table_entry(uintptr_t virtual_address);
 
 void virtual_mapL(uint64_t *pagedir, uint64_t virt_addr, uint64_t phys_addr,
                  uint64_t flags);

@@ -20,18 +20,18 @@ int read_handler(OpenFile *fd, uint8_t *in, size_t limit) {
   uint8_t *kernelBuff = malloc(limit);
 
   // start reading
-  keyboard_task_read(currentTask->id, (char *)kernelBuff, limit, true);
+  keyboard_task_read(current_task_this_core()->id, (char *)kernelBuff, limit, true);
   asm volatile("sti"); // leave this task/execution (awaiting return)
-  while (currentTask->state == TASK_STATE_WAITING_INPUT) {
+  while (current_task_this_core()->state == TASK_STATE_WAITING_INPUT) {
     hand_control();
   }
-  if (currentTask->term.c_lflag & ICANON)
+  if (current_task_this_core()->term.c_lflag & ICANON)
     printf("\n"); // you technically pressed enter, didn't you?
 
   // finalise
-  uint32_t fr = currentTask->tmpRecV;
+  uint32_t fr = current_task_this_core()->tmpRecV;
   memcpy(in, kernelBuff, fr);
-  if (currentTask->term.c_lflag & ICANON && fr < limit)
+  if (current_task_this_core()->term.c_lflag & ICANON && fr < limit)
     in[fr++] = '\n';
   // only add newline if we can!
 
@@ -62,25 +62,25 @@ int ioctl_handler(OpenFile *fd, uint64_t request, void *arg) {
     break;
   }
   case TCGETS: {
-    memcpy(arg, &currentTask->term, sizeof(termios));
-    // printf("got %d %d\n", currentTask->term.c_lflag & ICANON,
-    //        currentTask->term.c_lflag & ECHO);
+    memcpy(arg, &current_task_this_core()->term, sizeof(termios));
+    // printf("got %d %d\n", current_task_this_core()->term.c_lflag & ICANON,
+    //        current_task_this_core()->term.c_lflag & ECHO);
     return 0;
     break;
   }
   case TCSETS:
   case TCSETSW:   // this drains(?), idek man
   case TCSETSF: { // idek anymore man
-    memcpy(&currentTask->term, arg, sizeof(termios));
-    // printf("setting %d %d\n", currentTask->term.c_lflag & ICANON,
-    //        currentTask->term.c_lflag & ECHO);
+    memcpy(&current_task_this_core()->term, arg, sizeof(termios));
+    // printf("setting %d %d\n", current_task_this_core()->term.c_lflag & ICANON,
+    //        current_task_this_core()->term.c_lflag & ECHO);
     return 0;
     break;
   }
   case 0x540f: // TIOCGPGRP
   {
     int *pid = (int *)arg;
-    *pid = currentTask->id;
+    *pid = current_task_this_core()->id;
     return 0;
     break;
   }

@@ -7,6 +7,8 @@
 #include <hcf.hpp>
 #include <cstdlib>
 #include <task.h>
+#include <vmm.h>
+#include <pmm.h>
 
 // Stack creation for userland & kernelspace tasks
 
@@ -23,6 +25,7 @@ void stackGenerateMutual(Task *task) {
     size_t virt_addr =
         USER_STACK_BOTTOM - USER_STACK_PAGES * 0x1000 + i * 0x1000;
     virtual_map(virt_addr, physical_allocate(1), PF_USER | PF_RW);
+    tlb_shootdown_all();
     memset((void *)virt_addr, 0, PAGE_SIZE);
   }
 }
@@ -70,11 +73,21 @@ void stackGenerateUser(Task *target, uint32_t argc, char **argv, uint32_t envc,
   a -= sizeof(b);                                                              \
   *((b *)(a)) = c
 
-  spinlock_acquire(&target->infoPd->LOCK_PD);
-  int *randomByteStart = (int *)target->infoPd->heap_end;
-  task_adjust_heap(target, target->infoPd->heap_end + sizeof(int) * 4,
-                 &target->infoPd->heap_start, &target->infoPd->heap_end);
-  spinlock_release(&target->infoPd->LOCK_PD);
+    // Allocate one page for the AT_RANDOM seed (4 ints = 16 bytes)
+    uint64_t random_page_phys = physical_allocate(1);
+    virtual_map(USER_HEAP_START, random_page_phys, PF_RW | PF_USER);
+    tlb_shootdown_all();
+    int *randomByteStart = (int *)USER_HEAP_START;
+
+    for (int i = 0; i < 4; i++) {
+      int thing = 0;
+      while (!thing)
+        thing = rand();
+      randomByteStart[i] = thing;
+    }
+
+    // Keep heap pointers consistent (they still start at USER_HEAP_START)
+    target->infoPd->heap_end = USER_HEAP_START + sizeof(int) * 4;
   for (int i = 0; i < 4; i++) {
     int thing = 0;
     while (!thing)
@@ -178,7 +191,7 @@ void stackGenerateUser(Task *target, uint32_t argc, char **argv, uint32_t envc,
 }
 
 void taskKernelReturn() {
-  task_kill(currentTask->id, 0);
+  task_kill(current_task_this_core()->id, 0);
   while (1) {
   }
 }

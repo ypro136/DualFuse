@@ -12,9 +12,14 @@
 extern uint64_t GUI_frame;
 
 static const int TEXT_EDITOR_LINE_VERTICAL_PADDING = 3;
+static const int TEXT_EDITOR_CURSOR_SOLID_FRAMES   = 30;   // 0.5 seconds of solid cursor after activity
 
 static char  text_editor_shared_clipboard[TEXT_EDITOR_MAX_LINES * TEXT_EDITOR_MAX_LINE_LENGTH];
 static bool  text_editor_clipboard_contains_text = false;
+
+// Tracks the last frame in which the user moved the cursor or typed.
+// Shared across all instances (only one text editor is expected at a time).
+static uint64_t text_editor_last_activity_frame = 0;
 
 static const char* context_menu_item_label_strings[TEXT_EDITOR_CONTEXT_MENU_ITEM_COUNT] = {
     "Select All",
@@ -48,13 +53,122 @@ static void text_editor_clamp_cursor_column_to_line_end(XPTextEditor* editor)
         editor->cursor_column_index = current_line_length;
 }
 
+int text_editor_get_line_wrapped_row_count(const char* line, int max_pixel_width)
+{
+    int line_length = (int)strlen(line);
+    if (line_length == 0)
+        return 1;
+
+    int row_count = 0;
+    int segment_start_column = 0;
+
+    while (segment_start_column < line_length)
+    {
+        int segment_end_column = segment_start_column;
+        char segment_buffer[TEXT_EDITOR_MAX_LINE_LENGTH];
+
+        while (segment_end_column <= line_length)
+        {
+            int segment_length = segment_end_column - segment_start_column;
+            if (segment_length >= TEXT_EDITOR_MAX_LINE_LENGTH)
+                break;
+
+            memcpy(segment_buffer, line + segment_start_column, segment_length);
+            segment_buffer[segment_length] = '\0';
+
+            if (get_text_width(segment_buffer) > max_pixel_width)
+                break;
+
+            segment_end_column++;
+        }
+
+        int break_column = segment_end_column - 1;
+        if (break_column <= segment_start_column)
+            break_column = segment_start_column + 1;
+
+        segment_start_column = break_column;
+        row_count++;
+    }
+
+    return row_count;
+}
+
+static int text_editor_visual_row_of_cursor(const char* line, int max_pixel_width, int cursor_column)
+{
+    int line_length = (int)strlen(line);
+    if (line_length == 0)
+        return 0;
+
+    int visual_row = 0;
+    int segment_start_column = 0;
+
+    while (segment_start_column < line_length)
+    {
+        int segment_end_column = segment_start_column;
+        char segment_buffer[TEXT_EDITOR_MAX_LINE_LENGTH];
+
+        while (segment_end_column <= line_length)
+        {
+            int segment_length = segment_end_column - segment_start_column;
+            memcpy(segment_buffer, line + segment_start_column, segment_length);
+            segment_buffer[segment_length] = '\0';
+
+            if (get_text_width(segment_buffer) > max_pixel_width)
+                break;
+
+            segment_end_column++;
+        }
+
+        int break_column = segment_end_column - 1;
+        if (break_column <= segment_start_column)
+            break_column = segment_start_column + 1;
+
+        if (cursor_column < break_column || (cursor_column == line_length && break_column == line_length))
+            return visual_row;
+
+        segment_start_column = break_column;
+        visual_row++;
+    }
+
+    return 0;
+}
+
 static void text_editor_scroll_to_keep_cursor_visible(XPTextEditor* editor)
 {
+    int max_pixel_width = editor->client_area_width - 8;
     int visible_row_count = text_editor_compute_visible_row_count(editor);
-    if (editor->cursor_line_index < editor->vertical_scroll_offset)
-        editor->vertical_scroll_offset = editor->cursor_line_index;
-    if (editor->cursor_line_index >= editor->vertical_scroll_offset + visible_row_count)
-        editor->vertical_scroll_offset = editor->cursor_line_index - visible_row_count + 1;
+
+    int cursor_absolute_visual_row = 0;
+
+    for (int line_index = 0; line_index < editor->cursor_line_index; line_index++)
+    {
+        cursor_absolute_visual_row += text_editor_get_line_wrapped_row_count(
+            editor->line_buffer[line_index], max_pixel_width);
+    }
+
+    cursor_absolute_visual_row += text_editor_visual_row_of_cursor(
+        editor->line_buffer[editor->cursor_line_index],
+        max_pixel_width,
+        editor->cursor_column_index);
+
+    int total_visual_rows = 0;
+    for (int line_index = 0; line_index < editor->total_line_count; line_index++)
+    {
+        total_visual_rows += text_editor_get_line_wrapped_row_count(
+            editor->line_buffer[line_index], max_pixel_width);
+    }
+
+    int max_scroll_offset = total_visual_rows - visible_row_count;
+    if (max_scroll_offset < 0)
+        max_scroll_offset = 0;
+
+    int desired_offset = cursor_absolute_visual_row - visible_row_count / 2;
+    if (desired_offset < 0)
+        desired_offset = 0;
+    if (desired_offset > max_scroll_offset)
+        desired_offset = max_scroll_offset;
+
+    editor->vertical_scroll_offset = desired_offset;
 }
 
 static void text_editor_draw_context_menu_overlay(XPTextEditor* editor)
@@ -221,7 +335,14 @@ void text_editor_draw_frame(void* context)
 
     int line_pixel_height  = text_editor_compute_line_pixel_height();
     int visible_row_count  = text_editor_compute_visible_row_count(editor);
-    bool cursor_blink_on   = (GUI_frame / 30) % 2 == 0;
+    int max_pixel_width    = editor->client_area_width - 8;
+    int text_draw_x        = editor->client_area_x + 4;
+
+    // Cursor visibility: solid for TEXT_EDITOR_CURSOR_SOLID_FRAMES after last activity,
+    // then blink according to the old pattern.
+    bool cursor_recently_used = (GUI_frame - text_editor_last_activity_frame) < TEXT_EDITOR_CURSOR_SOLID_FRAMES;
+    bool cursor_blink_phase   = (GUI_frame / 30) % 2 == 0;
+    bool draw_text_cursor     = cursor_recently_used || cursor_blink_phase;
 
     fill_rectangle(editor->client_area_x, editor->client_area_y,
                    editor->client_area_width, editor->client_area_height, 0xFFFFFF);
@@ -229,35 +350,103 @@ void text_editor_draw_frame(void* context)
                               editor->client_area_width, editor->client_area_height,
                               0x808080, 0xFFFFFF, 0xFFFFFF, false);
 
-    for (int visible_row_index = 0; visible_row_index < visible_row_count; visible_row_index++)
+    int global_visual_row = 0;
+    int visible_row_end   = editor->vertical_scroll_offset + visible_row_count;
+
+    for (int line_index = 0; line_index < editor->total_line_count; line_index++)
     {
-        int source_line_index = visible_row_index + editor->vertical_scroll_offset;
-        if (source_line_index >= editor->total_line_count) break;
+        if (global_visual_row >= visible_row_end)
+            break;
 
-        int line_top_pixel_y = editor->client_area_y + 4 + visible_row_index * line_pixel_height;
-        int text_draw_x      = editor->client_area_x + 4;
-        int text_baseline_y  = line_top_pixel_y + current_font_height;
+        const char* line_text = editor->line_buffer[line_index];
+        int line_length = (int)strlen(line_text);
 
-        bool line_is_selection_highlighted = editor->all_text_is_selected;
-
-        if (line_is_selection_highlighted)
-            fill_rectangle(editor->client_area_x + 2, line_top_pixel_y,
-                           editor->client_area_width - 4, line_pixel_height, 0x316AC5);
-
-        draw_text(editor->line_buffer[source_line_index],
-                  text_draw_x, text_baseline_y,
-                  line_is_selection_highlighted ? 0xFFFFFF : 0x000000,
-                  line_is_selection_highlighted ? 0x316AC5 : 0xFFFFFF);
-
-        if (!editor->all_text_is_selected &&
-            source_line_index == editor->cursor_line_index &&
-            cursor_blink_on)
+        if (line_length == 0)
         {
-            char cursor_prefix_text[TEXT_EDITOR_MAX_LINE_LENGTH];
-strncpy(cursor_prefix_text, editor->line_buffer[source_line_index], editor->cursor_column_index);
-cursor_prefix_text[editor->cursor_column_index] = '\0';
-int cursor_pixel_x = text_draw_x + get_text_width(cursor_prefix_text);
-            fill_rectangle(cursor_pixel_x, line_top_pixel_y, 2, current_font_height + 2, 0x000000);
+            if (global_visual_row >= editor->vertical_scroll_offset)
+            {
+                int row_top_y = editor->client_area_y + 4 +
+                                (global_visual_row - editor->vertical_scroll_offset) * line_pixel_height;
+
+                if (editor->all_text_is_selected)
+                    fill_rectangle(editor->client_area_x + 2, row_top_y,
+                                   editor->client_area_width - 4, line_pixel_height, 0x316AC5);
+
+                if (!editor->all_text_is_selected &&
+                    line_index == editor->cursor_line_index && draw_text_cursor)
+                {
+                    fill_rectangle(text_draw_x, row_top_y, 2, current_font_height + 2, 0x000000);
+                }
+            }
+            global_visual_row++;
+            continue;
+        }
+
+        int segment_start_column = 0;
+        while (segment_start_column < line_length && global_visual_row < visible_row_end)
+        {
+            int segment_end_column = segment_start_column;
+            char segment_buffer[TEXT_EDITOR_MAX_LINE_LENGTH];
+
+            while (segment_end_column <= line_length)
+            {
+                int segment_length = segment_end_column - segment_start_column;
+                if (segment_length >= TEXT_EDITOR_MAX_LINE_LENGTH)
+                    break;
+
+                memcpy(segment_buffer, line_text + segment_start_column, segment_length);
+                segment_buffer[segment_length] = '\0';
+
+                if (get_text_width(segment_buffer) > max_pixel_width)
+                    break;
+
+                segment_end_column++;
+            }
+
+            int break_column = segment_end_column - 1;
+            if (break_column <= segment_start_column)
+                break_column = segment_start_column + 1;
+
+            int segment_length = break_column - segment_start_column;
+
+            if (global_visual_row >= editor->vertical_scroll_offset)
+            {
+                int row_top_y = editor->client_area_y + 4 +
+                                (global_visual_row - editor->vertical_scroll_offset) * line_pixel_height;
+                int text_baseline_y = row_top_y + current_font_height;
+
+                bool segment_belongs_to_selection = editor->all_text_is_selected;
+
+                if (segment_belongs_to_selection)
+                    fill_rectangle(editor->client_area_x + 2, row_top_y,
+                                   editor->client_area_width - 4, line_pixel_height, 0x316AC5);
+
+                memcpy(segment_buffer, line_text + segment_start_column, segment_length);
+                segment_buffer[segment_length] = '\0';
+
+                draw_text(segment_buffer,
+                          text_draw_x, text_baseline_y,
+                          segment_belongs_to_selection ? 0xFFFFFF : 0x000000,
+                          segment_belongs_to_selection ? 0x316AC5 : 0xFFFFFF);
+
+                if (!editor->all_text_is_selected &&
+                    line_index == editor->cursor_line_index && draw_text_cursor)
+                {
+                    int cursor_col = editor->cursor_column_index;
+                    if (cursor_col >= segment_start_column && cursor_col <= segment_start_column + segment_length)
+                    {
+                        int offset_within_segment = cursor_col - segment_start_column;
+                        char cursor_prefix[TEXT_EDITOR_MAX_LINE_LENGTH];
+                        memcpy(cursor_prefix, segment_buffer, offset_within_segment);
+                        cursor_prefix[offset_within_segment] = '\0';
+                        int cursor_pixel_x = text_draw_x + get_text_width(cursor_prefix);
+                        fill_rectangle(cursor_pixel_x, row_top_y, 2, current_font_height + 2, 0x000000);
+                    }
+                }
+            }
+
+            segment_start_column = break_column;
+            global_visual_row++;
         }
     }
 
@@ -282,6 +471,9 @@ void text_editor_handle_key_input(XPTextEditor* editor, char input_character)
                               input_character == TEXT_EDITOR_SENTINEL_ARROW_DOWN  ||
                               input_character == TEXT_EDITOR_SENTINEL_ARROW_LEFT  ||
                               input_character == TEXT_EDITOR_SENTINEL_ARROW_RIGHT);
+
+    // Any key press that alters cursor position or text is an activity.
+    text_editor_last_activity_frame = GUI_frame;
 
     if (editor->all_text_is_selected && !is_navigation_key)
         editor->all_text_is_selected = false;
@@ -475,32 +667,105 @@ void text_editor_handle_mouse(XPTextEditor* editor,
         int line_pixel_height   = text_editor_compute_line_pixel_height();
         int click_relative_y    = mouse_y - (editor->client_area_y + 4);
         int click_relative_x    = mouse_x - (editor->client_area_x + 4);
+        int max_pixel_width     = editor->client_area_width - 8;
 
         if (click_relative_x < 0 || click_relative_y < 0) return;
 
-        int clicked_visible_row = click_relative_y / line_pixel_height;
-        int clicked_line_index  = clicked_visible_row + editor->vertical_scroll_offset;
-        char* clicked_line_text = editor->line_buffer[clicked_line_index];
-        int   clicked_line_length = (int)strlen(clicked_line_text);
-        int   clicked_column = clicked_line_length;
-        char  column_prefix_buffer[TEXT_EDITOR_MAX_LINE_LENGTH];
+        int absolute_visual_row = click_relative_y / line_pixel_height + editor->vertical_scroll_offset;
 
-        for (int column_candidate = 0; column_candidate <= clicked_line_length; column_candidate++)
+        int target_line_index   = 0;
+        int target_column       = 0;
+        int current_global_row  = 0;
+        bool line_found         = false;
+
+        for (int line_index = 0; line_index < editor->total_line_count; line_index++)
         {
-            strncpy(column_prefix_buffer, clicked_line_text, column_candidate);
-            column_prefix_buffer[column_candidate] = '\0';
-            if (get_text_width(column_prefix_buffer) >= click_relative_x)
+            const char* line_text = editor->line_buffer[line_index];
+            int wrapped_rows = text_editor_get_line_wrapped_row_count(line_text, max_pixel_width);
+
+            if (absolute_visual_row < current_global_row + wrapped_rows)
             {
-                clicked_column = column_candidate;
+                target_line_index = line_index;
+                line_found = true;
+
+                int segment_index_within_line = absolute_visual_row - current_global_row;
+                int segment_start_column = 0;
+                int segment_end_column   = 0;
+                int current_segment = 0;
+                int line_length = (int)strlen(line_text);
+
+                while (segment_start_column < line_length && current_segment <= segment_index_within_line)
+                {
+                    int probe_end = segment_start_column;
+                    char segment_buffer[TEXT_EDITOR_MAX_LINE_LENGTH];
+
+                    while (probe_end <= line_length)
+                    {
+                        int seg_len = probe_end - segment_start_column;
+                        memcpy(segment_buffer, line_text + segment_start_column, seg_len);
+                        segment_buffer[seg_len] = '\0';
+                        if (get_text_width(segment_buffer) > max_pixel_width)
+                            break;
+                        probe_end++;
+                    }
+
+                    int break_col = probe_end - 1;
+                    if (break_col <= segment_start_column)
+                        break_col = segment_start_column + 1;
+
+                    if (current_segment == segment_index_within_line)
+                    {
+                        segment_end_column = break_col;
+                        break;
+                    }
+
+                    segment_start_column = break_col;
+                    current_segment++;
+                }
+
+                if (line_length == 0)
+                {
+                    target_column = 0;
+                }
+                else
+                {
+                    int segment_length = segment_end_column - segment_start_column;
+                    char segment_text[TEXT_EDITOR_MAX_LINE_LENGTH];
+                    memcpy(segment_text, line_text + segment_start_column, segment_length);
+                    segment_text[segment_length] = '\0';
+
+                    int column_within_segment = segment_length;
+                    char prefix[TEXT_EDITOR_MAX_LINE_LENGTH];
+                    for (int col = 0; col <= segment_length; col++)
+                    {
+                        memcpy(prefix, segment_text, col);
+                        prefix[col] = '\0';
+                        if (get_text_width(prefix) >= click_relative_x)
+                        {
+                            column_within_segment = col;
+                            break;
+                        }
+                    }
+                    target_column = segment_start_column + column_within_segment;
+                }
                 break;
             }
+
+            current_global_row += wrapped_rows;
         }
 
-        if (clicked_line_index >= editor->total_line_count)
-            clicked_line_index = editor->total_line_count - 1;
+        if (!line_found)
+        {
+            target_line_index = editor->total_line_count - 1;
+            if (target_line_index < 0) target_line_index = 0;
+            target_column = (int)strlen(editor->line_buffer[target_line_index]);
+        }
 
-        editor->cursor_line_index   = clicked_line_index;
-        editor->cursor_column_index = clicked_column;
+        editor->cursor_line_index   = target_line_index;
+        editor->cursor_column_index = target_column;
         text_editor_clamp_cursor_column_to_line_end(editor);
+
+        // Placing the cursor with a click is user activity.
+        text_editor_last_activity_frame = GUI_frame;
     }
 }

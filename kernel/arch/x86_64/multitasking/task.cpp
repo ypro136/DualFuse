@@ -8,15 +8,17 @@
 #include <linux.h>
 #include <liballoc.h>
 #include <paging.h>
-//#include <schedule.h>
 #include <task_stack.h>
 #include <syscalls.h>
 #include <pmm.h>
 #include <vmm.h>
+#include <task_stack.h>
 
 #include <utility.h>
 #include <hcf.hpp>
+#include <bootloader.h>
 
+Task* per_lapic_core_current_task[256] = {0};
 
 bool tasksInitiated = false;
 
@@ -29,11 +31,18 @@ Task *netHelperTask;
 void  kernelHelpEntry();
 
 Spinlock LOCK_REAPER;
-Task    *reaperTask;
+
+static Task *reaper_queue_head = nullptr;
+static Task *reaper_queue_tail = nullptr;
 
 // Task manager allowing for task management
 
 SpinlockCnt TASK_LL_MODIFY = {0};
+
+void kernel_ap_idle_entry() {
+    while (true)
+        asm volatile("pause");
+}
 
 void task_attach_def_termios(Task *task) {
   memset(&task->term, 0, sizeof(termios));
@@ -63,50 +72,72 @@ void task_attach_def_termios(Task *task) {
 
 // although there are locks on these two functions, they are EXTREMELY unsafe!
 Task *task_list_allocate() {
-  spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
-  Task *target = (Task *)malloc(sizeof(Task));
-  memset(target, 0, sizeof(Task)); // TASK_STATE_DEAD is 0 too
-  asm volatile("cli");
-  Task *browse = firstTask;
-  while (browse) {
-    if (!browse->next)
-      break; // found final
-    browse = browse->next;
+    spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
+    // Allocate a whole page for the task structure (guaranteed 16‑byte aligned)
+    Task *target = (Task *)virtual_allocate(1);   // 1 page = 4 KB
+    printf("[task] virtual_allocate returned %p\n", target);
+    if (!target) {
+        spinlock_cnt_write_release(&TASK_LL_MODIFY);
+        return NULL;
+    }
+    printf("[task] Allocated task structure at %p\n", target);
+    uint64_t new_phys = virtual_to_physical((uint64_t)target);
+    for (Task *t = firstTask; t != NULL; t = t->next) {
+        if (t->state == TASK_STATE_DEAD) continue;
+        uint64_t t_phys = virtual_to_physical((uint64_t)t);
+        if (t_phys == new_phys) {
+            printf("[FATAL] Task struct page 0x%lx (virt %p) already used by task %d!\n",
+                   new_phys, target, t->id);
+            Halt();
+        }
+    }
+
+    printf("[task] Allocated task structure at %p (phys 0x%lx)\n", target, new_phys);
+    memset(target, 0, PAGE_SIZE);   // clear the whole page
+    target->canary = 0xDEADBEEFCAFEBABE;
+
+    volatile uint64_t *test = (uint64_t*)target;
+  uint64_t phys = virtual_to_physical((uint64_t)test);
+  if (phys != ((uint64_t)target - bootloader.hhdmOffset)) {
+      printf("[FATAL] HHDM alias broken: virt=%p expected phys=0x%lx got 0x%lx\n",
+            target, (uint64_t)target - bootloader.hhdmOffset , phys);
+      Halt();
   }
 
-  assert(browse);
-  browse->next = target;
-  asm volatile("sti");
-  spinlock_cnt_write_release(&TASK_LL_MODIFY);
-  return target;
+    Task *browse = firstTask;
+    while (browse) {
+        if (!browse->next) break;
+        browse = browse->next;
+    }
+    assert(browse);
+    browse->next = target;
+    spinlock_cnt_write_release(&TASK_LL_MODIFY);
+    return target;
 }
 
 // will NEVER be the first one
 void task_list_destroy(Task *target) {
-  spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
-  asm volatile("cli");
-  Task *prev = firstTask;
-  while (prev) {
-    if (prev->next == target)
-      break;
-    prev = prev->next;
-  }
-  assert(prev);
+    spinlock_cnt_write_acquire(&TASK_LL_MODIFY);
+    Task *prev = firstTask;
+    while (prev) {
+        if (prev->next == target) break;
+        prev = prev->next;
+    }
+    assert(prev);
+    prev->next = target->next;
+    spinlock_cnt_write_release(&TASK_LL_MODIFY);
+    virtual_free(target, 1);   // free the page
+} 
 
-  prev->next = target->next;
-  asm volatile("sti");
-  spinlock_cnt_write_release(&TASK_LL_MODIFY);
-  free(target); // finally, destroy it
-}
-
-Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir,
-                  uint32_t argc, char **argv) {
+Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir, uint32_t argc, char **argv) {
+  printf("[task_create] start\n");
   Task *target = task_list_allocate();
 
-  uint64_t code_selector =
-      kernel_task ? GDT_KERNEL_CODE : (GDT_USER_CODE | DPL_USER);
-  uint64_t data_selector =
-      kernel_task ? GDT_KERNEL_DATA : (GDT_USER_DATA | DPL_USER);
+  printf("[task_create] task_list_allocate done %p\n", target);
+  uint64_t code_selector = kernel_task ? GDT_KERNEL_CODE : (GDT_USER_CODE | DPL_USER);
+  uint64_t data_selector = kernel_task ? GDT_KERNEL_DATA : (GDT_USER_DATA | DPL_USER);
+
+  target->core_affinity = TASK_AFFINITY_BSP;//TASK_AFFINITY_BSP only BSP may run
 
   target->registers.ds = data_selector;
   target->registers.cs = code_selector;
@@ -124,44 +155,72 @@ Task *task_create(uint32_t id, uint64_t rip, bool kernel_task, uint64_t *pagedir
   target->state = TASK_STATE_CREATED; // TASK_STATE_READY
   // target->pagedir = pagedir;
   target->infoPd = taskInfoPdAllocate(false);
+  printf("[task_create] infoPd allocated %p\n", target->infoPd);
+  if (!target->infoPd) {
+      printf("task_create: infoPd allocation failed\n");
+      free(target);
+      return NULL;
+  }
   target->infoPd->pagedir = pagedir; // no lock cause only we use it
+  printf("[task_create] pagedir set %p\n", pagedir);
+
+  printf("[task_create] infoSignals done\n");
 
   void  *tssRsp = virtual_allocate(USER_STACK_PAGES);
   size_t tssRspSize = USER_STACK_PAGES * BLOCK_SIZE;
   memset(tssRsp, 0, tssRspSize);
   target->whileTssRsp = (uint64_t)tssRsp + tssRspSize;
+  if (kernel_task)
+    target->registers.usermode_rsp = (uint64_t)tssRsp + tssRspSize / 2;
 
   void  *syscalltssRsp = virtual_allocate(USER_STACK_PAGES);
   size_t syscalltssRspSize = USER_STACK_PAGES * BLOCK_SIZE;
   memset(syscalltssRsp, 0, syscalltssRspSize);
   target->whileSyscallRsp = (uint64_t)syscalltssRsp + syscalltssRspSize;
 
+  printf("[task_create] stacks done\n");
+
   target->infoFs = taskInfoFsAllocate();
+      printf("[task_create] infoFs done\n");
   target->infoFiles = taskInfoFilesAllocate();
+      printf("[task_create] infoFiles done\n");
   target->infoSignals = taskInfoSignalAllocate();
+      printf("[task_create] infoSignals done\n");
 
   LinkedListInit(&target->dsChildTerminated, sizeof(KilledInfo));
   LinkedListInit(&target->dsSysIntr, sizeof(TaskSysInterrupted));
 
   memset(target->fpuenv, 0, 512);
-  ((uint16_t *)target->fpuenv)[0] = 0x37f;
+  ((uint16_t *)target->fpuenv)[0] = 0x37f;           // FCW at offset 0
+  *(uint32_t *)(&target->fpuenv[24]) = 0x1f80;        // MXCSR at offset 24 in fxsave area
   target->mxcsr = 0x1f80;
+
+  target->core_affinity = TASK_AFFINITY_BSP;
+
 
   task_attach_def_termios(target);
 
   // just in case it ends up becoming an orphan
   target->parent = firstTask;
 
+      printf("[task_create] finished\n");
   return target;
 }
 
 Task *task_create_kernel(uint64_t rip, uint64_t rdi) {
-  Task *target =
-      task_create(task_generate_id(), rip, true, page_directory_allocate(), 0, 0);
-  stack_generate_kernel(target, rdi);
+  register uint64_t rsp;
+  asm volatile("mov %%rsp, %0" : "=r"(rsp));
+  printf("[task] current rsp = 0x%lx\n", rsp);
+
+  Task *target = task_create(task_generate_id(), rip, true, page_directory_allocate(), 0, 0);
+  printf("[task] task_create: after list_allocate\n");
+  // if (!target->kernel_task)
+  //   stack_generate_kernel(target, rdi);  // stack_generate_kernel NOT needed for kernel tasks, TODO: maybe split into two functions? and make userspace one do the stack generation part?
+  printf("[task] task_create: after InfoPdAllocate\n");
   task_create_finish(target);
   return target;
 }
+
 
 void task_name_kernel(Task *target, const char *str, int len) {
   target->cmdline = malloc(len);
@@ -183,20 +242,22 @@ void task_adjust_heap(Task *task, size_t new_heap_end, size_t *start,
   size_t old_page_top = CEILING_DIVISION(*end, PAGE_SIZE);
   size_t new_page_top = CEILING_DIVISION(new_heap_end, PAGE_SIZE);
 
-  if (new_page_top > old_page_top) {
-    size_t num = new_page_top - old_page_top;
+  // Always try to map pages for the range [old_page_top, new_page_top).
+  // If the heap is currently empty, we must map at least the page that
+  // contains *end, even when new_page_top == old_page_top.
+  if (new_page_top >= old_page_top) {
+      size_t num = new_page_top - old_page_top;
+      if (num == 0 && *end == *start && new_heap_end > *start) 
+          num = 1;                     // first allocation – map the initial page
 
-    for (size_t i = 0; i < num; i++) {
-      size_t virt = old_page_top * PAGE_SIZE + i * PAGE_SIZE;
-      if (virtual_to_physical(virt))
-        continue;
-
-      size_t phys = physical_allocate(1);
-
-      virtual_map(virt, phys, PF_RW | PF_USER);
-
-      memset((void *)virt, 0, PAGE_SIZE);
-    }
+      for (size_t i = 0; i < num; i++) {
+          size_t virt = old_page_top * PAGE_SIZE + i * PAGE_SIZE;
+          if (virtual_to_physical(virt))   // already mapped? skip
+              continue;
+          size_t phys = physical_allocate(1);
+          virtual_map(virt, phys, PF_RW | PF_USER);
+          memset((void *)virt, 0, PAGE_SIZE);
+      }
   } else if (new_page_top < old_page_top) {
     printf("[task] New page is lower than old page: id{%d}\n", task->id);
     task_kill(task->id, 139);
@@ -207,17 +268,16 @@ void task_adjust_heap(Task *task, size_t new_heap_end, size_t *start,
 }
 
 void task_call_reaper(Task *target) {
-  while (true) {
+    target->reaper_next = nullptr;
     spinlock_acquire(&LOCK_REAPER);
-    if (!reaperTask) {
-      // there is space!
-      reaperTask = target;
-      spinlock_release(&LOCK_REAPER);
-      return;
+    if (!reaper_queue_head) {
+        reaper_queue_head = target;
+        reaper_queue_tail = target;
+    } else {
+        reaper_queue_tail->reaper_next = target;
+        reaper_queue_tail = target;
     }
     spinlock_release(&LOCK_REAPER);
-    hand_control();
-  }
 }
 
 void task_kill(uint32_t id, uint16_t ret) {
@@ -225,8 +285,11 @@ void task_kill(uint32_t id, uint16_t ret) {
   if (!task)
     return;
 
-  // Notify that poor parent... they must've been searching all over the
-  // place!
+  if (task->state == TASK_STATE_DEAD)
+    return;
+
+
+  // Notify the parent about the child's termination
   if (task->parent && !task->noInformParent) {
     spinlock_acquire(&task->parent->LOCK_CHILD_TERM);
     KilledInfo *info = (KilledInfo *)LinkedListAllocate(
@@ -237,17 +300,16 @@ void task_kill(uint32_t id, uint16_t ret) {
     if (task->parent->state == TASK_STATE_WAITING_CHILD ||
         (task->parent->state == TASK_STATE_WAITING_CHILD_SPECIFIC &&
          task->parent->waitingForPid == task->id))
-      task->parent->state = TASK_STATE_READY;
+      __sync_lock_test_and_set((uint8_t *)&task->parent->state, (uint8_t)TASK_STATE_READY);
     spinlock_release(&task->parent->LOCK_CHILD_TERM);
     atomicBitmapSet(&task->parent->sigPendingList, SIGCHLD);
   }
 
   // vfork() children need to notify parents no matter what
   if (task->parent && task->parent->state == TASK_STATE_WAITING_VFORK)
-    task->parent->state = TASK_STATE_READY;
+    __sync_lock_test_and_set((uint8_t *)&task->parent->state, (uint8_t)TASK_STATE_READY);
 
   if (task->tidptr) {
-    // *task->tidptr = 0;
     atomicWrite32((uint32_t *)task->tidptr, 0);
     futexSyscall((uint32_t *)task->tidptr, FUTEX_WAKE, 1, 0, 0, 0);
   }
@@ -255,18 +317,19 @@ void task_kill(uint32_t id, uint16_t ret) {
   // close any left open files
   taskInfoFilesDiscard(task->infoFiles, task);
 
-  // if (!parentVfork)
-  //   page_directory_free(task->pagedir);
+  // release the page directory (only userspace portions)
   taskInfoPdDiscard(task->infoPd);
-  // ^ only changes userspace locations so we don't need to change our pagedir
+
+  // NEW: release the other two shared structures (filesystem info and signal handlers)
+  taskInfoFsDiscard(task->infoFs);
+  taskInfoSignalDiscard(task->infoSignals);
 
   // the "reaper" thread will finish everything in a safe context
   task_call_reaper(task);
   task->state = TASK_STATE_DEAD;
 
-  if (currentTask == task) {
+  if (current_task_this_core() == task) {
     // we're most likely in a syscall context, so...
-    // task_killCleanup(task); // left for sched
     asm volatile("sti");
     // wait until we're outta here
     while (1) {
@@ -310,7 +373,7 @@ Task *task_get(uint32_t id) {
 }
 
 uint64_t taskIdCurr = 1;
-uint64_t task_generate_id() { return taskIdCurr++; }
+uint64_t task_generate_id() { return __sync_fetch_and_add(&taskIdCurr, (uint64_t)1); }
 
 
 TaskInfoFs *taskInfoFsClone(TaskInfoFs *old) {
@@ -375,7 +438,7 @@ TaskInfoFiles *taskInfoFilesAllocate()
   target->fdBitmap = calloc(target->rlimitFdsHard / 8, 1);
   return target;
 }
-
+ 
 void taskInfoFilesDiscard(TaskInfoFiles *target, void *task) {
   spinlock_cnt_write_acquire(&target->WLOCK_FILES);
   target->utilizedBy--;
@@ -464,10 +527,10 @@ TaskInfoPagedir *taskInfoPdClone(TaskInfoPagedir *old) {
 
 size_t task_change_cwd(char *newdir) {
   stat stat = {0};
-  spinlock_acquire(&currentTask->infoFs->LOCK_FS);
-  char *safeNewdir = fsSanitize(currentTask->infoFs->cwd, newdir);
-  spinlock_release(&currentTask->infoFs->LOCK_FS);
-  if (!fsStatByFilename(currentTask, safeNewdir, &stat)) {
+  spinlock_acquire(&current_task_this_core()->infoFs->LOCK_FS);
+  char *safeNewdir = fsSanitize(current_task_this_core()->infoFs->cwd, newdir);
+  spinlock_release(&current_task_this_core()->infoFs->LOCK_FS);
+  if (!fsStatByFilename(current_task_this_core(), safeNewdir, &stat)) {
     free(safeNewdir);
     return ERR(ENOENT);
   }
@@ -478,10 +541,10 @@ size_t task_change_cwd(char *newdir) {
   }
 
   size_t len = strlen(safeNewdir) + 1;
-  spinlock_acquire(&currentTask->infoFs->LOCK_FS);
-  currentTask->infoFs->cwd = realloc(currentTask->infoFs->cwd, len);
-  memcpy(currentTask->infoFs->cwd, safeNewdir, len);
-  spinlock_release(&currentTask->infoFs->LOCK_FS);
+  spinlock_acquire(&current_task_this_core()->infoFs->LOCK_FS);
+  current_task_this_core()->infoFs->cwd = realloc(current_task_this_core()->infoFs->cwd, len);
+  memcpy(current_task_this_core()->infoFs->cwd, safeNewdir, len);
+  spinlock_release(&current_task_this_core()->infoFs->LOCK_FS);
 
   free(safeNewdir);
   return 0;
@@ -524,33 +587,35 @@ Task *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, int clone_flags,
   Task *target = task_list_allocate();
 
   if (!(clone_flags & CLONE_VM)) {
-    target->infoPd = taskInfoPdClone(currentTask->infoPd);
+    target->infoPd = taskInfoPdClone(current_task_this_core()->infoPd);
   } else {
-    TaskInfoPagedir *share = currentTask->infoPd;
+    TaskInfoPagedir *share = current_task_this_core()->infoPd;
     spinlock_acquire(&share->LOCK_PD);
     share->utilizedBy++;
     spinlock_release(&share->LOCK_PD);
     target->infoPd = share; // share it yk!
   }
 
+  target->core_affinity = TASK_AFFINITY_BSP;   // only BSP may run
+
   target->id = task_generate_id();
   target->tgid = target->id;
-  target->pgid = currentTask->pgid;
-  target->sid = currentTask->sid;
-  target->ctrlPty = currentTask->ctrlPty;
-  target->kernel_task = currentTask->kernel_task;
+  target->pgid = current_task_this_core()->pgid;
+  target->sid = current_task_this_core()->sid;
+  target->ctrlPty = current_task_this_core()->ctrlPty;
+  target->kernel_task = current_task_this_core()->kernel_task;
   target->state = TASK_STATE_CREATED;
 
-  target->cmdlineLen = currentTask->cmdlineLen;
+  target->cmdlineLen = current_task_this_core()->cmdlineLen;
   target->cmdline = malloc(target->cmdlineLen);
-  memcpy(target->cmdline, currentTask->cmdline, target->cmdlineLen);
-  if (currentTask->execname)
-    target->execname = strdup(currentTask->execname);
+  memcpy(target->cmdline, current_task_this_core()->cmdline, target->cmdlineLen);
+  if (current_task_this_core()->execname)
+    target->execname = strdup(current_task_this_core()->execname);
 
   if (clone_flags & CLONE_THREAD)
-    target->tgid = currentTask->tgid;
+    target->tgid = current_task_this_core()->tgid;
 
-  // target->registers = currentTask->registers;
+  // target->registers = current_task_this_core()->registers;
   memcpy(&target->registers, cpu, sizeof(AsmPassedInterrupt));
   void  *tssRsp = virtual_allocate(USER_STACK_PAGES);
   size_t tssRspSize = USER_STACK_PAGES * BLOCK_SIZE;
@@ -562,23 +627,23 @@ Task *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, int clone_flags,
   memset(syscalltssRsp, 0, syscalltssRspSize);
   target->whileSyscallRsp = (uint64_t)syscalltssRsp + syscalltssRspSize;
 
-  target->fsbase = currentTask->fsbase;
-  target->gsbase = currentTask->gsbase;
+  target->fsbase = current_task_this_core()->fsbase;
+  target->gsbase = current_task_this_core()->gsbase;
 
-  // target->heap_start = currentTask->heap_start;
-  // target->heap_end = currentTask->heap_end;
+  // target->heap_start = current_task_this_core()->heap_start;
+  // target->heap_end = current_task_this_core()->heap_end;
 
-  // target->mmap_start = currentTask->mmap_start;
-  // target->mmap_end = currentTask->mmap_end;
+  // target->mmap_start = current_task_this_core()->mmap_start;
+  // target->mmap_end = current_task_this_core()->mmap_end;
 
-  target->term = currentTask->term;
+  target->term = current_task_this_core()->term;
 
-  target->tmpRecV = currentTask->tmpRecV;
+  target->tmpRecV = current_task_this_core()->tmpRecV;
 
   if (!(clone_flags & CLONE_FS))
-    target->infoFs = taskInfoFsClone(currentTask->infoFs);
+    target->infoFs = taskInfoFsClone(current_task_this_core()->infoFs);
   else {
-    TaskInfoFs *share = currentTask->infoFs;
+    TaskInfoFs *share = current_task_this_core()->infoFs;
     spinlock_acquire(&share->LOCK_FS);
     share->utilizedBy++;
     spinlock_release(&share->LOCK_FS);
@@ -587,9 +652,9 @@ Task *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, int clone_flags,
 
   if (!(clone_flags & CLONE_FILES)) {
     target->infoFiles = taskInfoFilesAllocate();
-    task_files_copy(currentTask, target, false);
+    task_files_copy(current_task_this_core(), target, false);
   } else {
-    TaskInfoFiles *share = currentTask->infoFiles;
+    TaskInfoFiles *share = current_task_this_core()->infoFiles;
     spinlock_cnt_write_acquire(&share->WLOCK_FILES);
     share->utilizedBy++;
     spinlock_cnt_write_release(&share->WLOCK_FILES);
@@ -597,9 +662,9 @@ Task *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, int clone_flags,
   }
 
   if (!(clone_flags & CLONE_SIGHAND))
-    target->infoSignals = taskInfoSignalClone(currentTask->infoSignals);
+    target->infoSignals = taskInfoSignalClone(current_task_this_core()->infoSignals);
   else {
-    TaskInfoSignal *share = currentTask->infoSignals;
+    TaskInfoSignal *share = current_task_this_core()->infoSignals;
     spinlock_acquire(&share->LOCK_SIGNAL);
     share->utilizedBy++;
     spinlock_release(&share->LOCK_SIGNAL);
@@ -610,7 +675,7 @@ Task *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, int clone_flags,
   LinkedListInit(&target->dsSysIntr, sizeof(TaskSysInterrupted));
 
   // they get inherited, but can still be changed thread-wise!
-  target->sigBlockList = currentTask->sigBlockList;
+  target->sigBlockList = current_task_this_core()->sigBlockList;
 
   // returns zero yk
   target->registers.rax = 0;
@@ -624,18 +689,18 @@ Task *task_fork(AsmPassedInterrupt *cpu, uint64_t rsp, int clone_flags,
   target->registers.usermode_ss = GDT_USER_DATA | DPL_USER;
 
   // since the scheduler, our fpu state might've changed
-  asm volatile(" fxsave %0 " ::"m"(currentTask->fpuenv));
-  asm("stmxcsr (%%rax)" : : "a"(&currentTask->mxcsr));
+  asm volatile(" fxsave %0 " ::"m"(current_task_this_core()->fpuenv));
+  asm("stmxcsr (%%rax)" : : "a"(&current_task_this_core()->mxcsr));
 
   // yk
-  target->parent = currentTask;
-  target->pgid = currentTask->pgid;
+  target->parent = current_task_this_core();
+  target->pgid = current_task_this_core()->pgid;
 
   // fpu stuff
-  memcpy(target->fpuenv, currentTask->fpuenv, 512);
-  target->mxcsr = currentTask->mxcsr;
+  memcpy(target->fpuenv, current_task_this_core()->fpuenv, 512);
+  target->mxcsr = current_task_this_core()->mxcsr;
 
-  target->extras = currentTask->extras;
+  target->extras = current_task_this_core()->extras;
 
   if (spinup)
     task_create_finish(target);
@@ -660,6 +725,10 @@ void tasks_initialize()
     printf("[tasks] enter tasks_initialize\n");
     #endif
   firstTask = (Task *)malloc(sizeof(Task));
+  if (!firstTask) {
+      printf("[tasks] FATAL: malloc failed for firstTask\n");
+      Halt();
+  }  
   memset(firstTask, 0, sizeof(Task));
 
   #if defined(DEBUG_TASK)
@@ -667,18 +736,20 @@ void tasks_initialize()
     #endif
 
     
-  currentTask = firstTask;
-  currentTask->id = KERNEL_TASK_ID;
-  currentTask->state = TASK_STATE_READY;
-  currentTask->infoPd = taskInfoPdAllocate(false);
-  currentTask->infoPd->pagedir = get_page_directory();
-  currentTask->kernel_task = true;
-  currentTask->infoFs = taskInfoFsAllocate();
-  currentTask->infoFiles = taskInfoFilesAllocate();
-  currentTask->infoFiles->fdBitmap[0] = (uint8_t)-1;
-  currentTask->infoSignals = 0; // no, just no!
-  LinkedListInit(&currentTask->dsChildTerminated, sizeof(KilledInfo));
-  LinkedListInit(&currentTask->dsSysIntr, sizeof(TaskSysInterrupted));
+    currentTask = firstTask;
+    current_task_this_core()->core_affinity = TASK_AFFINITY_BSP;
+  per_lapic_core_current_task[apicGetBspLapicId()] = current_task_this_core();
+  current_task_this_core()->id = KERNEL_TASK_ID;
+  current_task_this_core()->state = TASK_STATE_READY;
+  current_task_this_core()->infoPd = taskInfoPdAllocate(false);
+  current_task_this_core()->infoPd->pagedir = get_page_directory();
+  current_task_this_core()->kernel_task = true;
+  current_task_this_core()->infoFs = taskInfoFsAllocate();
+  current_task_this_core()->infoFiles = taskInfoFilesAllocate();
+  current_task_this_core()->infoFiles->fdBitmap[0] = (uint8_t)-1;
+  current_task_this_core()->infoSignals = 0; // no, just no!
+  LinkedListInit(&current_task_this_core()->dsChildTerminated, sizeof(KilledInfo));
+  LinkedListInit(&current_task_this_core()->dsSysIntr, sizeof(TaskSysInterrupted));
   task_name_kernel(currentTask, entryCmdline, sizeof(entryCmdline));
   #if defined(DEBUG_TASK)
     printf("[tasks] initialized firstTask \n");
@@ -687,7 +758,7 @@ void tasks_initialize()
   void  *tssRsp = virtual_allocate(USER_STACK_PAGES);
   size_t tssRspSize = USER_STACK_PAGES * BLOCK_SIZE;
   memset(tssRsp, 0, tssRspSize);
-  currentTask->whileTssRsp = (uint64_t)tssRsp + tssRspSize;
+  current_task_this_core()->whileTssRsp = (uint64_t)tssRsp + tssRspSize;
   task_attach_def_termios(currentTask);
 
   #if defined(DEBUG_TASK)
@@ -701,6 +772,132 @@ void tasks_initialize()
 
   // create a dummy task in case the scheduler has nothing to do
   dummyTask = task_create_kernel((uint64_t)kernel_dummy_entry, 0);
+  dummyTask->core_affinity = TASK_AFFINITY_BSP; 
   dummyTask->state = TASK_STATE_DUMMY;
   task_name_kernel(dummyTask, dummyCmdline, sizeof(dummyCmdline));
+}
+
+// Safely free everything a dead task still holds.
+// Must be called repeatedly from a kernel context (BSP idle loop or a dedicated reaper task).
+void task_reaper_loop(void) {
+    while (true) {
+        spinlock_acquire(&LOCK_REAPER);
+        Task *victim = reaper_queue_head;
+        if (victim) {
+            reaper_queue_head = victim->reaper_next;
+            if (!reaper_queue_head)
+                reaper_queue_tail = nullptr;
+        }
+        spinlock_release(&LOCK_REAPER);
+
+        if (!victim)
+            return;
+
+        if (victim->whileTssRsp) {
+            void *base = (void *)(victim->whileTssRsp - USER_STACK_PAGES * BLOCK_SIZE);
+            virtual_free(base, USER_STACK_PAGES);
+        }
+        if (victim->whileSyscallRsp) {
+            void *base = (void *)(victim->whileSyscallRsp - USER_STACK_PAGES * BLOCK_SIZE);
+            virtual_free(base, USER_STACK_PAGES);
+        }
+        if (victim->cmdline)  free(victim->cmdline);
+        if (victim->execname) free(victim->execname);
+        task_list_destroy(victim);
+    }
+}
+
+// Optional dedicated reaper task entry – use only if you want a
+// separate task instead of running the reaper inside the BSP idle loop.
+void reaper_kernel_task_entry(void) {
+    while (1) {
+        task_reaper_loop();
+        hand_control();
+    }
+}
+
+// One‑shot kernel task entry.
+// The real entry point is passed in RDI (the second argument to task_create_kernel).
+void kernel_one_shot_entry(void) {
+    // Retrieve the function pointer that was stored in the task's RDI
+    void (*real_func)(void) = (void (*)(void)) current_task_this_core()->registers.rdi;
+
+    real_func();                               // execute the actual work
+
+    // Self‑terminate (this call never returns)
+    task_kill(current_task_this_core()->id, 0);
+
+    // Paranoia – should never get here
+    while (1) { asm volatile("pause"); }
+}
+
+// Create a kernel task and give it a name in one call.
+// Returns the Task* if you need it, otherwise you can ignore the return value.
+Task* task_create_named_kernel(uint64_t rip, uint64_t rdi,
+                                      const char *name) {
+    Task *t = task_create_kernel(rip, rdi);
+    if (t && name)
+        task_name_kernel(t, name, strlen(name));
+    return t;
+}
+
+static void check_stack_overlap(void *vaddr, size_t pages) {
+    uint64_t alloc_virt_start = (uint64_t)vaddr;
+    uint64_t alloc_virt_end   = alloc_virt_start + pages * BLOCK_SIZE;
+
+    // Physical pages we just received (via HHDM, so phys = vaddr - hhdmOffset)
+    uint64_t alloc_phys_start = alloc_virt_start - bootloader.hhdmOffset;
+    uint64_t alloc_phys_end   = alloc_phys_start + pages * BLOCK_SIZE;
+
+    spinlock_cnt_read_acquire(&TASK_LL_MODIFY);
+
+    for (Task *t = firstTask; t != NULL; t = t->next) {
+        if (t->state == TASK_STATE_DEAD)
+            continue;
+
+        // Check virtual overlap (as before)
+        uint64_t tss_base = t->whileTssRsp - USER_STACK_PAGES * BLOCK_SIZE;
+        uint64_t tss_end  = t->whileTssRsp;
+        if (alloc_virt_start < tss_end && alloc_virt_end > tss_base) {
+            printf("[FATAL] Virtual overlap with task %d kernel stack\n", t->id);
+            Halt();
+        }
+        uint64_t sys_base = t->whileSyscallRsp - USER_STACK_PAGES * BLOCK_SIZE;
+        uint64_t sys_end  = t->whileSyscallRsp;
+        if (alloc_virt_start < sys_end && alloc_virt_end > sys_base) {
+            printf("[FATAL] Virtual overlap with task %d syscall stack\n", t->id);
+            Halt();
+        }
+
+        // NEW: Check physical overlap – does our new physical range
+        //       coincide with the physical pages backing another task’s stacks?
+        // We translate each task’s stack virtual base to physical.
+        uint64_t tss_virt_base = tss_base;
+        uint64_t tss_phys_base = virtual_to_physical(tss_virt_base);
+        if (tss_phys_base) {
+            uint64_t tss_phys_end = tss_phys_base + USER_STACK_PAGES * BLOCK_SIZE;
+            if (alloc_phys_start < tss_phys_end && alloc_phys_end > tss_phys_base) {
+                printf("[FATAL] Physical overlap: new phys 0x%lx-0x%lx "
+                       "clashes with task %d kernel stack (virt 0x%lx-0x%lx -> phys 0x%lx-0x%lx)\n",
+                       alloc_phys_start, alloc_phys_end, t->id,
+                       tss_virt_base, tss_end, tss_phys_base, tss_phys_end);
+                Halt();
+            }
+        }
+
+        uint64_t sys_virt_base = sys_base;
+        uint64_t sys_phys_base = virtual_to_physical(sys_virt_base);
+        if (sys_phys_base) {
+            uint64_t sys_phys_end = sys_phys_base + USER_STACK_PAGES * BLOCK_SIZE;
+            if (alloc_phys_start < sys_phys_end && alloc_phys_end > sys_phys_base) {
+                printf("[FATAL] Physical overlap: new phys 0x%lx-0x%lx "
+                       "clashes with task %d syscall stack (virt 0x%lx-0x%lx -> phys 0x%lx-0x%lx)\n",
+                       alloc_phys_start, alloc_phys_end, t->id,
+                       sys_virt_base, sys_end, sys_phys_base, sys_phys_end);
+                Halt();
+            }
+        }
+    }
+
+    spinlock_cnt_read_release(&TASK_LL_MODIFY);
 }

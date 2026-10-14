@@ -19,14 +19,17 @@ static uint64_t syscallMmap(size_t addr, size_t length, int prot, int flags,
   if (flags & MAP_FIXED && flags & MAP_ANONYMOUS) {
     size_t pages = CEILING_DIVISION(length, PAGE_SIZE);
 
-    spinlock_acquire(&currentTask->infoPd->LOCK_PD);
+    spinlock_acquire(&current_task_this_core()->infoPd->LOCK_PD);
     size_t end = addr + pages * PAGE_SIZE;
-    if (end > currentTask->infoPd->mmap_end)
-      currentTask->infoPd->mmap_end = end;
-    spinlock_release(&currentTask->infoPd->LOCK_PD);
+    if (end > current_task_this_core()->infoPd->mmap_end)
+      current_task_this_core()->infoPd->mmap_end = end;
+    spinlock_release(&current_task_this_core()->infoPd->LOCK_PD);
 
     for (int i = 0; i < pages; i++)
+    {
       virtual_map(addr + i * PAGE_SIZE, physical_allocate(1), PF_RW | PF_USER);
+      tlb_shootdown_all();
+    }
 
     memset((void *)addr, 0, pages * PAGE_SIZE);
     return addr;
@@ -35,12 +38,12 @@ static uint64_t syscallMmap(size_t addr, size_t length, int prot, int flags,
   if (!addr && fd == -1 &&
       (flags & ~MAP_FIXED & ~MAP_PRIVATE) ==
           MAP_ANONYMOUS) { // before: !addr &&
-    spinlock_acquire(&currentTask->infoPd->LOCK_PD);
-    size_t curr = currentTask->infoPd->mmap_end;
-    task_adjust_heap(currentTask, currentTask->infoPd->mmap_end + length,
-                   &currentTask->infoPd->mmap_start,
-                   &currentTask->infoPd->mmap_end);
-    spinlock_release(&currentTask->infoPd->LOCK_PD);
+    spinlock_acquire(&current_task_this_core()->infoPd->LOCK_PD);
+    size_t curr = current_task_this_core()->infoPd->mmap_end;
+    task_adjust_heap(currentTask, current_task_this_core()->infoPd->mmap_end + length,
+                   &current_task_this_core()->infoPd->mmap_start,
+                   &current_task_this_core()->infoPd->mmap_end);
+    spinlock_release(&current_task_this_core()->infoPd->LOCK_PD);
     memset((void *)curr, 0, length);
     return curr;
   } else if (!addr && fd == -1 &&
@@ -50,9 +53,9 @@ static uint64_t syscallMmap(size_t addr, size_t length, int prot, int flags,
                  MAP_SHARED) {
     printf("[syscalls::mmap] FATAL! Shared memory is unstable asf!\n");
     Halt();
-    /*size_t base = currentTask->mmap_end;
+    /*size_t base = current_task_this_core()->mmap_end;
     size_t pages = CEILING_DIVISION(length, PAGE_SIZE);
-    currentTask->mmap_end += pages * PAGE_SIZE;
+    current_task_this_core()->mmap_end += pages * PAGE_SIZE;
 
     for (int i = 0; i < pages; i++)
       virtual_map(base + i * PAGE_SIZE, physical_allocate(1),
@@ -88,10 +91,10 @@ static size_t syscallMunmap(uint64_t addr, size_t len) {
   if ((addr % PAGE_SIZE) != 0 || !len)
     return ERR(EINVAL);
 
-  spinlock_acquire(&currentTask->infoPd->LOCK_PD);
-  bool insideBounds = addr >= currentTask->infoPd->mmap_start &&
-                      (addr + len) <= currentTask->infoPd->mmap_end;
-  spinlock_release(&currentTask->infoPd->LOCK_PD);
+  spinlock_acquire(&current_task_this_core()->infoPd->LOCK_PD);
+  bool insideBounds = addr >= current_task_this_core()->infoPd->mmap_start &&
+                      (addr + len) <= current_task_this_core()->infoPd->mmap_end;
+  spinlock_release(&current_task_this_core()->infoPd->LOCK_PD);
   if (!insideBounds)
     return ERR(EINVAL);
 
@@ -102,6 +105,7 @@ static size_t syscallMunmap(uint64_t addr, size_t len) {
       continue;
     // printf("%lx %lx\n", addr + i * PAGE_SIZE, phys);
     virtual_map(addr + i * PAGE_SIZE, 0, PF_USER);
+    tlb_shootdown_all();
     // PhysicalFree(phys, 1); will be done by ^
   }
   return 0;
@@ -110,25 +114,25 @@ static size_t syscallMunmap(uint64_t addr, size_t len) {
 #define SYSCALL_BRK 12
 static uint64_t syscallBrk(uint64_t brk) {
   size_t ret = 0;
-  spinlock_acquire(&currentTask->infoPd->LOCK_PD);
+  spinlock_acquire(&current_task_this_core()->infoPd->LOCK_PD);
 
   if (!brk) {
-    ret = currentTask->infoPd->heap_end;
+    ret = current_task_this_core()->infoPd->heap_end;
     goto cleanup;
   }
 
-  if (brk < currentTask->infoPd->heap_end) {
+  if (brk < current_task_this_core()->infoPd->heap_end) {
     dbgSysFailf("inside heap limits");
     ret = -1;
     goto cleanup;
   }
 
-  task_adjust_heap(currentTask, brk, &currentTask->infoPd->heap_start,
-                 &currentTask->infoPd->heap_end);
+  task_adjust_heap(currentTask, brk, &current_task_this_core()->infoPd->heap_start,
+                 &current_task_this_core()->infoPd->heap_end);
 
-  ret = currentTask->infoPd->heap_end;
+  ret = current_task_this_core()->infoPd->heap_end;
 cleanup:
-  spinlock_release(&currentTask->infoPd->LOCK_PD);
+  spinlock_release(&current_task_this_core()->infoPd->LOCK_PD);
   return ret;
 }
 

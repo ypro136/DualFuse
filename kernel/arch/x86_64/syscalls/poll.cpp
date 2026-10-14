@@ -155,19 +155,19 @@ void pollInstanceWait(PollInstance *instance, size_t expiry) {
   // spinlock_acquire(&instance->LOCK_POLL_INSTANCE);
   TaskListeners *listener =
       LinkedListAllocate(&instance->listeners, sizeof(TaskListeners));
-  listener->task = currentTask;
+  listener->task = current_task_this_core();
   if (instance->listening)
     printf("[poll::instance] WARN: Experiemental! > 1 listener bound!\n");
   instance->listening = true;
   if (expiry)
-    currentTask->forcefulWakeupTimeUnsafe = expiry;
-  task_spinlock_exit(currentTask, &LOCK_POLL_ROOT);
-  currentTask->extras &= ~EXTRAS_INVOLUTARY_WAKEUP; // clear
-  currentTask->state = TASK_STATE_BLOCKED;
+    current_task_this_core()->forcefulWakeupTimeUnsafe = expiry;
+  task_spinlock_exit(current_task_this_core(), &LOCK_POLL_ROOT);
+  current_task_this_core()->extras &= ~EXTRAS_INVOLUTARY_WAKEUP; // clear
+  current_task_this_core()->state = TASK_STATE_BLOCKED;
   hand_control();
-  assert(!currentTask->forcefulWakeupTimeUnsafe);
+  assert(!current_task_this_core()->forcefulWakeupTimeUnsafe);
 
-  if (currentTask->extras & EXTRAS_INVOLUTARY_WAKEUP) {
+  if (current_task_this_core()->extras & EXTRAS_INVOLUTARY_WAKEUP) {
     spinlock_acquire(&LOCK_POLL_ROOT);
     if (instance->listening) // no race conds here!
       pollInstanceRingInner(instance, true);
@@ -177,10 +177,10 @@ void pollInstanceWait(PollInstance *instance, size_t expiry) {
 
 // epoll API
 size_t epollCreate1(int flags) {
-  size_t epollFd = fsUserOpen(currentTask, "/dev/null", O_RDWR, 0);
+  size_t epollFd = fsUserOpen(current_task_this_core(), "/dev/null", O_RDWR, 0);
   assert(!RET_IS_ERR(epollFd));
 
-  OpenFile *epollNode = fsUserGetNode(currentTask, epollFd);
+  OpenFile *epollNode = fsUserGetNode(current_task_this_core(), epollFd);
   assert(epollNode);
 
   if (flags & EPOLL_CLOEXEC)
@@ -275,7 +275,7 @@ size_t epollCtl(OpenFile *epollFd, int op, int fd, struct epoll_event *event) {
   spinlock_acquire(&epoll->LOCK_EPOLL);
   spinlock_acquire(&LOCK_POLL_ROOT);
 
-  OpenFile *fdNode = fsUserGetNode(currentTask, fd);
+  OpenFile *fdNode = fsUserGetNode(current_task_this_core(), fd);
   if (!fdNode) {
     ret = ERR(EBADF);
     goto cleanup;
@@ -375,7 +375,7 @@ size_t epollWait(OpenFile *epollFd, struct epoll_event *events, int maxevents,
     }
     spinlock_release(&epoll->LOCK_EPOLL);
 
-    sigexit = signalsPendingQuick(currentTask);
+    sigexit = signalsPendingQuick(current_task_this_core());
     if (ready > 0 || sigexit) { // break immidiately!
       spinlock_release(&LOCK_POLL_ROOT);
       break;
@@ -504,7 +504,7 @@ size_t poll(struct pollfd *fds, int nfds, int timeout) {
       fds[i].revents = 0; // zero it out first
       if (fds[i].fd < 0)
         continue;
-      OpenFile *fd = fsUserGetNode(currentTask, fds[i].fd);
+      OpenFile *fd = fsUserGetNode(current_task_this_core(), fds[i].fd);
       if (!fd)
         continue;
       if (!fd->handlers->internalPoll) {
@@ -545,7 +545,7 @@ size_t poll(struct pollfd *fds, int nfds, int timeout) {
     }
     first = true;
 
-    sigexit = signalsPendingQuick(currentTask);
+    sigexit = signalsPendingQuick(current_task_this_core());
     if (ret > 0 || sigexit) { // return immidiately!
       spinlock_release(&LOCK_POLL_ROOT);
       break;

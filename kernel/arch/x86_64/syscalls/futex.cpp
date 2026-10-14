@@ -55,7 +55,7 @@ cleanup:
 // todo: ensure addr exists on-demand (when implemented)
 size_t futexSyscall(uint32_t *addr, int op, uint32_t value,
                     struct timespec *utime, uint32_t *addr2, uint32_t value3) {
-  /* Don't use currentTask here as FUTEX_WAKE is used by task exit */
+  /* Don't use current_task_this_core() here as FUTEX_WAKE is used by task exit */
 
   /*printf("FUTEX! HIDE THE KIDS!! addr{%lx} op{%x} value{%d} utime{%lx} "
          "uaddr2{%lx} value3{%d}\n",
@@ -95,23 +95,23 @@ size_t futexSyscall(uint32_t *addr, int op, uint32_t value,
 
     Futex *futex = futexFind(phys);
     // if (private)
-    //   futex->pid = currentTask->pgid;
+    //   futex->pid = current_task_this_core()->pgid;
 
     FutexAsleep *asleep =
         LinkedListAllocate(&futex->firstAsleep, sizeof(FutexAsleep));
     asleep->above = futex;
-    asleep->task = currentTask;
+    asleep->task = current_task_this_core();
 
     // spinlock_release(&futex->LOCK_PROP);
-    task_spinlock_exit(currentTask, &futex->LOCK_PROP);
+    task_spinlock_exit(current_task_this_core(), &futex->LOCK_PROP);
     if (utime)
-      currentTask->forcefulWakeupTimeUnsafe =
+      current_task_this_core()->forcefulWakeupTimeUnsafe =
           timerTicks + CEILING_DIVISION(utime->tv_nsec, 1000000) +
           utime->tv_sec * 1000;
-    currentTask->state = TASK_STATE_FUTEX;
-    while (currentTask->state != TASK_STATE_READY)
+    current_task_this_core()->state = TASK_STATE_FUTEX;
+    while (current_task_this_core()->state != TASK_STATE_READY)
       hand_control();
-    assert(!currentTask->forcefulWakeupTimeUnsafe);
+    assert(!current_task_this_core()->forcefulWakeupTimeUnsafe);
 
     // figure out what happened to wake us up from our nap
     Futex *newfutex = asleep->above; // might've changed!
@@ -119,7 +119,7 @@ size_t futexSyscall(uint32_t *addr, int op, uint32_t value,
     if (asleep->awoken)
       ret = 0;
     else { // either timeout, or a pending signal
-      if (signalsPendingQuick(currentTask))
+      if (signalsPendingQuick(current_task_this_core()))
         ret = ERR(EINTR);
       else
         ret = ERR(ETIMEDOUT);
@@ -134,7 +134,7 @@ size_t futexSyscall(uint32_t *addr, int op, uint32_t value,
     break;
   }
   case FUTEX_WAKE: {
-    /* Don't use currentTask here as FUTEX_WAKE is used by task exit */
+    /* Don't use current_task_this_core() here as FUTEX_WAKE is used by task exit */
     uint8_t currentTask = 0;
     (void)currentTask;
 

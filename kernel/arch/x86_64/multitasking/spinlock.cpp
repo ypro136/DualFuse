@@ -1,58 +1,39 @@
 #include <spinlock.h>
-//#include <system.h>
-
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include <utility.h>
-
 #include <hcf.hpp>
 
-
-
-void spinlock_acquire(Spinlock *lock) 
-{
-  while (lock->locked)
-  {
-    hand_control();
-  }
+void spinlock_acquire(Spinlock *lock) {
+    while (__sync_lock_test_and_set((uint8_t *)&lock->locked, (uint8_t)1)) {
+        while (*(volatile uint8_t *)&lock->locked)
+            asm volatile("pause");
+    }
 }
 
-void spinlock_release(Spinlock *lock) 
-{
-  lock->locked = IS_NOT_LOCKED;
+void spinlock_release(Spinlock *lock) {
+    __sync_lock_release((uint8_t *)&lock->locked);
 }
-
-// Cnt spinlock is basically just a counter that increases for every read
-// operation. When something has to modify, it waits for it to become 0 and
-// makes it -1, not permitting any reads. Useful for linked lists..
 
 void spinlock_cnt_read_acquire(SpinlockCnt *lock) {
-  while (lock->cnt < 0)
-    hand_control();
-  lock->cnt++;
+    while (true) {
+        int64_t observed = __sync_fetch_and_add(&lock->cnt, (int64_t)0);
+        if (observed < 0) {
+            asm volatile("pause");
+            continue;
+        }
+        if (__sync_bool_compare_and_swap(&lock->cnt, observed, observed + 1))
+            return;
+    }
 }
 
 void spinlock_cnt_read_release(SpinlockCnt *lock) {
-  if (lock->cnt < 0) {
-    printf("[spinlock] Something very bad is going on...\n");
-    Halt();
-  }
-
-  lock->cnt--;
+    __sync_sub_and_fetch(&lock->cnt, (int64_t)1);
 }
 
 void spinlock_cnt_write_acquire(SpinlockCnt *lock) {
-  while (lock->cnt != 0)
-    hand_control();
-  lock->cnt = -1;
+    while (!__sync_bool_compare_and_swap(&lock->cnt, (int64_t)0, (int64_t)-1))
+        asm volatile("pause");
 }
 
 void spinlock_cnt_write_release(SpinlockCnt *lock) {
-  if (lock->cnt != -1) {
-    printf("[spinlock] Something very bad is going on...\n");
-    Halt();
-  }
-  lock->cnt = 0;
+    __sync_bool_compare_and_swap(&lock->cnt, (int64_t)-1, (int64_t)0);
 }

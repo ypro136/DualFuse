@@ -9,6 +9,10 @@
 
 static volatile Bitmap physical;
 
+extern uint64_t physical_used_blocks_count;
+extern uint64_t physical_total_blocks_count;
+
+
 void physical_memory_manager_initialize(uint64_t memory_map_Total, uint64_t memory_map_entry_count, struct limine_memmap_entry** memory_map_entries, uint64_t hhdmOffset);
 
 uint64_t physical_allocate(int pages);

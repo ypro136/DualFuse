@@ -1,20 +1,10 @@
 bits    64
 global asm_finalize_sched
 asm_finalize_sched:
-  ; rdi = switch stack pointer
-  ; rsi = next pagedir
-  ; rdx = old task pointer (for cleanup)
-
   mov rsp, rdi
   mov cr3, rsi
 
-  ; cleanup (WILL check task state, dw)
-;   mov rdi, rdx
-;   extern task_killCleanup
-;   call task_killCleanup
-
   pop rbp
-  ; mov ds, ebp
   mov es, ebp
 
   pop r15
@@ -33,28 +23,27 @@ asm_finalize_sched:
   pop rbx
   pop rax
 
-  add rsp, 16      ; pop error code and interrupt number
-  iretq            ; pops (CS, EIP, EFLAGS) and also (SS, ESP) if privilege change occurs
+  add rsp, 16
+  iretq
 
 global syscall_entry
 syscall_entry:
   swapgs
-  mov cr2, rax ; use cr2 as an extra register
-  mov rax, qword [gs:0] ; thread pointer
-  xchg rsp, rax ; switch stack ptrs
+  mov cr2, rax
+  mov rax, qword [gs:0]
+  xchg rsp, rax
 
   push rax
   mov rax, cr2
 
-  ; mimic: interrupt stuff
   push qword 0
   push qword 0
   push qword 0
   push qword 0
   push qword 0
 
-  push qword 0 ; error
-  push qword 0 ; interrupt
+  push qword 0
+  push qword 0
 
   push rax
   push rbx
@@ -100,10 +89,10 @@ syscall_entry:
   pop rbx
   pop rax
 
-  add rsp, 16      ; pop error code and interrupt number
-  add rsp, 40      ; pop other interrupt stuff
+  add rsp, 16
+  add rsp, 40
 
-  pop rsp ; reset rsp
+  pop rsp
 
   o64 sysret
 
@@ -131,22 +120,19 @@ isr_common:
     mov ds, bx
     mov es, bx
     mov ss, bx
-    ; mov fs, bx
-    ; mov gs, bx
 
-    ; mov rdi, rsp
-    ; extern handle_tssrsp
-    ; call handle_tssrsp
-    ; mov rsp, rax
+    mov rdi, rsp
+    extern handle_tssrsp
+    call handle_tssrsp
+    mov rsp, rax
 
-		mov rdi, rsp
+    mov rdi, rsp
     extern handle_interrupt
     call handle_interrupt
 
 global asm_isr_exit
 asm_isr_exit:
     pop rbp
-    ; mov ds, ebp
     mov es, ebp
 
     pop r15
@@ -165,28 +151,24 @@ asm_isr_exit:
     pop rbx
     pop rax
 
-    add rsp, 16      ; pop error code and interrupt number
-    iretq            ; pops (CS, EIP, EFLAGS) and also (SS, ESP) if privilege change occurs
-
-; generate isr stubs that jump to isr_common, in order to get a consistent stack frame
+    add rsp, 16
+    iretq
 
 %macro ISR_ERROR_CODE 1
 global isr%1
 isr%1:
-		; error code is already pushed
-    push %1   ; interrupt number
+    push %1
     jmp isr_common
 %endmacro
 
 %macro ISR_NO_ERROR_CODE 1
 global isr%1
 isr%1:
-    push 0    ; dummy error code to align with TrapFrame
-    push %1   ; interrupt number
+    push 0
+    push %1
     jmp isr_common
 %endmacro
 
-; exceptions and CPU reserved interrupts 0 - 31
 ISR_NO_ERROR_CODE 0
 ISR_NO_ERROR_CODE 1
 ISR_NO_ERROR_CODE 2
@@ -220,8 +202,7 @@ ISR_NO_ERROR_CODE 29
 ISR_NO_ERROR_CODE 30
 ISR_NO_ERROR_CODE 31
 
-; IRQs 0 - 15 are mapped to 32 - 47
-ISR_NO_ERROR_CODE 32 ; PIT
+ISR_NO_ERROR_CODE 32
 ISR_NO_ERROR_CODE 33
 ISR_NO_ERROR_CODE 34
 ISR_NO_ERROR_CODE 35
@@ -238,7 +219,6 @@ ISR_NO_ERROR_CODE 45
 ISR_NO_ERROR_CODE 46
 ISR_NO_ERROR_CODE 47
 
-; syscall 0x80
 ISR_NO_ERROR_CODE 128
 global isr128
 

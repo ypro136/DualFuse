@@ -14,10 +14,10 @@ Spinlock  LOCK_LL_UNIX_SOCKET;
 // AF_UNIX socket implementation (still needs a lot of testing)
 
 OpenFile *unixSocketAcceptCreate(UnixSocketPair *dir) {
-  size_t sockFd = fsUserOpen(currentTask, "/dev/null", O_RDWR, 0);
+  size_t sockFd = fsUserOpen(current_task_this_core(), "/dev/null", O_RDWR, 0);
   assert(!RET_IS_ERR(sockFd));
 
-  OpenFile *sockNode = fsUserGetNode(currentTask, sockFd);
+  OpenFile *sockNode = fsUserGetNode(current_task_this_core(), sockFd);
   assert(sockNode);
 
   sockNode->dir = dir;
@@ -123,7 +123,7 @@ size_t unixSocketAcceptSendto(OpenFile *fd, uint8_t *in, size_t limit,
     spinlock_acquire(&pair->LOCK_PAIR);
     if (!pair->clientFds) {
       spinlock_release(&pair->LOCK_PAIR);
-      atomicBitmapSet(&currentTask->sigPendingList, SIGPIPE);
+      atomicBitmapSet(&current_task_this_core()->sigPendingList, SIGPIPE);
       return ERR(EPIPE);
     } else if ((fd->flags & O_NONBLOCK || flags & MSG_DONTWAIT) &&
                CircularWritePoll(&pair->clientBuff) < limit) {
@@ -223,9 +223,9 @@ char *unixSocketAddrSafe(sockaddr_linux *addr, size_t len) {
   bool  abstract = addr->sa_data[0] == '\0'; // todo: not all sockets!
   int   skip = abstract ? 1 : 0;
   memcpy(unsafe, &addr->sa_data[skip], addrLen - skip);
-  spinlock_acquire(&currentTask->infoFs->LOCK_FS);
-  char *safe = fsSanitize(currentTask->infoFs->cwd, unsafe);
-  spinlock_release(&currentTask->infoFs->LOCK_FS);
+  spinlock_acquire(&current_task_this_core()->infoFs->LOCK_FS);
+  char *safe = fsSanitize(current_task_this_core()->infoFs->cwd, unsafe);
+  spinlock_release(&current_task_this_core()->infoFs->LOCK_FS);
   free(unsafe);
 
   return safe;
@@ -290,7 +290,7 @@ size_t unixSocketBind(OpenFile *fd, sockaddr_linux *addr, size_t len) {
 
   // check if it already exists
   struct stat statTarg = {0};
-  bool        ret = fsStatByFilename(currentTask, safe, &statTarg);
+  bool        ret = fsStatByFilename(current_task_this_core(), safe, &statTarg);
   if (ret) {
     free(safe);
     if (!(statTarg.st_mode & S_IFSOCK))
@@ -557,7 +557,7 @@ size_t unixSocketSendto(OpenFile *fd, uint8_t *in, size_t limit, int flags,
     spinlock_acquire(&pair->LOCK_PAIR);
     if (!pair->serverFds) {
       spinlock_release(&pair->LOCK_PAIR);
-      atomicBitmapSet(&currentTask->sigPendingList, SIGPIPE);
+      atomicBitmapSet(&current_task_this_core()->sigPendingList, SIGPIPE);
       return ERR(EPIPE);
     } else if ((fd->flags & O_NONBLOCK || flags & MSG_DONTWAIT) &&
                CircularWritePoll(&pair->serverBuff) < limit) {
@@ -716,11 +716,11 @@ size_t unixSocketReportKey(OpenFile *fd) {
 }
 
 size_t unixSocketPair(int type, int protocol, int *sv) {
-  size_t sock1 = unixSocketOpen(currentTask, type, protocol);
+  size_t sock1 = unixSocketOpen(current_task_this_core(), type, protocol);
   if (RET_IS_ERR(sock1))
     return sock1;
 
-  OpenFile *sock1Fd = fsUserGetNode(currentTask, sock1);
+  OpenFile *sock1Fd = fsUserGetNode(current_task_this_core(), sock1);
   assert(sock1Fd);
 
   UnixSocketPair *pair = unixSocketAllocatePair();

@@ -45,6 +45,7 @@
 
 #include <printf.h>
 #include <console.h>
+#include <spinlock.h>
 
 #ifdef __cplusplus
 #include <cstdint>
@@ -1388,12 +1389,16 @@ int vfctprintf(void (*out)(char c, void* extra_arg), void* extra_arg, const char
   return vsnprintf_impl(&gadget, format, arg);
 }
 
+static Spinlock print_lock = {0};
+
 int printf_(const char* format, ...)
 {
+  spinlock_acquire(&print_lock); 
   va_list args;
   va_start(args, format);
   const int ret = vprintf_(format, args);
   va_end(args);
+  spinlock_release(&print_lock);
   return ret;
 }
 

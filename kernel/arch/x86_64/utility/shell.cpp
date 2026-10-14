@@ -19,11 +19,16 @@
 #include <fs.h>
 #include <png_loader.h>
 #include <text_editor.h>
+#include <scheduler.h>
+#include <gdt.h>
+#include <elf.h>
+
+#include <memtest.h>
 
 #ifndef MAX_PATH
 #define MAX_PATH 256
 #endif
-
+ 
 #define FAT32_MAX_FILE_SIZE_BYTES 0xFFFFFFFFUL
 
 static char current_working_directory[MAX_PATH] = "/";
@@ -88,6 +93,7 @@ void Shell::execute(char* input_command_line)
     str_toupper(argument_vector[0]);
 
     if      (strcmp(argument_vector[0], "HELP")    == 0) cmd_help();
+    else if (strcmp(argument_vector[0], "EXEC") == 0) cmd_exec(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "CLEAR")   == 0) cmd_clear();
     else if (strcmp(argument_vector[0], "ECHO")    == 0) cmd_echo(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "INFO")    == 0) cmd_info();
@@ -108,11 +114,16 @@ void Shell::execute(char* input_command_line)
     else if (strcmp(argument_vector[0], "I2CHID")  == 0) cmd_i2chid();
     else if (strcmp(argument_vector[0], "I2CPOLL") == 0) cmd_i2cpoll();
     else if (strcmp(argument_vector[0], "TASKS")   == 0) cmd_tasks();
+    else if (strcmp(argument_vector[0], "TASKTEST")   == 0) cmd_task_test();
     else if (strcmp(argument_vector[0], "SPAWN")   == 0) cmd_spawn();
     else if (strcmp(argument_vector[0], "KILL")    == 0) cmd_kill(argument_count, argument_vector);
     else if (strcmp(argument_vector[0], "BG")      == 0) cmd_bg();
     else if (strcmp(argument_vector[0], "MOUNT")   == 0) cmd_mount();
     else if (strcmp(argument_vector[0], "EDIT")    == 0) cmd_edit(argument_count, argument_vector);
+    else if (strcmp(argument_vector[0], "MEMTEST") == 0) cmd_memtest();
+    else if (strcmp(argument_vector[0], "CORES") == 0) cmd_cores();
+    else if (strcmp(argument_vector[0], "APSTATE") == 0) cmd_ap_state();
+    else if (strcmp(argument_vector[0], "SCHED") == 0) cmd_scheduler_toggle(argument_count > 1 ? argument_vector[1] : nullptr);
     else { print("Unknown command: "); println(argument_vector[0]); }
 }
 
@@ -183,6 +194,7 @@ void Shell::cmd_help()
     println("  ECHO <text>              - Print the given text");
     println("  INFO                     - Display system information");
     println("  PAGE                     - Show memory paging information");
+    println("  EXEC <path> [args]       - Launch an ELF binary WIP");
     println("  CREATE <file> <content>  - Create a new file with the given content");
     println("  CAT <file>               - Display the contents of a file");
     println("  LIST                     - List files in the current directory");
@@ -198,7 +210,24 @@ void Shell::cmd_help()
     println("  SPAWN                    - Create a new shell task");
     println("  KILL <id>                - Terminate a task by its ID");
     println("  EDIT [file]              - Open text editor (optional: load file path)");
+    println("  MEMTEST                  - Stress test heap allocator");
+    println("  SCHED                    - Toggle scheduler status");
 }
+
+void Shell::cmd_scheduler_toggle(const char* argument) {
+    if (!argument) { printf("scheduler: %s\n", scheduler_enabled ? "enabled" : "disabled"); return; }
+    if (strcmp(argument, "ON") == 0 || strcmp(argument, "on") == 0) {
+        gdt_update_tss_rsp0(current_task_this_core()->whileTssRsp);
+        scheduler_enabled = true;
+        printf("scheduler: enabled\n");
+    } else if (strcmp(argument, "OFF") == 0 || strcmp(argument, "off") == 0) {
+        scheduler_enabled = false;
+        printf("scheduler: disabled\n");
+    } else {
+        printf("scheduler: %s\n", scheduler_enabled ? "enabled" : "disabled");
+    }
+}
+
 
 void Shell::cmd_mount()
 {
@@ -638,6 +667,7 @@ static const char* task_state_to_string(uint8_t task_state_enum_value)
         case 8:  return "BLOCKED";
         case 9:  return "SIGKILLED";
         case 10: return "FUTEX";
+        case 11: return "RUNNING";
         case 69: return "DUMMY";
         default: return "UNKNOWN";
     }
@@ -646,9 +676,8 @@ static const char* task_state_to_string(uint8_t task_state_enum_value)
 void Shell::cmd_tasks()
 {
     char id_string_buffer[32];
-    println("ID   STATE                  TYPE");
-    println("---- ---------------------- -------");
-
+    println("ID   STATE                  TYPE    CORE");
+    println("---- ---------------------- ------- ----");
     spinlock_cnt_read_acquire(&TASK_LL_MODIFY);
     Task* current_task_node = firstTask;
     while (current_task_node) {
@@ -662,27 +691,115 @@ void Shell::cmd_tasks()
         for (int padding_index = strlen(state_name_string); padding_index < 23; padding_index++)
             print(" ");
 
-        println(current_task_node->kernel_task ? "kernel" : "user");
+        print(current_task_node->kernel_task ? "kernel  " : "user    ");
+
+        // find which core currently runs this task
+        int owning_core = -1;
+        for (int core_index = 0; core_index < 256; core_index++) {
+            if (per_lapic_core_current_task[core_index] == current_task_node) {
+                owning_core = core_index;
+                break;
+            }
+        }
+        if (owning_core >= 0) {
+            u64toa(owning_core, id_string_buffer, 10);
+            println(id_string_buffer);
+        } else {
+            println("-");
+        }
+
         current_task_node = current_task_node->next;
     }
     spinlock_cnt_read_release(&TASK_LL_MODIFY);
 }
 
-static void infinite_pause_loop_kernel_task_entry(uint64_t unused_parameter)
-{
-    while (true) asm volatile("pause");
+static void reaper_test_task(void) {
+    while (1) { asm volatile("pause"); }   // never dies
 }
 
-void Shell::cmd_spawn()
+void Shell::cmd_task_test()
 {
+    task_create_named_kernel((uint64_t)reaper_test_task, 0, "i should be dead, then cleared");
+}
+
+
+static void infinite_pause_loop_kernel_task_entry(uint64_t unused_parameter)
+{ 
+    bool ran = false;
+    if (!ran) {
+        ran = true;
+        printf("Hello from the spawned kernel task! It will now enter an infinite pause loop.");
+    }
+    while (true) asm volatile("pause");
+} 
+
+void Shell::cmd_spawn()
+{   
     char spawned_task_id_buffer[32];
     Task* new_kernel_task = task_create_kernel(
         (uint64_t)infinite_pause_loop_kernel_task_entry, 0);
     if (!new_kernel_task) { println("task_create_kernel failed"); return; }
     task_name_kernel(new_kernel_task, "shell-test", 10);
     print("spawned task id=");
+    while(1);
+
     u64toa(new_kernel_task->id, spawned_task_id_buffer, 10);
     println(spawned_task_id_buffer);
+}
+
+static void shell_print_ap_state_row(Shell* sh, uint32_t lapic_id, bool is_bsp)
+{
+    char buf[32];
+    u64toa(lapic_id, buf, 10); sh->print(buf);
+    sh->print(is_bsp ? "*  " : "   ");
+    Task* t = per_lapic_core_current_task[lapic_id];
+    if (t) {
+        u64toa(t->id, buf, 10); sh->print(buf);
+        for (int p = (int)strlen(buf); p < 6; p++) sh->print(" ");
+        const char* state_str = task_state_to_string(t->state);
+        sh->print(state_str);
+        for (int p = (int)strlen(state_str); p < 19; p++) sh->print(" ");
+        sh->print("aff=0x"); u64toa(t->core_affinity, buf, 16); sh->print(buf);
+    } else {
+        sh->print("null  -                  aff=-   ");
+    }
+    sh->print("  rsp0=");
+    if (per_core_tss[lapic_id]) {
+        sh->print("0x"); u64toa(per_core_tss[lapic_id]->rsp0, buf, 16); sh->print(buf);
+    } else {
+        sh->print("null");
+    }
+    sh->println("");
+}
+
+void Shell::cmd_ap_state()
+{
+    uint32_t bsp_lapic_id = apicGetBspLapicId();
+    println("LAPIC  TASK  STATE              AFF        TSS_RSP0");
+    shell_print_ap_state_row(this, bsp_lapic_id, true);
+    for (int i = 0; i < smp_ap_count; i++) {
+        uint32_t ap_id = smp_ap_lapic_id_list[i];
+        if (ap_id != bsp_lapic_id)
+            shell_print_ap_state_row(this, ap_id, false);
+    }
+    println("(* = BSP)");
+}
+
+void Shell::cmd_cores()
+{
+    char buf[32];
+    println("CPU Cores:");
+    print("  BSP LAPIC ID: "); u64toa(apicGetBspLapicId(), buf, 10); println(buf);
+    print("  AP count: "); u64toa(smp_ap_count, buf, 10); println(buf);
+    for (int i = 0; i < smp_ap_count; i++) {
+        print("    AP["); u64toa(i, buf, 10); print(buf);
+        print("] LAPIC ID="); u64toa(smp_ap_lapic_id_list[i], buf, 10); print(buf);
+        uint8_t core_type = per_lapic_core_type[smp_ap_lapic_id_list[i]];
+        if (core_type == CORE_TYPE_PCORE)      print(" (P-core)");
+        else if (core_type == CORE_TYPE_ECORE) print(" (E-core)");
+        else                                   print(" (unknown core type)");
+        println("");
+    }
 }
 
 void Shell::cmd_kill(int argument_count, char* argument_vector[])
@@ -912,3 +1029,35 @@ void Shell::cmd_i2cpoll()
     }
     println("poll done.");
 }
+
+void Shell::cmd_memtest()
+{
+    ::cmd_memtest();
+}
+
+void Shell::cmd_exec(int argument_count, char* argument_vector[])
+{
+    if (argument_count < 2) { println("usage: exec <path> [args...]"); return; }
+ 
+    char absolute_executable_path[MAX_PATH];
+    build_absolute_path(argument_vector[1], absolute_executable_path, MAX_PATH);
+ 
+    argument_vector[1] = absolute_executable_path;
+    char**   program_argument_vector = argument_vector + 1;
+    uint32_t program_argument_count  = (uint32_t)(argument_count - 1);
+ 
+    Task* launched_task = elfExecute(absolute_executable_path,
+                                 program_argument_count,
+                                 program_argument_vector,
+                                 0, nullptr, true); 
+    if (!launched_task) {
+        print("exec: failed to launch "); println(absolute_executable_path);
+        return;
+    }
+    printf("exec: launched_task.ID:%d \n", (unsigned long)launched_task->id);
+ 
+    char task_id_string[32];
+    print("exec: launched task ");
+    u64toa(launched_task->id, task_id_string, 10);
+    println(task_id_string);
+} 

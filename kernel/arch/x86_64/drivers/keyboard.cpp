@@ -200,7 +200,7 @@ void keyboard_handler(struct interrupt_registers* /*registers*/)
     kb_append(key_buffer, final_char, sizeof(key_buffer));
     if (active_console) active_console->print_char(final_char);
 }
-
+ 
 bool keyboard_is_occupied() { return !!kbBuff; }
 
 bool keyboard_task_read(uint32_t taskId, char* buff, uint32_t limit, bool changeTaskState)

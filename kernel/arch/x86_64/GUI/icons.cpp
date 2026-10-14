@@ -11,13 +11,15 @@ Image folder_icon = {0};
 Image file_icon = {0};
 Image terminal_icon = {0};
 Image calculator_icon = {0};
+Image task_manager_icon = {0};
 Image logo_image = {0};
 
 static const char* icon_paths[] = {
     "/assets/folder_icon.png",
     "/assets/file_icon.png",
     "/assets/terminal_icon.png",
-    "/assets/calculator_icon.png"
+    "/assets/calculator_icon.png",
+    "/assets/tasks.png"
 };
 
 #define STANDARD_ICON_SIZE  (4 * (SCREEN_WIDTH / 100))
@@ -83,6 +85,9 @@ void load_all_icons(void) {
     Image* calc = load_single_icon("/assets/calculator_icon.png");
     if (calc) calculator_icon = *calc; else free(calc);
 
+    Image* tasks = load_single_icon("/assets/tasks.png");
+    if (tasks) task_manager_icon = *tasks; else free(tasks);
+
     Image* logo = load_single_icon("/assets/logo.png");
     if (logo) {
         // Override the resize to a larger size
@@ -98,7 +103,7 @@ void load_all_icons(void) {
         free(logo);
     }
 
-    printf("[icons] Icons loaded (folder, file, terminal, calculator)\n");
+    printf("[icons] Icons loaded (folder, file, terminal, calculator, task_manager)\n");
 }
 
 void free_all_icons(void) {
@@ -106,5 +111,6 @@ void free_all_icons(void) {
     image_free(&file_icon);
     image_free(&terminal_icon);
     image_free(&calculator_icon);
+    image_free(&task_manager_icon);
     image_free(&logo_image);
 }

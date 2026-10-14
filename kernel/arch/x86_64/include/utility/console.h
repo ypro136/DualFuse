@@ -20,7 +20,9 @@ extern bool g_console_output_enabled;
 
 struct ConsoleBuffer {
     char characters[CONSOLE_BUFFER_SIZE];
-    uint32_t write_index;
+    uint32_t head;
+    uint32_t tail;
+    uint32_t count;
     Spinlock lock;
 };
 
@@ -38,6 +40,7 @@ private:
     bool     is_initialized;
     bool     visible;
     bool     cursorHidden;
+    bool     needs_full_redraw;
     uint32_t cursor_position_x;
     uint32_t cursor_position_y;
 
@@ -46,6 +49,10 @@ private:
     int32_t  window_x;
     int32_t  window_y;
     uint32_t screen_width_char;
+
+    uint32_t render_index;
+    bool     force_full_redraw;
+    
 
     void* framebuffer;
 

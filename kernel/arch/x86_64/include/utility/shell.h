@@ -17,12 +17,13 @@ public:
 
     void print(const char* s);
     void println(const char* s);
- 
+
 private:
     Console* console;
 
     void cmd_help();
     void cmd_clear();
+    void cmd_exec(int argument_count, char* argument_vector[]);
     void cmd_echo(int argc, char* argv[]);
     void cmd_info();
     void cmd_page();
@@ -39,6 +40,10 @@ private:
     void cmd_grep(int argc, char* argv[]);
     void cmd_calc(int argc, char* argv[]);
     void cmd_edit(int argument_count, char* argument_vector[]);
+    void cmd_memtest();
+    void cmd_scheduler_toggle(const char* argument);
+    void cmd_cores();
+    void cmd_ap_state();
 
     void cmd_madt();
     void cmd_i2c();
@@ -49,11 +54,10 @@ private:
     void cmd_spawn();
     void cmd_kill(int argc, char* argv[]);
     void cmd_bg();
+    void cmd_task_test();
 
     void cmd_mount();
 
     static int  tokenize(char* input, char* argv[], int max_args);
     static void str_toupper(char* s);
-
-
 };

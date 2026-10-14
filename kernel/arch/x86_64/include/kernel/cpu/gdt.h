@@ -8,14 +8,6 @@
 
 #include <string.h>
 
-/**
- * Represents a single entry in the Global Descriptor Table (GDT).
- * The GDT is a data structure used by the CPU to define memory segments
- * and their access privileges.
- *
- * Each GDTEntry defines a single memory segment, including its base address,
- * limit, and access permissions.
- */
 typedef struct GDTEntry {
   uint16_t limit;
   uint16_t base_low;
@@ -68,6 +60,8 @@ typedef struct GDTPtr {
   uint64_t base;
 } __attribute__((packed)) GDTPtr;
 
+extern TSSPtr* per_core_tss[256];
+
 #define NUM_GDT_ENTRIES 7
 #define GDT_KERNEL_CODE 40
 #define GDT_KERNEL_DATA 48
@@ -75,8 +69,9 @@ typedef struct GDTPtr {
 #define GDT_USER_DATA 72
 #define GDT_TSS 80
 
-int gdt_initialize();
+int  gdt_initialize();
+void gdt_update_tss_rsp0(uint64_t kernel_stack_top);
+void smp_ap_initialize_gdt_and_tss(uint64_t kernel_stack_top);
 
 
 #endif
-

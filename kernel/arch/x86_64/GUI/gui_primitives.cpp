@@ -149,6 +149,48 @@ void draw_circle(int cx, int cy, int radius, uint32_t color) {
 }
 
 
+void fill_triangle(int x1, int y1, int x2, int y2, int x3, int y3, uint32_t color)
+{
+    // Sort vertices so y1 <= y2 <= y3
+    if (y1 > y2) { int tx = x1; x1 = x2; x2 = tx; int ty = y1; y1 = y2; y2 = ty; }
+    if (y2 > y3) { int tx = x2; x2 = x3; x3 = tx; int ty = y2; y2 = y3; y3 = ty; }
+    if (y1 > y2) { int tx = x1; x1 = x2; x2 = tx; int ty = y1; y1 = y2; y2 = ty; }
+
+    if (y1 == y3) return;
+
+    for (int y = y1; y <= y3; y++)
+    {
+        int x_left, x_right;
+
+        if (y <= y2)    // top half – edges v0->v1 and v0->v2
+        {
+            int dy1 = y2 - y1, dx1 = x2 - x1;
+            int dy2 = y3 - y1, dx2 = x3 - x1;
+
+            int xa = (dy1 == 0) ? x1 : x1 + (dx1 * (y - y1) + dy1 / 2) / dy1;
+            int xb = (dy2 == 0) ? x1 : x1 + (dx2 * (y - y1) + dy2 / 2) / dy2;
+
+            if (xa < xb) { x_left = xa; x_right = xb; }
+            else         { x_left = xb; x_right = xa; }
+        }
+        else            // bottom half – edges v1->v2 and v0->v2
+        {
+            int dy1 = y3 - y2, dx1 = x3 - x2;
+            int dy2 = y3 - y1, dx2 = x3 - x1;
+
+            int xa = (dy1 == 0) ? x2 : x2 + (dx1 * (y - y2) + dy1 / 2) / dy1;
+            int xb = (dy2 == 0) ? x1 : x1 + (dx2 * (y - y1) + dy2 / 2) / dy2;
+
+            if (xa < xb) { x_left = xa; x_right = xb; }
+            else         { x_left = xb; x_right = xa; }
+        }
+
+        for (int x = x_left; x <= x_right; x++)
+            draw_pixel(x, y, color);
+    }
+}
+
+
 void fill_circle(int cx, int cy, int radius, uint32_t color) {
     for (int y = -radius; y <= radius; y++) {
         for (int x = -radius; x <= radius; x++) {

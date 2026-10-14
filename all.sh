@@ -6,7 +6,7 @@ set -e # fail globally
 
 mkdir -m=rwx -p $LOG_DIR
 
-#. ./clean.sh | tee $LOG_DIR/clean.log
+. ./clean.sh | tee $LOG_DIR/clean.log
 
 if ! test -f "$PREFIX/bin/${TARGET}-gcc"; then
 	cd $ENVIROMENT_DIR

@@ -15,6 +15,7 @@
 #include <calculator.h>
 #include <apic.h>
 #include <icons.h>
+#include <task_manager.h>
 
 
 #include <png_loader.h>
@@ -85,6 +86,7 @@ static StartMenuItem g_start_items[START_MENU_ITEMS] = {
     { "Console", 0x000080, on_console_icon_click       },
     { "Files",   0xFFCC00, on_file_explorer_icon_click },
     { "Calc",    0x007F00, on_calculator_icon_click    },
+    { "Tasks",   0x007F7F, on_task_manager_icon_click },
 };
 
 static int start_menu_render_y()
@@ -97,16 +99,24 @@ static int start_menu_render_height()
     return start_menu_h() + TASKBAR_HEIGHT;
 }
 
-static int start_menu_hovered_item_index = -1;
+volatile int start_menu_hovered_item_index = -1;
 void draw_start_menu()
 {
     if (!g_start_menu_open) return;
- 
+
+    /* ============================================================
+       SNAPSHOT the hover index ONCE at the very beginning.
+       This guarantees that every item is drawn with a consistent
+       hover state, even if an interrupt modifies the global
+       variable while we are in the middle of drawing.
+       ============================================================ */
+    int hovered_item = start_menu_hovered_item_index;
+
     int start_menu_position_x = start_menu_x();
     int start_menu_position_y = start_menu_render_y();
     int start_menu_width      = START_MENU_WIDTH;
     int start_menu_height     = start_menu_render_height();
- 
+
     fill_rectangle(start_menu_position_x, start_menu_position_y,
                    start_menu_width, start_menu_height, XP_BUTTON_FACE);
 
@@ -114,11 +124,10 @@ void draw_start_menu()
                               start_menu_width, start_menu_height,
                               XP_BUTTON_HIGHLIGHT, XP_BUTTON_FACE,
                               XP_BUTTON_SHADOW, true);
- 
-    // Determine header height
+
     int header_height;
     if (logo_image.resized_data) {
-        header_height = logo_image.resized_height + 8;   // add padding
+        header_height = logo_image.resized_height + 8;
     } else {
         header_height = (current_font_height > 0) ? (current_font_height + 8) : 24;
     }
@@ -126,7 +135,6 @@ void draw_start_menu()
                   start_menu_width - 4, header_height,
                   0x0A246A, 0x3A6EA5, false);
 
-    // Draw logo or fallback text
     if (logo_image.resized_data) {
         int logo_x = start_menu_position_x + (start_menu_width - logo_image.resized_width) - ((start_menu_width - logo_image.resized_width) / 2);
         int logo_y = start_menu_position_y + (header_height - logo_image.resized_height) - ((header_height - logo_image.resized_height) / 2);
@@ -139,15 +147,15 @@ void draw_start_menu()
                   text_y + current_font_height - 4,
                   0xFFFFFF, 0x0A246A);
     }
- 
-    // Rest of the menu items (unchanged)
+
     for (int item_index = 0; item_index < START_MENU_ITEMS; item_index++)
     {
         int item_position_y =
             start_menu_position_y + header_height + START_MENU_PADDING +
             item_index * START_MENU_ITEM_HEIGHT;
 
-        bool item_is_hovered = (item_index == start_menu_hovered_item_index);
+        /* Use the snapshot, NOT the global variable */
+        bool item_is_hovered = (item_index == hovered_item);
 
         if (item_is_hovered)
         {
@@ -163,9 +171,11 @@ void draw_start_menu()
 
         Image* icon = NULL;
         switch (item_index) {
-            case 0: icon = &terminal_icon; break;
-            case 1: icon = &folder_icon; break;
-            case 2: icon = &calculator_icon; break;
+            case 0: icon = &terminal_icon;    break;
+            case 1: icon = &folder_icon;      break;
+            case 2: icon = &calculator_icon;  break;
+            case 3: icon = &task_manager_icon; break;
+            case 4:                           break;
         }
 
         if (icon && icon->resized_data) {
@@ -205,8 +215,12 @@ bool start_menu_handle_mouse(int mouse_position_x,
     int start_menu_width      = START_MENU_WIDTH;
     int start_menu_height     = start_menu_render_height();
 
-    start_menu_hovered_item_index = -1;
+    /* ---------------------------------------------------------
+       REMOVED the unconditional reset:
+          start_menu_hovered_item_index = -1;
+       --------------------------------------------------------- */
 
+    /* Close the menu if clicked outside its area */
     if (left_mouse_clicked &&
         (mouse_position_x < start_menu_position_x ||
          mouse_position_x > start_menu_position_x + start_menu_width ||
@@ -215,15 +229,17 @@ bool start_menu_handle_mouse(int mouse_position_x,
     {
         g_start_menu_open = false;
         return false;
-    } 
+    }
 
     int header_height;
     if (logo_image.resized_data) {
-        header_height = logo_image.resized_height + 8;   // add padding
+        header_height = logo_image.resized_height + 8;
     } else {
         header_height = (current_font_height > 0) ? (current_font_height + 8) : 24;
     }
 
+    /* Determine which item the mouse is currently over */
+    int new_hover = -1;
     for (int item_index = 0; item_index < START_MENU_ITEMS; item_index++)
     {
         int item_position_y =
@@ -238,24 +254,36 @@ bool start_menu_handle_mouse(int mouse_position_x,
 
         if (mouse_is_over_item)
         {
-            start_menu_hovered_item_index = item_index;
+            new_hover = item_index;
 
+            /* Consume the click only if an item was actually clicked */
             if (left_mouse_clicked)
             {
                 g_start_menu_open = false;
-
                 if (g_start_items[item_index].on_click)
                     g_start_items[item_index].on_click();
 
-                return true;
+                /* Menu is closing, reset hover for cleanliness */
+                start_menu_hovered_item_index = -1;
+                return true;   /* Event fully handled */
             }
         }
     }
 
-    return (mouse_position_x >= start_menu_position_x &&
-            mouse_position_x <= start_menu_position_x + start_menu_width &&
-            mouse_position_y >= start_menu_position_y &&
-            mouse_position_y <= start_menu_position_y + start_menu_height);
+    /* ---------------------------------------------------------
+       Update the global hover index ONLY if it actually changed.
+       This prevents unnecessary redraws and avoids flickering
+       caused by writing the same value repeatedly.
+       --------------------------------------------------------- */
+    if (new_hover != start_menu_hovered_item_index)
+        start_menu_hovered_item_index = new_hover;
+
+    /* ---------------------------------------------------------
+       DO NOT consume the event just because the mouse is inside
+       the menu. Return false to let the main loop proceed to
+       update_all_xp_panels() and redraw the menu normally.
+       --------------------------------------------------------- */
+    return false;
 }
 
 static void on_taskbar_window_click(void* ctx)
@@ -395,6 +423,9 @@ void draw_taskbar()
                 case WINDOW_TYPE_EXPLORER:
                     icon = &folder_icon;
                     break;
+                case WINDOW_TYPE_TASK_MANAGER:
+                    icon = &task_manager_icon;
+                    break;
                 default:
                     icon = &file_icon;
                     break;
@@ -533,6 +564,8 @@ void draw_desktop_icon(XPDesktopIcon* icon)
         image_draw(&calculator_icon, x, y, size, size);
     } else if (strcmp(icon->label, "Files") == 0 && folder_icon.resized_data) {
         image_draw(&folder_icon, x, y, size, size);
+    } else if (strcmp(icon->label, "Tasks") == 0 && task_manager_icon.resized_data) {
+        image_draw(&task_manager_icon, x, y, size, size);
     } else {
         // fallback colored rectangle
         fill_rectangle(x + 6, y + 6, size - 12, size - 12, icon->icon_color);
@@ -540,7 +573,7 @@ void draw_desktop_icon(XPDesktopIcon* icon)
 
     int label_y = y + size + 5 + ((current_font_height + 4) / 2);
     draw_text_centered(icon->label, x - 20, label_y, size + 40, XP_WINDOW_TEXT, 0x008DD5);
-}
+} 
 
 void draw_all_desktop_icons()
 {
@@ -623,7 +656,7 @@ char* u64toa(uint64_t value, char* str, int base)
     str[i] = '\0';
     reverse_string(str, i);
     return str;
-}
+} 
 
 static void draw_clock_panel(int x, int y, int w, int h, void* /*ctx*/)
 {
@@ -713,6 +746,9 @@ void initialize_xp_desktop()
     create_desktop_icon(20, temp_y, "Files",   0xFFCC00, on_file_explorer_icon_click);
     temp_y += spacing;
     create_desktop_icon(20, temp_y, "Calc",    0x007F00, on_calculator_icon_click);
+    temp_y += spacing;
+    create_desktop_icon(20, temp_y, "Tasks", 0x007F7F, on_task_manager_icon_click);
+
 
     console = Console(400, 400, 200, 200);
     console_initialize();
@@ -739,6 +775,8 @@ void initialize_xp_desktop()
     register_xp_panel(clock_panel);
 
     taskbar_sync_windows();
+
+    gui_input_init();
 
 #if defined(DEBUG_GUI)
     printf("[DEBUG_GUI] initialize_xp_desktop: done\n");
